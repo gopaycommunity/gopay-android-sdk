@@ -48,3 +48,14 @@ Thumbs.db
 *.mov
 *.wmv
 
+
+*.iml
+.gradle
+/local.properties
+.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
