@@ -49,6 +49,8 @@ android {
     }
 }
 
+val materialIconsVersion = "1.5.4"
+
 dependencies {
 
     implementation(project(":sdk"))
@@ -61,7 +63,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation("androidx.compose.material:material-icons-extended:1.5.4")
+    implementation("androidx.compose.material:material-icons-extended:$materialIconsVersion")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
