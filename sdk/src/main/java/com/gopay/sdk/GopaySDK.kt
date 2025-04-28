@@ -1,12 +1,18 @@
 package com.gopay.sdk
 
+import com.gopay.sdk.config.GopayConfig
 import com.gopay.sdk.model.PaymentMethod
 import com.gopay.sdk.service.PaymentService
 
 /**
  * Main entry point for the Gopay SDK.
  */
-class GopaySDK {
+class GopaySDK private constructor(
+    /**
+     * The configuration for this SDK instance.
+     */
+    val config: GopayConfig
+) {
     
     private val paymentService = PaymentService()
     
@@ -50,12 +56,37 @@ class GopaySDK {
         private var instance: GopaySDK? = null
         
         /**
-         * Get the singleton instance of the SDK.
+         * Initialize the SDK with the given configuration.
+         * Must be called before using any SDK features.
+         *
+         * @param config The SDK configuration
          */
+        @JvmStatic
+        fun initialize(config: GopayConfig) {
+            instance = GopaySDK(config)
+        }
+        
+        /**
+         * Get the singleton instance of the SDK.
+         * 
+         * @throws IllegalStateException if SDK hasn't been initialized
+         * @return The SDK instance
+         */
+        @JvmStatic
         fun getInstance(): GopaySDK {
-            return instance ?: synchronized(this) {
-                instance ?: GopaySDK().also { instance = it }
-            }
+            return instance ?: throw IllegalStateException(
+                "GopaySDK has not been initialized. Call GopaySDK.initialize(config) first."
+            )
+        }
+        
+        /**
+         * Check if the SDK has been initialized.
+         *
+         * @return True if initialized, false otherwise
+         */
+        @JvmStatic
+        fun isInitialized(): Boolean {
+            return instance != null
         }
     }
 } 

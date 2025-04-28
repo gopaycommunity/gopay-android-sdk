@@ -1,5 +1,8 @@
 package com.gopay.sdk.service
 
+import com.gopay.sdk.GopaySDK
+import com.gopay.sdk.config.Environment
+import com.gopay.sdk.config.GopayConfig
 import com.gopay.sdk.model.PaymentMethod
 import com.gopay.sdk.model.PaymentMethodType
 
@@ -13,6 +16,10 @@ class PaymentService {
      */
     fun getAvailablePaymentMethods(): List<PaymentMethod> {
         // In a real SDK, this would fetch from an API
+        // Example of how we would use the configuration:
+        // val apiBaseUrl = GopaySDK.getInstance().config.apiBaseUrl
+        // val paymentEndpoint = GopaySDK.getInstance().config.apiBaseUrl + GopayConfig.PAYMENT_ENDPOINT + "/methods"
+        
         return listOf(
             PaymentMethod(
                 id = "card",
@@ -44,7 +51,17 @@ class PaymentService {
      */
     fun processPayment(paymentMethodId: String, amount: Double): Boolean {
         // In a real SDK, this would make an API call to process the payment
-        // For now, just return true to simulate a successful payment
-        return true
+        // For demonstration, handle differently based on environment
+        val config = GopaySDK.getInstance().config
+        
+        // In a real implementation, we would make HTTP requests to the appropriate endpoint
+        // using the config.apiBaseUrl
+        
+        // Just for demonstration, let's simulate environment-specific behavior
+        return when (config.environment) {
+            Environment.SANDBOX -> true  // Always succeed in sandbox
+            Environment.DEVELOPMENT -> paymentMethodId != "bank" // Fail bank transfers in dev
+            else -> amount > 0 // In production/staging, only succeed if amount is positive
+        }
     }
 } 
