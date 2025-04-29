@@ -30,7 +30,7 @@ definitions:
               script:
                   -   pipe: sonarsource/sonarcloud-scan:4.1.0
                       variables:
-                          SONAR_SCANNER_OPTS: '-Dsonar.coverage.jacoco.xmlReportPaths=sdk/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml'
+                          SONAR_SCANNER_OPTS: '-Dsonar.projectBaseDir=.'
                   -   pipe: sonarsource/sonarcloud-quality-gate:0.1.6
 
 pipelines:
