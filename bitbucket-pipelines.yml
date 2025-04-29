@@ -13,7 +13,7 @@ definitions:
                   - npx -p semantic-release -p @semantic-release/changelog -p @semantic-release/git semantic-release
         - step: &tests
               name: run-tests
-              image: gradle:8.4-jdk17
+              image: gradle:8.7-jdk17
               caches:
                   - gradle
               script:
