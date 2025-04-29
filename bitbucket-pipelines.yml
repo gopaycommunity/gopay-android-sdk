@@ -12,12 +12,12 @@ definitions:
               script:
                   - npx -p semantic-release -p @semantic-release/changelog -p @semantic-release/git semantic-release
         - step: &tests
-              name: run-tests
-              image: gradle:8.7-jdk17
+              name: Tests
+              image: bitbucketpipelines/android-ci-image
               caches:
                   - gradle
               script:
-                  - gradle test
+                  - ./gradlew test
               artifacts:
                   - sdk/build/reports/jacoco/**
                   - sdk/build/jacoco/**
