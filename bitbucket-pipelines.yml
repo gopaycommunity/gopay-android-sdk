@@ -13,7 +13,7 @@ definitions:
                   - npx -p semantic-release -p @semantic-release/changelog -p @semantic-release/git semantic-release
         - step: &tests
               name: Tests
-              image: bitbucketpipelines/android-ci-image
+              image: cimg/android:2025.04
               caches:
                   - gradle
               script:

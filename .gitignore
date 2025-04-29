@@ -60,3 +60,5 @@ Thumbs.db
 .cxx
 local.properties
 .vscode/
+
+*.sh
