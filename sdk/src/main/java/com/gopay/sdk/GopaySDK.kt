@@ -17,20 +17,6 @@ class GopaySDK private constructor(
     private val paymentService = PaymentService()
     
     /**
-     * Simple hello world function to test the connection between app and SDK.
-     * 
-     * @param name Optional name to include in the greeting
-     * @return A greeting string
-     */
-    fun helloWorld(name: String = ""): String {
-        return if (name.isBlank()) {
-            "Hello from Gopay SDK!"
-        } else {
-            "Hello $name from Gopay SDK!"
-        }
-    }
-    
-    /**
      * Get available payment methods.
      * 
      * @return List of available payment methods

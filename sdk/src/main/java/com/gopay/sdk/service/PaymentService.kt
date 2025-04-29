@@ -2,7 +2,6 @@ package com.gopay.sdk.service
 
 import com.gopay.sdk.GopaySDK
 import com.gopay.sdk.config.Environment
-import com.gopay.sdk.config.GopayConfig
 import com.gopay.sdk.model.PaymentMethod
 import com.gopay.sdk.model.PaymentMethodType
 

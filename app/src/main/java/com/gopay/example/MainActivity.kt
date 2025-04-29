@@ -13,9 +13,6 @@ import com.gopay.example.ui.theme.ExampleAppTheme
 import com.gopay.sdk.GopaySDK
 
 class MainActivity : ComponentActivity() {
-    // Instance of our SDK
-    private val gopaySDK = GopaySDK.getInstance()
-    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -25,31 +22,5 @@ class MainActivity : ComponentActivity() {
                 CheckoutScreen()
             }
         }
-    }
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Composable
-fun SdkGreeting(modifier: Modifier = Modifier) {
-    // Get the greeting from the SDK
-    val greeting = GopaySDK.getInstance().helloWorld("App User")
-    Text(
-        text = greeting,
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    ExampleAppTheme {
-        SdkGreeting()
     }
 }

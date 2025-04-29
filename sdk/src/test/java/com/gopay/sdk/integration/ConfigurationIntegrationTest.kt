@@ -29,6 +29,9 @@ class ConfigurationIntegrationTest {
             requestTimeoutMs = 45000
         )
 
+        // 1.5 SDK should not be initialized yet
+        assertFalse(GopaySDK.isInitialized())
+
         // 2. Initialize the SDK
         GopaySDK.initialize(config)
         assertTrue(GopaySDK.isInitialized())
@@ -42,14 +45,15 @@ class ConfigurationIntegrationTest {
         assertTrue(sdk.config.debugLoggingEnabled)
         assertEquals(45000L, sdk.config.requestTimeoutMs)
 
-        // 5. Test basic SDK functionality
-        val greeting = sdk.helloWorld("Tester")
-        assertEquals("Hello Tester from Gopay SDK!", greeting)
-        
-        // 6. Verify payment methods are accessible
+        // 5. Verify payment methods are accessible
         val paymentMethods = sdk.getPaymentMethods()
         assertNotNull(paymentMethods)
         assertTrue(paymentMethods.isNotEmpty())
+
+        // 6. Test payment processing
+        assertTrue(sdk.processPayment("card", 100.0))
+        assertTrue(sdk.processPayment("bank", 100.0))
+        assertTrue(sdk.processPayment("wallet", 100.0))
     }
 
     @Test
