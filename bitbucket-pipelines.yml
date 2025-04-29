@@ -3,6 +3,7 @@ image: node:22
 definitions:
     caches:
         cache: ~/.cache
+        gradle: ~/.gradle
     steps:
         - step: &release
               name: release
@@ -10,6 +11,16 @@ definitions:
                   - cache
               script:
                   - npx -p semantic-release -p @semantic-release/changelog -p @semantic-release/git semantic-release
+        - step: &tests
+              name: run-tests
+              image: gradle:8.4-jdk17
+              caches:
+                  - gradle
+              script:
+                  - gradle test
+              artifacts:
+                  - sdk/build/reports/jacoco/**
+                  - sdk/build/jacoco/**
         - step: &sonarcloud-analysis
               name: sonar
               caches:
@@ -18,6 +29,8 @@ definitions:
                   depth: full # SonarCloud scanner needs the full history to assign issues properly
               script:
                   -   pipe: sonarsource/sonarcloud-scan:4.1.0
+                      variables:
+                          SONAR_SCANNER_OPTS: '-Dsonar.coverage.jacoco.xmlReportPaths=sdk/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml'
                   -   pipe: sonarsource/sonarcloud-quality-gate:0.1.6
 
 pipelines:
@@ -25,8 +38,9 @@ pipelines:
         master:
             - parallel:
                   - step: *release
-                  - step: *sonarcloud-analysis
+            - step: *tests
+            - step: *sonarcloud-analysis
     pull-requests:
         '**':
-            - parallel:
-                  - step: *sonarcloud-analysis
+            - step: *tests
+            - step: *sonarcloud-analysis
