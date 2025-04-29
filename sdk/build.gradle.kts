@@ -56,15 +56,31 @@ afterEvaluate {
             xml.required.set(true)
         }
         
-        // Include Kotlin classes
+        // Define exclusions
+        val excludes = listOf(
+            // Default excludes
+            "**/R.class",
+            "**/R$*.class",
+            "**/BuildConfig.*",
+            "**/Manifest*.*",
+            "**/*Test*.*",
+            
+            // Kotlin data classes
+            "**/*$*.*", // Synthetic methods
+            "**/model/*.*", // Exclude model package
+            
+            // For other classes, exclude common generated methods
+            "**/*\$DefaultImpls.*", // Default interface implementations
+            "**/*ComponentCallbacksImpl*.*",
+            "**/*_Factory*.*",
+            "**/*Module*.*",
+            "**/*Companion*.*" // Companion objects
+        )
+        
+        // Include Kotlin classes with exclusions
         classDirectories.setFrom(
             fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
-                exclude(
-                    "**/R.class",
-                    "**/R$*.class",
-                    "**/BuildConfig.*",
-                    "**/Manifest*.*"
-                )
+                exclude(excludes)
             }
         )
         
