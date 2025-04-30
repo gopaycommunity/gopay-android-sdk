@@ -1,3 +1,10 @@
+# [1.1.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.0.0...1.1.0) (2025-04-30)
+
+
+### Features
+
+*  add GopaySDK configuration GPMOB-53 ([4a87544](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/4a87544a2b64738be8db5c942136fc47eca42179))
+
 # 1.0.0 (2025-04-15)
 
 
