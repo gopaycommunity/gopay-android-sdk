@@ -41,7 +41,7 @@ class ConfigurationIntegrationTest {
         
         // 4. Verify configuration is properly accessible
         assertEquals(Environment.SANDBOX, sdk.config.environment)
-        assertEquals("https://api.sandbox.gopay.com/v1", sdk.config.apiBaseUrl)
+        assertEquals("https://api.sandbox.gopay.com/v1/", sdk.config.apiBaseUrl)
         assertTrue(sdk.config.debugLoggingEnabled)
         assertEquals(45000L, sdk.config.requestTimeoutMs)
 
@@ -79,6 +79,6 @@ class ConfigurationIntegrationTest {
         // 4. Verify we're now in production
         sdk = GopaySDK.getInstance()
         assertEquals(Environment.PRODUCTION, sdk.config.environment)
-        assertEquals("https://api.gopay.com/v1", sdk.config.apiBaseUrl)
+        assertEquals("https://api.gopay.com/v1/", sdk.config.apiBaseUrl)
     }
 } 

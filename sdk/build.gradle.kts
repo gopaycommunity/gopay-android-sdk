@@ -37,7 +37,19 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
+    
+    // Network dependencies
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-moshi:2.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.11.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
+    implementation("com.squareup.moshi:moshi:1.15.0")
+    implementation("com.squareup.moshi:moshi-kotlin:1.15.0")
+    
     testImplementation(libs.junit)
+    // Retrofit test dependencies
+    testImplementation("com.squareup.retrofit2:retrofit-mock:2.9.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }

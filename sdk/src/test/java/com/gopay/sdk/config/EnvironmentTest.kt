@@ -22,25 +22,25 @@ class EnvironmentTest {
     @Test
     fun testProductionEnvironment() {
         // Verify production environment properties
-        assertEquals("https://api.gopay.com/v1", Environment.PRODUCTION.apiBaseUrl)
+        assertEquals("https://api.gopay.com/v1/", Environment.PRODUCTION.apiBaseUrl)
     }
 
     @Test
     fun testSandboxEnvironment() {
         // Verify sandbox environment properties
-        assertEquals("https://api.sandbox.gopay.com/v1", Environment.SANDBOX.apiBaseUrl)
+        assertEquals("https://api.sandbox.gopay.com/v1/", Environment.SANDBOX.apiBaseUrl)
     }
 
     @Test
     fun testDevelopmentEnvironment() {
         // Verify development environment properties
-        assertEquals("https://api.dev.gopay.com/v1", Environment.DEVELOPMENT.apiBaseUrl)
+        assertEquals("https://api.dev.gopay.com/v1/", Environment.DEVELOPMENT.apiBaseUrl)
     }
 
     @Test
     fun testStagingEnvironment() {
         // Verify staging environment properties
-        assertEquals("https://api.staging.gopay.com/v1", Environment.STAGING.apiBaseUrl)
+        assertEquals("https://api.staging.gopay.com/v1/", Environment.STAGING.apiBaseUrl)
     }
 
     @Test

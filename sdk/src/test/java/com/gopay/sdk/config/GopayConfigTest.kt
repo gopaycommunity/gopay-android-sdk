@@ -58,8 +58,8 @@ class GopayConfigTest {
     @Test
     fun testEndpointConstants() {
         // Verify the endpoint constants are properly defined
-        assertEquals("/payments", GopayConfig.PAYMENT_ENDPOINT)
-        assertEquals("/customers", GopayConfig.CUSTOMER_ENDPOINT)
+        assertEquals("payments", GopayConfig.PAYMENT_ENDPOINT)
+        assertEquals("customers", GopayConfig.CUSTOMER_ENDPOINT)
     }
     
     @Test
@@ -80,5 +80,65 @@ class GopayConfigTest {
         assertEquals(originalConfig.environment, modifiedConfig.environment)
         assertEquals(originalConfig.requestTimeoutMs, modifiedConfig.requestTimeoutMs)
         assertTrue(modifiedConfig.debugLoggingEnabled)
+    }
+    
+    @Test
+    fun testGetPaymentsUrl() {
+        // For each environment
+        for (environment in Environment.entries) {
+            // Given a config with that environment
+            val config = GopayConfig(environment = environment)
+            
+            // When getting the payments URL
+            val paymentsUrl = config.getPaymentsUrl()
+            
+            // Then it should be correctly formatted
+            val expected = "${environment.apiBaseUrl}${GopayConfig.PAYMENT_ENDPOINT}"
+                .replace("//", "/")
+                .replace(":/", "://")
+            assertEquals(expected, paymentsUrl)
+        }
+    }
+    
+    @Test
+    fun testGetCustomersUrl() {
+        // For each environment
+        for (environment in Environment.entries) {
+            // Given a config with that environment
+            val config = GopayConfig(environment = environment)
+            
+            // When getting the customers URL
+            val customersUrl = config.getCustomersUrl()
+            
+            // Then it should be correctly formatted
+            val expected = "${environment.apiBaseUrl}${GopayConfig.CUSTOMER_ENDPOINT}"
+                .replace("//", "/")
+                .replace(":/", "://")
+            assertEquals(expected, customersUrl)
+        }
+    }
+    
+    @Test
+    fun testCreateUrl() {
+        // Given a config with any environment
+        val config = GopayConfig(environment = Environment.DEVELOPMENT)
+        
+        // When creating URLs with different endpoints
+        val endpoints = listOf(
+            "auth",
+            "transactions",
+            "/refunds",
+            "users/profile"
+        )
+        
+        // Then all URLs should be correctly formatted
+        for (endpoint in endpoints) {
+            val url = config.createUrl(endpoint)
+            val normalizedEndpoint = if (endpoint.startsWith("/")) endpoint.substring(1) else endpoint
+            val expected = "${config.apiBaseUrl}$normalizedEndpoint"
+                .replace("//", "/")
+                .replace(":/", "://")
+            assertEquals(expected, url)
+        }
     }
 } 

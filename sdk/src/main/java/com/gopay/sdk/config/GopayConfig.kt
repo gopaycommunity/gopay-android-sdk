@@ -1,5 +1,7 @@
 package com.gopay.sdk.config
 
+import com.gopay.sdk.util.UrlUtils
+
 /**
  * Configuration class for the Gopay SDK.
  * Holds all environment-specific constants and settings.
@@ -26,6 +28,31 @@ data class GopayConfig(
     val apiBaseUrl: String
         get() = environment.apiBaseUrl
     
+    /**
+     * Gets a properly formatted URL for the payments endpoint.
+     * @return Full URL to the payments endpoint
+     */
+    fun getPaymentsUrl(): String {
+        return UrlUtils.composeUrl(apiBaseUrl, PAYMENT_ENDPOINT)
+    }
+    
+    /**
+     * Gets a properly formatted URL for the customers endpoint.
+     * @return Full URL to the customers endpoint
+     */
+    fun getCustomersUrl(): String {
+        return UrlUtils.composeUrl(apiBaseUrl, CUSTOMER_ENDPOINT)
+    }
+    
+    /**
+     * Creates a properly formatted URL for any endpoint.
+     * @param endpoint The endpoint to append to the base URL
+     * @return The complete URL
+     */
+    fun createUrl(endpoint: String): String {
+        return UrlUtils.composeUrl(apiBaseUrl, endpoint)
+    }
+    
     companion object {
         /**
          * Default API request timeout in milliseconds (30 seconds).
@@ -35,11 +62,11 @@ data class GopayConfig(
         /**
          * Payment API endpoints.
          */
-        const val PAYMENT_ENDPOINT = "/payments"
+        const val PAYMENT_ENDPOINT = "payments"
         
         /**
          * Customer API endpoints.
          */
-        const val CUSTOMER_ENDPOINT = "/customers"
+        const val CUSTOMER_ENDPOINT = "customers"
     }
 } 
