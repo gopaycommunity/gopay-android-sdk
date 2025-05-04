@@ -6,6 +6,12 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 import java.lang.IllegalStateException
+import okhttp3.CertificatePinner
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
+import java.security.cert.X509Certificate
 
 /**
  * Unit tests for the GopaySDK class.
@@ -101,5 +107,48 @@ class GopaySDKTest {
         // Then the most recent configuration should be used
         val sdk = GopaySDK.getInstance()
         assertEquals(Environment.PRODUCTION, sdk.config.environment)
+    }
+    
+    @Test
+    fun testConfigureSecuritySettings() {
+        // Given an initialized SDK
+        val config = GopayConfig(environment = Environment.SANDBOX)
+        GopaySDK.initialize(config)
+        val sdk = GopaySDK.getInstance()
+        
+        // Create test SSL components
+        val trustManager = object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+        }
+        
+        val sslContext = SSLContext.getInstance("TLS")
+        sslContext.init(null, arrayOf<TrustManager>(trustManager), null)
+        val socketFactory = sslContext.socketFactory
+        
+        val certificatePinner = CertificatePinner.Builder()
+            .add("api.sandbox.gopay.com", "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+            .build()
+        
+        // When configuring security settings
+        val result = sdk.configureSecuritySettings(
+            sslSocketFactory = socketFactory,
+            trustManager = trustManager,
+            certificatePinner = certificatePinner
+        )
+        
+        // Then it should return the same SDK instance for method chaining
+        assertSame(sdk, result)
+        
+        // Test with partial parameters
+        val partialResult = sdk.configureSecuritySettings(
+            certificatePinner = certificatePinner
+        )
+        assertSame(sdk, partialResult)
+        
+        // Test with no parameters
+        val defaultResult = sdk.configureSecuritySettings()
+        assertSame(sdk, defaultResult)
     }
 } 
