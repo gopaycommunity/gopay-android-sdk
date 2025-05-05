@@ -85,7 +85,6 @@ afterEvaluate {
             "**/*\$DefaultImpls.*", // Default interface implementations
             "**/*ComponentCallbacksImpl*.*",
             "**/*_Factory*.*",
-            "**/*Module*.*",
             "**/*Companion*.*" // Companion objects
         )
         
