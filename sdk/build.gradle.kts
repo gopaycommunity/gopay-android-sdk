@@ -50,6 +50,9 @@ dependencies {
     // Retrofit test dependencies
     testImplementation("com.squareup.retrofit2:retrofit-mock:2.9.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    // Mockito dependencies for unit testing
+    testImplementation("org.mockito:mockito-core:4.11.0")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:4.1.0")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }

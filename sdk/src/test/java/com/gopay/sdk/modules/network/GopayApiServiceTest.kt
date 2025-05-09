@@ -49,30 +49,49 @@ class GopayApiServiceTest {
     @Test
     fun testAuthenticate() = runTest {
         // Given a mock response for authenticate
-        val expectedResponse = "token_response"
-        mockApiService.setAuthenticateResponse(expectedResponse)
+        val mockResponse = AuthResponse(
+            access_token = "test_access_token",
+            token_type = "Bearer",
+            refresh_token = "test_refresh_token",
+            scope = "payment:read payment:write"
+        )
+        mockApiService.setAuthenticateResponse(mockResponse)
         
         // When calling authenticate
         val authToken = "Bearer test_token"
-        val result = mockApiService.authenticate(authToken)
+        val result = mockApiService.authenticate(
+            authorization = authToken,
+            grantType = "client_credentials",
+            scope = "payment:read payment:write"
+        )
         
         // Then the result should match the expected response
-        assertEquals(expectedResponse, result)
+        assertEquals(mockResponse, result)
     }
 
     // Mock implementation of GopayApiService for testing
     private class MockGopayApiService(
         private val delegate: BehaviorDelegate<GopayApiService>
     ) : GopayApiService {
-        private var authenticateResponse: Any = "default_response"
+        private var authenticateResponse: AuthResponse = AuthResponse(
+            access_token = "default_token",
+            token_type = "Bearer",
+            refresh_token = "default_refresh_token"
+        )
         
-        fun setAuthenticateResponse(response: Any) {
+        fun setAuthenticateResponse(response: AuthResponse) {
             authenticateResponse = response
         }
         
-        override suspend fun authenticate(authorization: String): Any {
+        override suspend fun authenticate(
+            authorization: String?,
+            grantType: String,
+            scope: String?,
+            refreshToken: String?,
+            clientId: String?
+        ): AuthResponse {
             return delegate.returningResponse(authenticateResponse)
-                .authenticate(authorization)
+                .authenticate(authorization, grantType, scope, refreshToken, clientId)
         }
     }
 } 
