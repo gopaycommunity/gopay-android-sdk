@@ -1,3 +1,10 @@
+# [1.2.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.1.0...1.2.0) (2025-05-20)
+
+
+### Features
+
+* add network module GPMOB-55 ([79c11b3](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/79c11b3bb6c76bc123b4f23876eb45c36d6a3aed))
+
 # [1.1.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.0.0...1.1.0) (2025-04-30)
 
 
