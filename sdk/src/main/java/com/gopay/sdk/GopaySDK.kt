@@ -61,15 +61,16 @@ class GopaySDK private constructor(
         certificatePinner: CertificatePinner? = null
     ): GopaySDK {
         // Create a NetworkConfig with the security settings
-        val securityConfig = NetworkConfig(
-            baseUrl = config.apiBaseUrl,
-            readTimeoutSeconds = config.requestTimeoutMs / 1000,
-            connectTimeoutSeconds = config.requestTimeoutMs / 2000,
-            enableLogging = config.debugLoggingEnabled,
-            sslSocketFactory = sslSocketFactory,
-            trustManager = trustManager,
-            certificatePinner = certificatePinner
-        )
+        // example:
+        // val securityConfig = NetworkConfig(
+        //     baseUrl = config.apiBaseUrl,
+        //     readTimeoutSeconds = config.requestTimeoutMs / 1000,
+        //     connectTimeoutSeconds = config.requestTimeoutMs / 2000,
+        //     enableLogging = config.debugLoggingEnabled,
+        //     sslSocketFactory = sslSocketFactory,
+        //     trustManager = trustManager,
+        //     certificatePinner = certificatePinner
+        // )
         
         // Use the withSecuritySettings method when implemented
         // networkManager.withSecuritySettings(securityConfig)

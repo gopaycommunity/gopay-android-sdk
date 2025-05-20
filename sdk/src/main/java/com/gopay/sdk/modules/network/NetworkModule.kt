@@ -1,7 +1,6 @@
 package com.gopay.sdk.modules.network
 
 import com.gopay.sdk.config.NetworkConfig
-import com.gopay.sdk.util.UrlUtils
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.OkHttpClient

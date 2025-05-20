@@ -2,7 +2,6 @@ package com.gopay.sdk.config
 
 import okhttp3.CertificatePinner
 import okhttp3.Interceptor
-import java.security.cert.X509Certificate
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509TrustManager
 
