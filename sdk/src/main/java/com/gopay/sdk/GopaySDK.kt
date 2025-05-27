@@ -1,10 +1,16 @@
 package com.gopay.sdk
 
+import android.content.Context
 import com.gopay.sdk.config.GopayConfig
 import com.gopay.sdk.config.NetworkConfig
+import com.gopay.sdk.internal.GopayContextProvider
 import com.gopay.sdk.model.PaymentMethod
+import com.gopay.sdk.model.AuthenticationResponse
 import com.gopay.sdk.modules.network.NetworkManager
 import com.gopay.sdk.service.PaymentService
+import com.gopay.sdk.storage.TokenStorage
+import com.gopay.sdk.util.JwtUtils
+import com.gopay.sdk.exception.UnauthenticatedException
 import okhttp3.CertificatePinner
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509TrustManager
@@ -22,9 +28,10 @@ class GopaySDK private constructor(
     private val paymentService = PaymentService()
     
     /**
-     * Network manager handling HTTP client and API service
+     * Network manager handling HTTP client and API service.
+     * Uses automatically obtained Application context.
      */
-    private val networkManager = NetworkManager(config)
+    private val networkManager = NetworkManager(config, GopayContextProvider.getApplicationContext())
     
     /**
      * Get available payment methods.
@@ -44,6 +51,37 @@ class GopaySDK private constructor(
      */
     fun processPayment(paymentMethodId: String, amount: Double): Boolean {
         return paymentService.processPayment(paymentMethodId, amount)
+    }
+    
+    /**
+     * Gets the token storage instance for managing authentication tokens
+     * 
+     * @return TokenStorage instance
+     */
+    fun getTokenStorage(): TokenStorage = networkManager.getTokenStorage()
+    
+    /**
+     * Sets authentication tokens from server-side authentication response.
+     * This method validates JWT expiration and saves the tokens to storage.
+     * 
+     * @param authResponse The authentication response from server-side authentication
+     * @throws UnauthenticatedException if the access token is expired or invalid
+     */
+    fun setAuthenticationResponse(authResponse: AuthenticationResponse) {
+        val tokenStorage = getTokenStorage()
+        
+        // Validate that the access token is not expired
+        if (JwtUtils.isTokenExpired(authResponse.accessToken)) {
+            throw UnauthenticatedException("Access token is expired")
+        }
+        
+        // Validate that the refresh token is not expired (if provided)
+        if (JwtUtils.isTokenExpired(authResponse.refreshToken)) {
+            throw UnauthenticatedException("Refresh token is expired")
+        }
+        
+        // Save the tokens to storage
+        tokenStorage.saveTokens(authResponse.accessToken, authResponse.refreshToken)
     }
     
     /**
@@ -85,12 +123,28 @@ class GopaySDK private constructor(
         
         /**
          * Initialize the SDK with the given configuration.
+         * Application context is obtained automatically.
          * Must be called before using any SDK features.
          *
          * @param config The SDK configuration
          */
         @JvmStatic
         fun initialize(config: GopayConfig) {
+            instance = GopaySDK(config)
+        }
+        
+        /**
+         * Initialize the SDK with manual context (for special cases).
+         * This is provided for backward compatibility and special use cases
+         * where automatic context detection might not work.
+         *
+         * @param config The SDK configuration
+         * @param context Android context (will use applicationContext)
+         */
+        @JvmStatic
+        fun initialize(config: GopayConfig, context: Context) {
+            // Set the context manually before creating the SDK instance
+            GopayContextProvider.setApplicationContext(context.applicationContext)
             instance = GopaySDK(config)
         }
         

@@ -1,10 +1,14 @@
 package com.gopay.sdk
 
+import android.content.Context
 import com.gopay.sdk.config.Environment
 import com.gopay.sdk.config.GopayConfig
+import com.gopay.sdk.internal.GopayContextProvider
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import java.lang.IllegalStateException
 import okhttp3.CertificatePinner
 import javax.net.ssl.SSLContext
@@ -20,19 +24,27 @@ class GopaySDKTest {
 
     @After
     fun tearDown() {
-        // Reset SDK instance between tests using reflection to access private field
+        // Reset SDK instance and context between tests using reflection to access private field
         val field = GopaySDK::class.java.getDeclaredField("instance")
         field.isAccessible = true
         field.set(null, null)
+        
+        // Clear the context provider for clean test state
+        GopayContextProvider.clearContext()
     }
 
     @Test
     fun testInitialization() {
-        // Given a configuration
+        // Given a configuration and mock context
         val config = GopayConfig(
-            environment = Environment.SANDBOX, 
+            environment = Environment.SANDBOX,
             debugLoggingEnabled = true
         )
+        
+        // Mock context for auto-initialization
+        val mockContext = mock<Context>()
+        whenever(mockContext.applicationContext).thenReturn(mockContext)
+        GopayContextProvider.setApplicationContext(mockContext)
 
         // When initializing the SDK
         GopaySDK.initialize(config)
@@ -61,6 +73,11 @@ class GopaySDKTest {
             debugLoggingEnabled = true
         )
 
+        // Mock context for auto-initialization
+        val mockContext = mock<Context>()
+        whenever(mockContext.applicationContext).thenReturn(mockContext)
+        GopayContextProvider.setApplicationContext(mockContext)
+
         // When initializing with sandbox config
         GopaySDK.initialize(sandboxConfig)
         val sdk = GopaySDK.getInstance()
@@ -80,6 +97,11 @@ class GopaySDKTest {
             requestTimeoutMs = customTimeoutMs
         )
 
+        // Mock context for auto-initialization
+        val mockContext = mock<Context>()
+        whenever(mockContext.applicationContext).thenReturn(mockContext)
+        GopayContextProvider.setApplicationContext(mockContext)
+
         // When initializing the SDK
         GopaySDK.initialize(config)
         val sdk = GopaySDK.getInstance()
@@ -94,6 +116,11 @@ class GopaySDKTest {
         val sandboxConfig = GopayConfig(
             environment = Environment.SANDBOX
         )
+
+        // Mock context for auto-initialization
+        val mockContext = mock<Context>()
+        whenever(mockContext.applicationContext).thenReturn(mockContext)
+        GopayContextProvider.setApplicationContext(mockContext)
 
         // When initializing with sandbox config
         GopaySDK.initialize(sandboxConfig)
@@ -113,6 +140,12 @@ class GopaySDKTest {
     fun testConfigureSecuritySettings() {
         // Given an initialized SDK
         val config = GopayConfig(environment = Environment.SANDBOX)
+        
+        // Mock context for auto-initialization
+        val mockContext = mock<Context>()
+        whenever(mockContext.applicationContext).thenReturn(mockContext)
+        GopayContextProvider.setApplicationContext(mockContext)
+        
         GopaySDK.initialize(config)
         val sdk = GopaySDK.getInstance()
         

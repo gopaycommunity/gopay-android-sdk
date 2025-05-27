@@ -1,12 +1,17 @@
 package com.gopay.sdk.service
 
+import android.content.Context
 import com.gopay.sdk.GopaySDK
 import com.gopay.sdk.config.Environment
 import com.gopay.sdk.config.GopayConfig
+import com.gopay.sdk.internal.GopayContextProvider
+import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 
 class PaymentServiceTest {
 
@@ -16,6 +21,22 @@ class PaymentServiceTest {
     fun setup() {
         // Initialize fresh service for each test
         paymentService = PaymentService()
+        
+        // Setup mock context for all tests
+        val mockContext = mock<Context>()
+        whenever(mockContext.applicationContext).thenReturn(mockContext)
+        GopayContextProvider.setApplicationContext(mockContext)
+    }
+    
+    @After
+    fun tearDown() {
+        // Reset SDK instance between tests
+        val field = GopaySDK::class.java.getDeclaredField("instance")
+        field.isAccessible = true
+        field.set(null, null)
+        
+        // Clear the context provider for clean test state
+        GopayContextProvider.clearContext()
     }
     
     @Test

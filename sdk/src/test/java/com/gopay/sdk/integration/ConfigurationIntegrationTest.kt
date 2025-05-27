@@ -1,11 +1,15 @@
 package com.gopay.sdk.integration
 
+import android.content.Context
 import com.gopay.sdk.GopaySDK
 import com.gopay.sdk.config.Environment
 import com.gopay.sdk.config.GopayConfig
+import com.gopay.sdk.internal.GopayContextProvider
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 
 /**
  * Integration tests for the GopaySDK configuration flow.
@@ -18,6 +22,9 @@ class ConfigurationIntegrationTest {
         val field = GopaySDK::class.java.getDeclaredField("instance")
         field.isAccessible = true
         field.set(null, null)
+        
+        // Clear the context provider for clean test state
+        GopayContextProvider.clearContext()
     }
 
     @Test
@@ -31,6 +38,11 @@ class ConfigurationIntegrationTest {
 
         // 1.5 SDK should not be initialized yet
         assertFalse(GopaySDK.isInitialized())
+
+        // Mock context for auto-initialization
+        val mockContext = mock<Context>()
+        whenever(mockContext.applicationContext).thenReturn(mockContext)
+        GopayContextProvider.setApplicationContext(mockContext)
 
         // 2. Initialize the SDK
         GopaySDK.initialize(config)
@@ -58,6 +70,11 @@ class ConfigurationIntegrationTest {
 
     @Test
     fun testEnvironmentSwitching() {
+        // Mock context for auto-initialization
+        val mockContext = mock<Context>()
+        whenever(mockContext.applicationContext).thenReturn(mockContext)
+        GopayContextProvider.setApplicationContext(mockContext)
+        
         // 1. Initially use sandbox environment
         GopaySDK.initialize(
             GopayConfig(
