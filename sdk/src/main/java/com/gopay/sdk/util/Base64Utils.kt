@@ -15,9 +15,32 @@ object Base64Utils {
         return try {
             // Try Android's Base64 first (available in Android runtime)
             android.util.Base64.decode(input, android.util.Base64.URL_SAFE)
-        } catch (e: Exception) {
-            // Fallback to Java's Base64 (available in unit tests)
-            java.util.Base64.getUrlDecoder().decode(input)
+        } catch (e: Throwable) {
+            // Fallback to Java's Base64 (available in unit tests and API 26+)
+            // Using reflection to avoid compile-time dependency on API 26
+            try {
+                java.util.Base64.getUrlDecoder().decode(input)
+                val base64Class = Class.forName("java.util.Base64")
+                val getUrlDecoderMethod = base64Class.getMethod("getUrlDecoder")
+                val decoder = getUrlDecoderMethod.invoke(null)
+                val decodeMethod = decoder.javaClass.getMethod("decode", String::class.java)
+                decodeMethod.invoke(decoder, input) as ByteArray
+            } catch (reflectionException: Throwable) {
+                // If both fail, throw the original exception
+                throw RuntimeException("Base64 decoding failed in both Android and Java environments", e)
+            }
+        }
+    }
+
+    fun encodeUrlSafe(input: String): String {
+        return try {    
+            android.util.Base64.encodeToString(input.toByteArray(), android.util.Base64.NO_WRAP)
+        } catch (e: Throwable) {
+            try {
+                java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(input.toByteArray())
+            } catch (e: Throwable) {
+                throw RuntimeException("Base64 encoding failed in both Android and Java environments", e)
+            }
         }
     }
 } 

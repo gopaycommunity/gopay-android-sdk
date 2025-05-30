@@ -10,7 +10,7 @@ interface TokenStorage {
      * Saves authentication tokens
      * 
      * @param accessToken JWT access token from authentication
-     * @param refreshToken Token used to obtain new access tokens
+     * @param refreshToken Opaque string token used to obtain new access tokens
      */
     fun saveTokens(accessToken: String, refreshToken: String)
 
@@ -24,7 +24,7 @@ interface TokenStorage {
     /**
      * Retrieves the current refresh token
      * 
-     * @return The refresh token or null if not available
+     * @return The opaque refresh token string or null if not available
      */
     fun getRefreshToken(): String?
 

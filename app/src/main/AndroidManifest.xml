@@ -2,7 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
+        android:name=".ExampleApplication"
         android:allowBackup="true"
         android:usesCleartextTraffic="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -13,6 +16,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ExampleTheme"
         tools:targetApi="31">
+        
+        <!-- Main Activity with Navigation -->
         <activity
             android:name="com.gopay.example.MainActivity"
             android:exported="true"
@@ -20,10 +25,26 @@
             android:theme="@style/Theme.ExampleTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        
+        <!-- SDK Test Activity -->
+        <activity
+            android:name="com.gopay.example.SDKTestActivity"
+            android:exported="false"
+            android:label="SDK Test Suite"
+            android:theme="@style/Theme.ExampleTheme"
+            android:parentActivityName="com.gopay.example.MainActivity" />
+        
+        <!-- Checkout Demo Activity -->
+        <activity
+            android:name="com.gopay.example.CheckoutDemoActivity"
+            android:exported="false"
+            android:label="Checkout Demo"
+            android:theme="@style/Theme.ExampleTheme"
+            android:parentActivityName="com.gopay.example.MainActivity" />
+            
     </application>
 
 </manifest>

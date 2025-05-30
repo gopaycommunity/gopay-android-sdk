@@ -6,7 +6,7 @@ package com.gopay.sdk.model
  * 
  * @param accessToken JWT access token for API authentication
  * @param tokenType Type of the token (typically "bearer")
- * @param refreshToken Token used to obtain new access tokens
+ * @param refreshToken Opaque string token used to obtain new access tokens
  * @param scope Space-separated list of granted scopes (optional)
  */
 data class AuthenticationResponse(

@@ -34,7 +34,7 @@ class EnvironmentTest {
     @Test
     fun testDevelopmentEnvironment() {
         // Verify development environment properties
-        assertEquals("https://api.dev.gopay.com/v1/", Environment.DEVELOPMENT.apiBaseUrl)
+        assertEquals("https://gw.alpha8.dev.gopay.com/gp-gw/api/4.0/", Environment.DEVELOPMENT.apiBaseUrl)
     }
 
     @Test

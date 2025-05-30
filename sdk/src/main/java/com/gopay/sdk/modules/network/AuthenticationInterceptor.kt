@@ -80,14 +80,8 @@ internal class AuthenticationInterceptor(
             )
         }
 
-        // Check if refresh token is expired
-        if (JwtUtils.isTokenExpired(refreshToken)) {
-            tokenStorage.clear()
-            throw GopaySDKException(
-                errorCode = GopayErrorCodes.AUTH_BOTH_TOKENS_EXPIRED,
-                message = "Both access and refresh tokens are expired"
-            )
-        }
+        // Note: Refresh tokens are opaque strings (not JWTs) according to GoPay API documentation
+        // Their validity is determined by the authorization server when attempting to use them
 
         // Try to refresh the token
         refreshToken(refreshToken)
@@ -103,14 +97,8 @@ internal class AuthenticationInterceptor(
             )
         }
 
-        // Check if refresh token is expired
-        if (JwtUtils.isTokenExpired(refreshToken)) {
-            tokenStorage.clear()
-            throw GopaySDKException(
-                errorCode = GopayErrorCodes.AUTH_REFRESH_TOKEN_EXPIRED,
-                message = "Refresh token is expired"
-            )
-        }
+        // Note: Refresh tokens are opaque strings (not JWTs) according to GoPay API documentation
+        // Their validity is determined by the authorization server when attempting to use them
 
         // Try to refresh the token
         refreshToken(refreshToken)

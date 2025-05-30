@@ -46,10 +46,10 @@ class GopaySDKAuthenticationTest {
 
     @Test
     fun `JWT validation should work correctly for valid tokens`() {
-        // Given a valid authentication response with non-expired tokens
+        // Given a valid authentication response with non-expired access token
         val futureExp = (System.currentTimeMillis() / 1000) + 3600 // 1 hour from now
         val validAccessToken = createTestJwtToken(exp = futureExp, sub = "test_client")
-        val validRefreshToken = createTestJwtToken(exp = futureExp + 7200) // 2 hours from access token
+        val validRefreshToken = createTestJwtToken(exp = futureExp + 7200) // 2 hours from access token (used as opaque string)
         
         val authResponse = AuthenticationResponse(
             accessToken = validAccessToken,
@@ -61,20 +61,18 @@ class GopaySDKAuthenticationTest {
         // Then no exception should be thrown for valid tokens
         assertNotNull("Authentication response should be valid", authResponse)
         assertFalse("Access token should not be expired", JwtUtils.isTokenExpired(validAccessToken))
-        assertFalse("Refresh token should not be expired", JwtUtils.isTokenExpired(validRefreshToken))
+        // Note: Refresh tokens are not validated as JWTs in production
     }
 
     @Test
     fun `JWT validation should detect expired access token`() {
         // Given an authentication response with expired access token
         val pastExp = (System.currentTimeMillis() / 1000) - 3600 // 1 hour ago
-        val futureExp = (System.currentTimeMillis() / 1000) + 3600 // 1 hour from now
         val expiredAccessToken = createTestJwtToken(exp = pastExp)
-        val validRefreshToken = createTestJwtToken(exp = futureExp)
         
-        // Then the JWT validation should detect the expired token
+        // Then the JWT validation should detect the expired access token
         assertTrue("Access token should be expired", JwtUtils.isTokenExpired(expiredAccessToken))
-        assertFalse("Refresh token should not be expired", JwtUtils.isTokenExpired(validRefreshToken))
+        // Note: Refresh tokens are not validated as JWTs in production
     }
 
     @Test
@@ -145,42 +143,6 @@ class GopaySDKAuthenticationTest {
     }
 
     @Test
-    fun `setAuthenticationResponse should throw exception for expired refresh token`() {
-        // Given an authentication response with expired refresh token
-        val futureExp = (System.currentTimeMillis() / 1000) + 3600 // 1 hour from now
-        val pastExp = (System.currentTimeMillis() / 1000) - 3600 // 1 hour ago
-        val validAccessToken = createTestJwtToken(exp = futureExp)
-        val expiredRefreshToken = createTestJwtToken(exp = pastExp)
-        
-        val authResponse = AuthenticationResponse(
-            accessToken = validAccessToken,
-            tokenType = "bearer",
-            refreshToken = expiredRefreshToken
-        )
-
-        // Initialize SDK with auto-context
-        val mockContext = mock<Context>()
-        whenever(mockContext.applicationContext).thenReturn(mockContext)
-        GopayContextProvider.setApplicationContext(mockContext)
-        
-        GopaySDK.initialize(config)
-        val sdk = GopaySDK.getInstance()
-        
-        // Mock a token storage and inject it using reflection
-        val mockTokenStorage = mock<TokenStorage>()
-        injectMockTokenStorage(sdk, mockTokenStorage)
-
-        // When setting the authentication response with expired refresh token
-        // Then a GopaySDKException should be thrown
-        val exception = assertThrows(GopaySDKException::class.java) {
-            sdk.setAuthenticationResponse(authResponse)
-        }
-        
-        assertTrue("Exception message should mention expired refresh token", 
-            exception.message!!.contains("Refresh token is expired"))
-    }
-
-    @Test
     fun `setAuthenticationResponse should save valid tokens successfully`() {
         // Given a valid authentication response with non-expired tokens
         val futureExp = (System.currentTimeMillis() / 1000) + 3600 // 1 hour from now
@@ -211,6 +173,41 @@ class GopaySDKAuthenticationTest {
 
         // Then the tokens should be saved to storage
         verify(mockTokenStorage).saveTokens(validAccessToken, validRefreshToken)
+    }
+
+    @Test
+    fun `setAuthenticationResponse should save tokens successfully even with expired refresh token`() {
+        // Given an authentication response with valid access token and any refresh token
+        // (refresh tokens are opaque strings, not JWTs, so expiration is not validated client-side)
+        val futureExp = (System.currentTimeMillis() / 1000) + 3600 // 1 hour from now
+        val pastExp = (System.currentTimeMillis() / 1000) - 3600 // 1 hour ago
+        val validAccessToken = createTestJwtToken(exp = futureExp)
+        val anyRefreshToken = createTestJwtToken(exp = pastExp) // This simulates an opaque string
+        
+        val authResponse = AuthenticationResponse(
+            accessToken = validAccessToken,
+            tokenType = "bearer",
+            refreshToken = anyRefreshToken
+        )
+
+        // Initialize SDK with auto-context
+        val mockContext = mock<Context>()
+        whenever(mockContext.applicationContext).thenReturn(mockContext)
+        GopayContextProvider.setApplicationContext(mockContext)
+        
+        GopaySDK.initialize(config)
+        val sdk = GopaySDK.getInstance()
+        
+        // Mock a token storage and inject it using reflection
+        val mockTokenStorage = mock<TokenStorage>()
+        injectMockTokenStorage(sdk, mockTokenStorage)
+
+        // When setting the authentication response
+        // Then no exception should be thrown and tokens should be saved
+        sdk.setAuthenticationResponse(authResponse)
+        
+        // Verify the tokens were saved to storage
+        verify(mockTokenStorage).saveTokens(validAccessToken, anyRefreshToken)
     }
 
     /**

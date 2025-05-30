@@ -2,17 +2,20 @@ package com.gopay.sdk
 
 import android.content.Context
 import com.gopay.sdk.config.GopayConfig
-import com.gopay.sdk.config.NetworkConfig
+import com.gopay.sdk.exception.ErrorReporter
+import com.gopay.sdk.exception.GopayErrorCodes
+import com.gopay.sdk.exception.GopaySDKException
+import com.gopay.sdk.exception.HttpErrorContext
 import com.gopay.sdk.internal.GopayContextProvider
-import com.gopay.sdk.model.PaymentMethod
 import com.gopay.sdk.model.AuthenticationResponse
+import com.gopay.sdk.model.PaymentMethod
 import com.gopay.sdk.modules.network.NetworkManager
 import com.gopay.sdk.service.PaymentService
 import com.gopay.sdk.storage.TokenStorage
+import com.gopay.sdk.util.Base64Utils
 import com.gopay.sdk.util.JwtUtils
-import com.gopay.sdk.exception.GopaySDKException
-import com.gopay.sdk.exception.GopayErrorCodes
-import com.gopay.sdk.exception.ErrorReporter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.CertificatePinner
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509TrustManager
@@ -80,13 +83,8 @@ class GopaySDK private constructor(
             )
         }
         
-        // Validate that the refresh token is not expired (if provided)
-        if (JwtUtils.isTokenExpired(authResponse.refreshToken)) {
-            throw GopaySDKException(
-                errorCode = GopayErrorCodes.AUTH_REFRESH_TOKEN_EXPIRED,
-                message = "Refresh token is expired"
-            )
-        }
+        // Note: Refresh tokens are opaque strings (not JWTs) according to GoPay API documentation
+        // Their validity is determined by the authorization server, not by client-side validation
         
         // Save the tokens to storage
         tokenStorage.saveTokens(authResponse.accessToken, authResponse.refreshToken)
@@ -122,6 +120,124 @@ class GopaySDK private constructor(
         // networkManager.withSecuritySettings(securityConfig)
         
         return this
+    }
+    
+    /**
+     * Authenticates with the GoPay API using client credentials flow.
+     * This method should be called from a coroutine context.
+     * 
+     * @param clientId The client ID for authentication
+     * @param clientSecret The client secret for authentication
+     * @param scope Space-separated list of required scopes (optional)
+     * @return AuthenticationResponse with tokens
+     * @throws GopaySDKException if authentication fails
+     */
+    suspend fun authenticate(
+        clientId: String,
+        clientSecret: String,
+        scope: String? = null
+    ): AuthenticationResponse {
+        try {
+            // Create Basic authentication header
+            val credentials = "$clientId:$clientSecret"
+            val encodedCredentials = Base64Utils.encodeUrlSafe(credentials)
+            val authHeader = "Basic $encodedCredentials"
+            
+            // Call the API service
+            val response = networkManager.apiService.authenticate(
+                authorization = authHeader,
+                grantType = "client_credentials",
+                scope = scope
+            )
+            
+            // Convert to public model
+            val authResponse = AuthenticationResponse.fromAuthResponse(response)
+            
+            // Automatically save the tokens to storage
+            setAuthenticationResponse(authResponse)
+
+            return authResponse
+        } catch (e: Exception) {
+            when (e) {
+                is GopaySDKException -> throw e
+                else -> throw GopaySDKException(
+                    errorCode = GopayErrorCodes.AUTH_INVALID_CREDENTIALS,
+                    message = "Authentication failed: ${e.message}",
+                    cause = e,
+                )
+            }
+        }
+    }
+    
+    /**
+     * Refreshes the current access token using the stored refresh token.
+     * This method should be called from a coroutine context.
+     * 
+     * @return AuthenticationResponse with new tokens
+     * @throws GopaySDKException if refresh fails
+     */
+    suspend fun refreshToken(): AuthenticationResponse = withContext(Dispatchers.IO) {
+        try {
+            val tokenStorage = getTokenStorage()
+            val refreshToken = tokenStorage.getRefreshToken()
+                ?: throw GopaySDKException(
+                    errorCode = GopayErrorCodes.AUTH_NO_TOKENS_AVAILABLE,
+                    message = "No refresh token available"
+                )
+            
+            // Extract client ID from current access token
+            val accessToken = tokenStorage.getAccessToken()
+            val clientId = if (accessToken != null) {
+                JwtUtils.getClientId(accessToken)
+            } else {
+                throw GopaySDKException(
+                    errorCode = GopayErrorCodes.AUTH_INVALID_CLIENT_ID,
+                    message = "Cannot extract client ID from access token"
+                )
+            }
+            
+            // Call the API service for token refresh
+            val response = networkManager.apiService.authenticate(
+                authorization = null,
+                grantType = "refresh_token",
+                refreshToken = refreshToken,
+                clientId = clientId
+            )
+            
+            // Convert to public model
+            val authResponse = AuthenticationResponse.fromAuthResponse(response)
+            
+            // Automatically save the new tokens to storage
+            setAuthenticationResponse(authResponse)
+            
+            authResponse
+        } catch (e: Exception) {
+            when (e) {
+                is GopaySDKException -> throw e
+                else -> throw GopaySDKException(
+                    errorCode = GopayErrorCodes.AUTH_TOKEN_REFRESH_FAILED,
+                    message = "Token refresh failed: ${e.message}",
+                    cause = e
+                )
+            }
+        }
+    }
+    
+    /**
+     * Checks if the user is currently authenticated (has valid access token).
+     * 
+     * @return True if authenticated with valid token, false otherwise
+     */
+    fun isAuthenticated(): Boolean {
+        val accessToken = getTokenStorage().getAccessToken()
+        return accessToken != null && !JwtUtils.isTokenExpired(accessToken)
+    }
+    
+    /**
+     * Clears all stored authentication tokens.
+     */
+    fun logout() {
+        getTokenStorage().clear()
     }
     
     companion object {

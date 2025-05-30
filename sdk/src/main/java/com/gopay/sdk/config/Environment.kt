@@ -17,7 +17,7 @@ enum class Environment(val apiBaseUrl: String) {
     /**
      * Development environment - use for local development.
      */
-    DEVELOPMENT("https://api.dev.gopay.com/v1/"),
+    DEVELOPMENT("https://gw.alpha8.dev.gopay.com/gp-gw/api/4.0/"),
     
     /**
      * Staging environment - use for pre-production testing.
