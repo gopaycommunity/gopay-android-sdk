@@ -257,6 +257,44 @@ fun SDKTestScreen() {
                     ) {
                         Text("Refresh Token")
                     }
+                    
+                    HorizontalDivider()
+                    
+                    // Public Key Section
+                    Text(
+                        text = "Encryption Key",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isLoading = true
+                                try {
+                                    val jwkResponse = withContext(Dispatchers.IO) {
+                                        GopaySDK.getInstance().getPublicKey()
+                                    }
+                                    resultText = "✅ Public key retrieved successfully!\n" +
+                                            "Key Type: ${jwkResponse.kty}\n" +
+                                            "Key ID: ${jwkResponse.kid}\n" +
+                                            "Usage: ${jwkResponse.use}\n" +
+                                            "Algorithm: ${jwkResponse.alg}\n" +
+                                            "Modulus (n): ${jwkResponse.n.take(50)}...\n" +
+                                            "Exponent (e): ${jwkResponse.e}"
+                                } catch (e: GopaySDKException) {
+                                    resultText = "Failed to retrieve public key:\n${formatError(e)}"
+                                } catch (e: Exception) {
+                                    resultText = "Unexpected error getting public key: ${e.message}"
+                                }
+                                isLoading = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading
+                    ) {
+                        Text("Get Public Key")
+                    }
                 }
             }
         }
@@ -297,7 +335,7 @@ private suspend fun authenticateUser(
         val authResponse = GopaySDK.getInstance().authenticate(
             clientId = username,
             clientSecret = password,
-            scope = "payment:create payment:read"
+            scope = "payment:create payment:read card:read"
         )
         
         withContext(Dispatchers.Main) {

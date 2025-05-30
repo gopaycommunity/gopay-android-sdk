@@ -2,6 +2,7 @@ package com.gopay.sdk.modules.network
 
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
+import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Headers
 import retrofit2.http.POST
@@ -43,6 +44,20 @@ interface GopayApiService {
         @Field("client_id") clientId: String? = null
     ): AuthResponse
     
+    /**
+     * Gets the public encryption key used for encrypting card data.
+     * 
+     * @param authorization Bearer token for authentication
+     * @return JWK (JSON Web Key) containing the public encryption key
+     */
+    @GET("encryption/public-key")
+    @Headers(
+        "Accept: application/json"
+    )
+    suspend fun getPublicKey(
+        @Header("Authorization") authorization: String
+    ): JwkResponse
+    
     // Additional API methods will be added here later
 }
 
@@ -54,4 +69,17 @@ data class AuthResponse(
     val token_type: String,
     val refresh_token: String,
     val scope: String? = null
+)
+
+/**
+ * JWK (JSON Web Key) response for public encryption key
+ * Used for encrypting card data according to RFC 7517
+ */
+data class JwkResponse(
+    val kty: String,           // Key type, always "RSA"
+    val kid: String,           // Key ID containing information about key age
+    val use: String,           // Key usage, always "enc"
+    val alg: String,           // Algorithm, e.g. "RSA-OAEP-256"
+    val n: String,             // RSA public key modulus part
+    val e: String              // RSA public key exponent part
 )

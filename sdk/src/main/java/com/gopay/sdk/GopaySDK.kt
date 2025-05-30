@@ -9,6 +9,7 @@ import com.gopay.sdk.internal.GopayContextProvider
 import com.gopay.sdk.model.AuthenticationResponse
 import com.gopay.sdk.model.PaymentMethod
 import com.gopay.sdk.modules.network.NetworkManager
+import com.gopay.sdk.modules.network.JwkResponse
 import com.gopay.sdk.service.PaymentService
 import com.gopay.sdk.storage.TokenStorage
 import com.gopay.sdk.util.Base64Utils
@@ -216,6 +217,48 @@ class GopaySDK private constructor(
                 else -> throw GopaySDKException(
                     errorCode = GopayErrorCodes.AUTH_TOKEN_REFRESH_FAILED,
                     message = "Token refresh failed: ${e.message}",
+                    cause = e
+                )
+            }
+        }
+    }
+    
+    /**
+     * Gets the public encryption key used for encrypting card data.
+     * This method should be called from a coroutine context.
+     * 
+     * @return JwkResponse containing the public encryption key
+     * @throws GopaySDKException if the request fails or user is not authenticated
+     */
+    suspend fun getPublicKey(): JwkResponse = withContext(Dispatchers.IO) {
+        try {
+            val tokenStorage = getTokenStorage()
+            val accessToken = tokenStorage.getAccessToken()
+                ?: throw GopaySDKException(
+                    errorCode = GopayErrorCodes.AUTH_NO_TOKENS_AVAILABLE,
+                    message = "No access token available. Please authenticate first."
+                )
+            
+            // Check if token is expired
+            if (JwtUtils.isTokenExpired(accessToken)) {
+                throw GopaySDKException(
+                    errorCode = GopayErrorCodes.AUTH_ACCESS_TOKEN_EXPIRED,
+                    message = "Access token is expired. Please refresh or re-authenticate."
+                )
+            }
+            
+            // Create Bearer token header
+            val authHeader = "Bearer $accessToken"
+            
+            // Call the API service
+            networkManager.apiService.getPublicKey(authHeader)
+            
+        } catch (e: Exception) {
+            when (e) {
+                is GopaySDKException -> throw e
+                else -> throw GopaySDKException(
+                    errorCode = GopayErrorCodes.NETWORK_SERVER_ERROR,
+                    message = "Failed to retrieve public key: ${e.message}",
                     cause = e
                 )
             }
