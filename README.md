@@ -142,17 +142,68 @@ val success = sdk.processPayment("card", 100.0)
 
 ## Error Handling
 
+The SDK uses a unified exception system with structured error codes for better error handling and analytics integration.
+
+### Basic Error Handling
+
 ```kotlin
 try {
     sdk.setAuthenticationResponse(authResponse)
-} catch (e: UnauthenticatedException) {
-    // Handle expired or invalid tokens
-    println("Authentication failed: ${e.message}")
-} catch (e: IllegalStateException) {
-    // Handle SDK initialization issues (rare with auto-context)
-    println("SDK error: ${e.message}")
+} catch (e: GopaySDKException) {
+    when {
+        e.isAuthenticationError() -> handleAuthError(e)
+        e.isNetworkError() -> handleNetworkError(e)
+        e.isConfigurationError() -> handleConfigError(e)
+        else -> handleGenericError(e)
+    }
 }
 ```
+
+### Error Code-Based Handling
+
+```kotlin
+try {
+    sdk.processPayment("card", 100.0)
+} catch (e: GopaySDKException) {
+    when (e.errorCode) {
+        GopayErrorCodes.AUTH_ACCESS_TOKEN_EXPIRED -> refreshToken()
+        GopayErrorCodes.NETWORK_TIMEOUT -> retryWithBackoff()
+        GopayErrorCodes.PAYMENT_INSUFFICIENT_FUNDS -> showAddFundsDialog()
+        else -> showGenericError(e.message)
+    }
+}
+```
+
+### Error Reporting Integration
+
+```kotlin
+val config = GopayConfig(
+    environment = Environment.PRODUCTION,
+    errorCallback = { error ->
+        // Integrate with your analytics system
+        analytics.trackError(error.errorCode, mapOf(
+            "message" to error.message,
+            "httpStatus" to error.getHttpStatusCode()?.toString()
+        ))
+    }
+)
+```
+
+### HTTP Error Context
+
+```kotlin
+catch (e: GopaySDKException) {
+    e.httpContext?.let { httpContext ->
+        when (httpContext.statusCode) {
+            401 -> handleUnauthorized()
+            429 -> handleRateLimit()
+            500 -> handleServerError()
+        }
+    }
+}
+```
+
+For a complete list of error codes and handling recommendations, see [ERROR_CODES.md](ERROR_CODES.md).
 
 ## Testing
 

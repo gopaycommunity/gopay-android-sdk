@@ -1,5 +1,6 @@
 package com.gopay.sdk.config
 
+import com.gopay.sdk.exception.ErrorCallback
 import com.gopay.sdk.util.UrlUtils
 
 /**
@@ -20,7 +21,13 @@ data class GopayConfig(
     /**
      * Whether to enable debug logging.
      */
-    val debugLoggingEnabled: Boolean = false
+    val debugLoggingEnabled: Boolean = false,
+    
+    /**
+     * Optional callback for error reporting.
+     * When set, all SDK errors will be reported to this callback for analytics integration.
+     */
+    val errorCallback: ErrorCallback? = null
 ) {
     /**
      * Get the API base URL for the current environment.

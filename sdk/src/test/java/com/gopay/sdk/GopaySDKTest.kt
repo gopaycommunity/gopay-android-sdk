@@ -9,7 +9,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
-import java.lang.IllegalStateException
+import com.gopay.sdk.exception.GopaySDKException
 import okhttp3.CertificatePinner
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocketFactory
@@ -56,8 +56,8 @@ class GopaySDKTest {
     @Test
     fun testGetInstanceBeforeInitialization() {
         // When attempting to get the instance before initialization
-        // Then an IllegalStateException should be thrown
-        val exception = assertThrows(IllegalStateException::class.java) {
+        // Then a GopaySDKException should be thrown
+        val exception = assertThrows(GopaySDKException::class.java) {
             GopaySDK.getInstance()
         }
         

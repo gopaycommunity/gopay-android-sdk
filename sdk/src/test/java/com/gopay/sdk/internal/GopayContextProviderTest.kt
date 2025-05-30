@@ -1,6 +1,7 @@
 package com.gopay.sdk.internal
 
 import android.content.Context
+import com.gopay.sdk.exception.GopaySDKException
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -39,8 +40,8 @@ class GopayContextProviderTest {
         // (context is cleared in tearDown)
 
         // When getting application context
-        // Then an IllegalStateException should be thrown
-        val exception = assertThrows(IllegalStateException::class.java) {
+        // Then a GopaySDKException should be thrown
+        val exception = assertThrows(GopaySDKException::class.java) {
             GopayContextProvider.getApplicationContext()
         }
 

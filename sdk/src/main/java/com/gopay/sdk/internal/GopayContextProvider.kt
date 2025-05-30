@@ -2,6 +2,8 @@ package com.gopay.sdk.internal
 
 import android.app.Application
 import android.content.Context
+import com.gopay.sdk.exception.GopaySDKException
+import com.gopay.sdk.exception.GopayErrorCodes
 
 /**
  * Internal utility for managing Application context in GopaySDK.
@@ -48,8 +50,9 @@ internal object GopayContextProvider {
         }
         
         // If we get here, we couldn't obtain context
-        throw IllegalStateException(
-            "Cannot obtain Application context. This usually means:\n" +
+        throw GopaySDKException(
+            errorCode = GopayErrorCodes.CONFIG_MISSING_CONTEXT,
+            message = "Cannot obtain Application context. This usually means:\n" +
             "1. GopaySDK is being used in a library module without proper initialization\n" +
             "2. The app's manifest is missing the GopayInitProvider\n" +
             "3. You're calling SDK methods before Application.onCreate()\n\n" +
@@ -66,7 +69,7 @@ internal object GopayContextProvider {
         return try {
             getApplicationContext()
             true
-        } catch (e: IllegalStateException) {
+        } catch (e: GopaySDKException) {
             false
         }
     }

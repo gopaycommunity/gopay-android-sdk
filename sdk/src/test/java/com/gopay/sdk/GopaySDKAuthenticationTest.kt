@@ -3,7 +3,7 @@ package com.gopay.sdk
 import android.content.Context
 import com.gopay.sdk.config.Environment
 import com.gopay.sdk.config.GopayConfig
-import com.gopay.sdk.exception.UnauthenticatedException
+import com.gopay.sdk.exception.GopaySDKException
 import com.gopay.sdk.internal.GopayContextProvider
 import com.gopay.sdk.model.AuthenticationResponse
 import com.gopay.sdk.storage.TokenStorage
@@ -135,8 +135,8 @@ class GopaySDKAuthenticationTest {
         injectMockTokenStorage(sdk, mockTokenStorage)
 
         // When setting the authentication response with expired access token
-        // Then an UnauthenticatedException should be thrown
-        val exception = assertThrows(UnauthenticatedException::class.java) {
+        // Then a GopaySDKException should be thrown
+        val exception = assertThrows(GopaySDKException::class.java) {
             sdk.setAuthenticationResponse(authResponse)
         }
         
@@ -171,8 +171,8 @@ class GopaySDKAuthenticationTest {
         injectMockTokenStorage(sdk, mockTokenStorage)
 
         // When setting the authentication response with expired refresh token
-        // Then an UnauthenticatedException should be thrown
-        val exception = assertThrows(UnauthenticatedException::class.java) {
+        // Then a GopaySDKException should be thrown
+        val exception = assertThrows(GopaySDKException::class.java) {
             sdk.setAuthenticationResponse(authResponse)
         }
         

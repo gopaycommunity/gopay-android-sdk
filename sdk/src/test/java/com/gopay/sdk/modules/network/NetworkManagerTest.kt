@@ -4,6 +4,7 @@ import android.content.Context
 import com.gopay.sdk.config.Environment
 import com.gopay.sdk.config.GopayConfig
 import com.gopay.sdk.config.NetworkConfig
+import com.gopay.sdk.exception.GopaySDKException
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -51,13 +52,13 @@ class NetworkManagerTest {
             apiService is GopayApiService)
     }
     
-    @Test(expected = UnsupportedOperationException::class)
+    @Test(expected = GopaySDKException::class)
     fun testWithSecuritySettings_throwsException() {
         // Given a NetworkManager
         val networkManager = NetworkManager(defaultGopayConfig, mockContext)
         
         // When calling withSecuritySettings
-        // Then it should throw UnsupportedOperationException
+        // Then it should throw GopaySDKException
         networkManager.withSecuritySettings(NetworkConfig(baseUrl = "https://example.com"))
     }
     

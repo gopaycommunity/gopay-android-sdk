@@ -10,7 +10,9 @@ import com.gopay.sdk.modules.network.NetworkManager
 import com.gopay.sdk.service.PaymentService
 import com.gopay.sdk.storage.TokenStorage
 import com.gopay.sdk.util.JwtUtils
-import com.gopay.sdk.exception.UnauthenticatedException
+import com.gopay.sdk.exception.GopaySDKException
+import com.gopay.sdk.exception.GopayErrorCodes
+import com.gopay.sdk.exception.ErrorReporter
 import okhttp3.CertificatePinner
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509TrustManager
@@ -65,19 +67,25 @@ class GopaySDK private constructor(
      * This method validates JWT expiration and saves the tokens to storage.
      * 
      * @param authResponse The authentication response from server-side authentication
-     * @throws UnauthenticatedException if the access token is expired or invalid
+     * @throws GopaySDKException if the access token is expired or invalid
      */
     fun setAuthenticationResponse(authResponse: AuthenticationResponse) {
         val tokenStorage = getTokenStorage()
         
         // Validate that the access token is not expired
         if (JwtUtils.isTokenExpired(authResponse.accessToken)) {
-            throw UnauthenticatedException("Access token is expired")
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.AUTH_ACCESS_TOKEN_EXPIRED,
+                message = "Access token is expired"
+            )
         }
         
         // Validate that the refresh token is not expired (if provided)
         if (JwtUtils.isTokenExpired(authResponse.refreshToken)) {
-            throw UnauthenticatedException("Refresh token is expired")
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.AUTH_REFRESH_TOKEN_EXPIRED,
+                message = "Refresh token is expired"
+            )
         }
         
         // Save the tokens to storage
@@ -130,6 +138,8 @@ class GopaySDK private constructor(
          */
         @JvmStatic
         fun initialize(config: GopayConfig) {
+            // Set up error reporting if callback is provided
+            ErrorReporter.setErrorCallback(config.errorCallback)
             instance = GopaySDK(config)
         }
         
@@ -143,6 +153,8 @@ class GopaySDK private constructor(
          */
         @JvmStatic
         fun initialize(config: GopayConfig, context: Context) {
+            // Set up error reporting if callback is provided
+            ErrorReporter.setErrorCallback(config.errorCallback)
             // Set the context manually before creating the SDK instance
             GopayContextProvider.setApplicationContext(context.applicationContext)
             instance = GopaySDK(config)
@@ -151,13 +163,14 @@ class GopaySDK private constructor(
         /**
          * Get the singleton instance of the SDK.
          * 
-         * @throws IllegalStateException if SDK hasn't been initialized
+         * @throws GopaySDKException if SDK hasn't been initialized
          * @return The SDK instance
          */
         @JvmStatic
         fun getInstance(): GopaySDK {
-            return instance ?: throw IllegalStateException(
-                "GopaySDK has not been initialized. Call GopaySDK.initialize(config) first."
+            return instance ?: throw GopaySDKException(
+                errorCode = GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED,
+                message = "GopaySDK has not been initialized. Call GopaySDK.initialize(config) first."
             )
         }
         

@@ -1,7 +1,8 @@
 package com.gopay.sdk.modules.network
 
-import com.gopay.sdk.exception.TokenRefreshException
-import com.gopay.sdk.exception.UnauthenticatedException
+import com.gopay.sdk.exception.GopaySDKException
+import com.gopay.sdk.exception.GopayErrorCodes
+import com.gopay.sdk.exception.HttpErrorContext
 import com.gopay.sdk.storage.TokenStorage
 import com.gopay.sdk.util.JwtUtils
 import kotlinx.coroutines.runBlocking
@@ -58,7 +59,10 @@ internal class AuthenticationInterceptor(
 
     private fun proceedWithToken(chain: Interceptor.Chain, originalRequest: Request): Response {
         val accessToken = tokenStorage.getAccessToken()
-            ?: throw UnauthenticatedException("No access token available after refresh attempt")
+            ?: throw GopaySDKException(
+                errorCode = GopayErrorCodes.AUTH_NO_TOKENS_AVAILABLE,
+                message = "No access token available after refresh attempt"
+            )
 
         val authenticatedRequest = originalRequest.newBuilder()
             .header(AUTHORIZATION_HEADER, "$BEARER_PREFIX$accessToken")
@@ -70,13 +74,19 @@ internal class AuthenticationInterceptor(
     private fun handleMissingToken() {
         val refreshToken = tokenStorage.getRefreshToken()
         if (refreshToken == null) {
-            throw UnauthenticatedException("No access token or refresh token available")
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.AUTH_NO_TOKENS_AVAILABLE,
+                message = "No access token or refresh token available"
+            )
         }
 
         // Check if refresh token is expired
         if (JwtUtils.isTokenExpired(refreshToken)) {
             tokenStorage.clear()
-            throw UnauthenticatedException("Both access and refresh tokens are expired")
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.AUTH_BOTH_TOKENS_EXPIRED,
+                message = "Both access and refresh tokens are expired"
+            )
         }
 
         // Try to refresh the token
@@ -87,13 +97,19 @@ internal class AuthenticationInterceptor(
         val refreshToken = tokenStorage.getRefreshToken()
         if (refreshToken == null) {
             tokenStorage.clear()
-            throw UnauthenticatedException("No refresh token available")
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.AUTH_NO_TOKENS_AVAILABLE,
+                message = "No refresh token available"
+            )
         }
 
         // Check if refresh token is expired
         if (JwtUtils.isTokenExpired(refreshToken)) {
             tokenStorage.clear()
-            throw UnauthenticatedException("Refresh token is expired")
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.AUTH_REFRESH_TOKEN_EXPIRED,
+                message = "Refresh token is expired"
+            )
         }
 
         // Try to refresh the token
@@ -112,7 +128,10 @@ internal class AuthenticationInterceptor(
             
             if (clientId == null) {
                 tokenStorage.clear()
-                throw UnauthenticatedException("Cannot extract client ID from access token")
+                throw GopaySDKException(
+                    errorCode = GopayErrorCodes.AUTH_INVALID_CLIENT_ID,
+                    message = "Cannot extract client ID from access token"
+                )
             }
 
             // Make the refresh token request synchronously
@@ -132,11 +151,26 @@ internal class AuthenticationInterceptor(
         } catch (e: HttpException) {
             // HTTP error during refresh - likely the refresh token is invalid
             tokenStorage.clear()
-            throw UnauthenticatedException("Failed to refresh token: HTTP ${e.code()}", e)
+            val httpContext = HttpErrorContext(
+                statusCode = e.code(),
+                responseBody = e.response()?.errorBody()?.string(),
+                requestUrl = "oauth2/token",
+                requestMethod = "POST"
+            )
+            throw GopaySDKException(
+                errorCode = if (e.code() in 400..499) GopayErrorCodes.NETWORK_CLIENT_ERROR else GopayErrorCodes.NETWORK_SERVER_ERROR,
+                message = "Failed to refresh token: HTTP ${e.code()}",
+                cause = e,
+                httpContext = httpContext
+            )
         } catch (e: Exception) {
             // Other errors during refresh
             tokenStorage.clear()
-            throw TokenRefreshException("Failed to refresh token", e)
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.AUTH_TOKEN_REFRESH_FAILED,
+                message = "Failed to refresh token",
+                cause = e
+            )
         }
     }
 } 

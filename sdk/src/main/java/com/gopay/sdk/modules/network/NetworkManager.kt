@@ -3,6 +3,8 @@ package com.gopay.sdk.modules.network
 import android.content.Context
 import com.gopay.sdk.config.GopayConfig
 import com.gopay.sdk.config.NetworkConfig
+import com.gopay.sdk.exception.GopaySDKException
+import com.gopay.sdk.exception.GopayErrorCodes
 import com.gopay.sdk.storage.SharedPrefsTokenStorage
 import com.gopay.sdk.storage.TokenStorage
 import okhttp3.OkHttpClient
@@ -86,6 +88,9 @@ internal class NetworkManager(
      */
     fun withSecuritySettings(networkConfig: NetworkConfig): NetworkManager {
         // This could be expanded to allow updating security settings after initialization
-        throw UnsupportedOperationException("Not implemented yet")
+        throw GopaySDKException(
+            errorCode = GopayErrorCodes.INTERNAL_NOT_IMPLEMENTED,
+            message = "Security settings configuration is not implemented yet"
+        )
     }
 } 
