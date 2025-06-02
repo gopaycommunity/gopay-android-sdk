@@ -14,6 +14,7 @@ import com.gopay.sdk.service.PaymentService
 import com.gopay.sdk.storage.TokenStorage
 import com.gopay.sdk.util.Base64Utils
 import com.gopay.sdk.util.JwtUtils
+import com.gopay.sdk.util.JsonUtils
 import okhttp3.CertificatePinner
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509TrustManager
@@ -223,15 +224,51 @@ class GopaySDK private constructor(
     
     /**
      * Gets the public encryption key used for encrypting card data.
+     * This method first checks for a cached key in storage and only fetches from the API if needed.
      * This method should be called from a coroutine context.
      * 
+     * @param forceRefresh If true, bypasses cache and fetches fresh key from API
      * @return JwkResponse containing the public encryption key
      * @throws GopaySDKException if the request fails or user is not authenticated
      */
-    suspend fun getPublicKey(): JwkResponse {
+    suspend fun getPublicKey(forceRefresh: Boolean = false): JwkResponse {
         try {
+            val tokenStorage = getTokenStorage()
+            
+            // Check for cached key first (unless force refresh is requested)
+            if (!forceRefresh) {
+                val cachedKey = tokenStorage.getPublicKey()
+                if (cachedKey != null) {
+                    // Try to parse the cached key to ensure it's valid JSON
+                    try {
+                        val parsedKey: JwkResponse? = JsonUtils.fromJson(cachedKey)
+                        if (parsedKey != null) {
+                            return parsedKey
+                        }
+                    } catch (e: Exception) {
+                        // If cached key is invalid, continue to fetch fresh key
+                        // Log or ignore the parse error and fetch from API
+                    }
+                }
+            }
+            
             // Call the API service - AuthenticationInterceptor handles token validation and refresh
-            return networkManager.apiService.getPublicKey()
+            val publicKeyResponse = networkManager.apiService.getPublicKey()
+            
+            // Cache the public key for future use
+            try {
+                val publicKeyJson = JsonUtils.toJson(publicKeyResponse)
+                if (publicKeyJson != null) {
+                    tokenStorage.savePublicKey(publicKeyJson)
+                }
+                // If serialization fails, continue without caching
+                // This won't affect the main functionality
+            } catch (e: Exception) {
+                // If serialization fails, continue without caching
+                // This won't affect the main functionality
+            }
+            
+            return publicKeyResponse
             
         } catch (e: Exception) {
             when (e) {

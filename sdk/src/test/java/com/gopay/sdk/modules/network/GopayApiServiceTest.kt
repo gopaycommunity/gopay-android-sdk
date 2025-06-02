@@ -69,6 +69,26 @@ class GopayApiServiceTest {
         assertEquals(mockResponse, result)
     }
 
+    @Test
+    fun testGetPublicKey() = runTest {
+        // Given a mock response for getPublicKey
+        val mockResponse = JwkResponse(
+            kty = "RSA",
+            kid = "custom-test-key-id",
+            use = "enc", 
+            alg = "RSA-OAEP-256",
+            n = "custom-test-modulus-value",
+            e = "AQAB"
+        )
+        mockApiService.setPublicKeyResponse(mockResponse)
+        
+        // When calling getPublicKey
+        val result = mockApiService.getPublicKey()
+        
+        // Then the result should match the expected response
+        assertEquals(mockResponse, result)
+    }
+
     // Mock implementation of GopayApiService for testing
     private class MockGopayApiService(
         private val delegate: BehaviorDelegate<GopayApiService>
@@ -79,8 +99,21 @@ class GopayApiServiceTest {
             refresh_token = "default_refresh_token"
         )
         
+        private var publicKeyResponse: JwkResponse = JwkResponse(
+            kty = "RSA",
+            kid = "test-key-id",
+            use = "enc",
+            alg = "RSA-OAEP-256",
+            n = "test-modulus-value",
+            e = "AQAB"
+        )
+        
         fun setAuthenticateResponse(response: AuthResponse) {
             authenticateResponse = response
+        }
+        
+        fun setPublicKeyResponse(response: JwkResponse) {
+            publicKeyResponse = response
         }
         
         override suspend fun authenticate(
@@ -92,6 +125,11 @@ class GopayApiServiceTest {
         ): AuthResponse {
             return delegate.returningResponse(authenticateResponse)
                 .authenticate(authorization, grantType, scope, refreshToken, clientId)
+        }
+        
+        override suspend fun getPublicKey(): JwkResponse {
+            return delegate.returningResponse(publicKeyResponse)
+                .getPublicKey()
         }
     }
 } 

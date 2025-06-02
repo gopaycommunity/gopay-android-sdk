@@ -37,7 +37,21 @@ interface TokenStorage {
     fun getRefreshToken(): String?
 
     /**
-     * Clears all stored tokens
+     * Saves the public key for card encryption
+     * 
+     * @param publicKey The JWK public key in JSON format
+     */
+    fun savePublicKey(publicKey: String)
+
+    /**
+     * Retrieves the cached public key
+     * 
+     * @return The JWK public key in JSON format or null if not available
+     */
+    fun getPublicKey(): String?
+
+    /**
+     * Clears all stored tokens and keys
      */
     fun clear()
 }
@@ -55,6 +69,7 @@ class SharedPrefsTokenStorage(context: Context) : TokenStorage {
         private const val PREFS_NAME = "gopay_sdk_secure_prefs"
         private const val KEY_ACCESS_TOKEN = "access_token_encrypted"
         private const val KEY_REFRESH_TOKEN = "refresh_token_encrypted"
+        private const val KEY_PUBLIC_KEY = "public_key_encrypted"
         private const val KEY_ALIAS = "gopay_sdk_token_key"
         private const val TRANSFORMATION = "AES/CBC/NoPadding"
         private const val IV_SEPARATOR = ":"
@@ -122,10 +137,47 @@ class SharedPrefsTokenStorage(context: Context) : TokenStorage {
         return storedToken
     }
     
+    override fun savePublicKey(publicKey: String) {
+        if (isEncryptionAvailable) {
+            try {
+                val encryptedPublicKey = encrypt(publicKey)
+                
+                prefs.edit()
+                    .putString(KEY_PUBLIC_KEY, encryptedPublicKey)
+                    .apply()
+                return
+            } catch (e: Exception) {
+                // Fall through to unencrypted storage
+            }
+        }
+        
+        // Fallback to unencrypted storage (unit tests or encryption failure)
+        prefs.edit()
+            .putString(KEY_PUBLIC_KEY, publicKey)
+            .apply()
+    }
+    
+    override fun getPublicKey(): String? {
+        val storedKey = prefs.getString(KEY_PUBLIC_KEY, null) ?: return null
+        
+        if (isEncryptionAvailable) {
+            return try {
+                decrypt(storedKey)
+            } catch (e: Exception) {
+                // If decryption fails, try returning the value as-is (fallback case)
+                storedKey
+            }
+        }
+        
+        // In unit tests, return the key directly
+        return storedKey
+    }
+    
     override fun clear() {
         prefs.edit()
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_REFRESH_TOKEN)
+            .remove(KEY_PUBLIC_KEY)
             .apply()
     }
     

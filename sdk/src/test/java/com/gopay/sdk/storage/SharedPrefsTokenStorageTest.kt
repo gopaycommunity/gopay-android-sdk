@@ -295,4 +295,97 @@ class SharedPrefsTokenStorageTest {
         assertEquals(unicodeToken, tokenStorage.getAccessToken())
         assertEquals(unicodeToken, tokenStorage.getRefreshToken())
     }
+
+    @Test
+    fun `savePublicKey should store public key that can be retrieved`() {
+        // Given a JWK public key in JSON format
+        val publicKeyJson = """
+            {
+                "kty": "RSA",
+                "kid": "test-key-id",
+                "use": "enc",
+                "alg": "RSA-OAEP-256",
+                "n": "test-modulus-value",
+                "e": "AQAB"
+            }
+        """.trimIndent()
+        
+        // When saving the public key
+        tokenStorage.savePublicKey(publicKeyJson)
+        
+        // Then it should be retrievable
+        assertEquals(publicKeyJson, tokenStorage.getPublicKey())
+    }
+
+    @Test
+    fun `getPublicKey should return null when no public key is stored`() {
+        // When getting public key without saving one first
+        val result = tokenStorage.getPublicKey()
+        
+        // Then the result should be null
+        assertNull(result)
+    }
+
+    @Test
+    fun `savePublicKey should handle empty public key`() {
+        // When saving an empty public key
+        tokenStorage.savePublicKey("")
+        
+        // Then empty public key should be retrievable
+        assertEquals("", tokenStorage.getPublicKey())
+    }
+
+    @Test
+    fun `savePublicKey should handle large public key data`() {
+        // Create a large public key (simulating a large RSA key)
+        val largePublicKey = "large_public_key_" + "a".repeat(4096)
+        
+        // When saving large public key
+        tokenStorage.savePublicKey(largePublicKey)
+        
+        // Then it should be stored and retrieved correctly
+        assertEquals(largePublicKey, tokenStorage.getPublicKey())
+    }
+
+    @Test
+    fun `clear should remove public key along with tokens`() {
+        // Given tokens and public key are saved
+        tokenStorage.saveTokens(testAccessToken, testRefreshToken)
+        val publicKeyJson = """{"kty":"RSA","kid":"test"}"""
+        tokenStorage.savePublicKey(publicKeyJson)
+        
+        // When clearing the storage
+        tokenStorage.clear()
+        
+        // Then all data should be removed
+        assertNull(tokenStorage.getAccessToken())
+        assertNull(tokenStorage.getRefreshToken())
+        assertNull(tokenStorage.getPublicKey())
+    }
+
+    @Test
+    fun `public key storage should work independently of token storage`() {
+        // Save only public key
+        val publicKeyJson = """{"kty":"RSA","kid":"test-independent"}"""
+        tokenStorage.savePublicKey(publicKeyJson)
+        
+        // Then public key should be available without tokens
+        assertEquals(publicKeyJson, tokenStorage.getPublicKey())
+        assertNull(tokenStorage.getAccessToken())
+        assertNull(tokenStorage.getRefreshToken())
+    }
+
+    @Test
+    fun `multiple public key save operations should overwrite previous key`() {
+        // Given initial public key is saved
+        tokenStorage.savePublicKey("""{"kty":"RSA","kid":"initial"}""")
+        assertEquals("""{"kty":"RSA","kid":"initial"}""", tokenStorage.getPublicKey())
+        
+        // When saving new public key
+        tokenStorage.savePublicKey("""{"kty":"RSA","kid":"new"}""")
+        
+        // Then new public key should overwrite the old one
+        assertEquals("""{"kty":"RSA","kid":"new"}""", tokenStorage.getPublicKey())
+        assertNotEquals("""{"kty":"RSA","kid":"initial"}""", tokenStorage.getPublicKey())
+    }
 } 

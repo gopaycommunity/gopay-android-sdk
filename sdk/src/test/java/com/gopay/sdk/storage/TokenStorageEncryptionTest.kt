@@ -259,4 +259,125 @@ class TokenStorageEncryptionTest {
         assertNotEquals("initial_access", tokenStorage.getAccessToken())
         assertNotEquals("initial_refresh", tokenStorage.getRefreshToken())
     }
+
+    @Test
+    fun `public key encryption should work with fallback behavior`() {
+        val tokenStorage = SharedPrefsTokenStorage(mockContext)
+        val publicKeyJson = """
+            {
+                "kty": "RSA",
+                "kid": "test-encryption-key",
+                "use": "enc",
+                "alg": "RSA-OAEP-256",
+                "n": "test-modulus-value",
+                "e": "AQAB"
+            }
+        """.trimIndent()
+        
+        // Save public key
+        tokenStorage.savePublicKey(publicKeyJson)
+        
+        // Verify fallback behavior - public key should be stored unencrypted in unit tests
+        assertEquals(publicKeyJson, prefsMap["public_key_encrypted"])
+        
+        // Verify retrieval works
+        assertEquals(publicKeyJson, tokenStorage.getPublicKey())
+    }
+
+    @Test
+    fun `public key encryption should handle malformed data gracefully`() {
+        val tokenStorage = SharedPrefsTokenStorage(mockContext)
+        
+        // Store malformed public key data directly
+        prefsMap["public_key_encrypted"] = "malformed:public:key:data"
+        
+        // Attempt to retrieve public key
+        val publicKey = tokenStorage.getPublicKey()
+        
+        // In unit test environment, it should return the malformed data as-is (fallback behavior)
+        assertEquals("malformed:public:key:data", publicKey)
+    }
+
+    @Test
+    fun `public key should be included in clear operation`() {
+        val tokenStorage = SharedPrefsTokenStorage(mockContext)
+        
+        // Save tokens and public key
+        tokenStorage.saveTokens(testAccessToken, testRefreshToken)
+        tokenStorage.savePublicKey("""{"kty":"RSA","kid":"test-clear"}""")
+        
+        // Verify all data is stored
+        assertTrue(prefsMap.containsKey("access_token_encrypted"))
+        assertTrue(prefsMap.containsKey("refresh_token_encrypted"))
+        assertTrue(prefsMap.containsKey("public_key_encrypted"))
+        
+        // Clear all data
+        tokenStorage.clear()
+        
+        // Verify all keys are removed including public key
+        assertFalse("Access token key should be removed", prefsMap.containsKey("access_token_encrypted"))
+        assertFalse("Refresh token key should be removed", prefsMap.containsKey("refresh_token_encrypted"))
+        assertFalse("Public key should be removed", prefsMap.containsKey("public_key_encrypted"))
+    }
+
+    @Test
+    fun `public key storage should use expected preference key name`() {
+        val tokenStorage = SharedPrefsTokenStorage(mockContext)
+        val publicKeyJson = """{"kty":"RSA","kid":"key-name-test"}"""
+        
+        // Save public key
+        tokenStorage.savePublicKey(publicKeyJson)
+        
+        // Verify the correct key is used in SharedPreferences
+        assertTrue("Expected public key should be present", prefsMap.containsKey("public_key_encrypted"))
+        
+        // Verify the value is stored
+        assertNotNull("Public key should be stored", prefsMap["public_key_encrypted"])
+        assertEquals("Public key should match stored value", publicKeyJson, prefsMap["public_key_encrypted"])
+    }
+
+    @Test
+    fun `public key encryption should handle large key data`() {
+        val tokenStorage = SharedPrefsTokenStorage(mockContext)
+        
+        // Create large public key (simulating a large RSA key with long modulus)
+        val largeModulus = "a".repeat(8192) // Very large modulus
+        val largePublicKey = """
+            {
+                "kty": "RSA",
+                "kid": "large-key-test",
+                "use": "enc",
+                "alg": "RSA-OAEP-256",
+                "n": "$largeModulus",
+                "e": "AQAB"
+            }
+        """.trimIndent()
+        
+        // Save large public key
+        tokenStorage.savePublicKey(largePublicKey)
+        
+        // Verify large public key is handled correctly
+        assertEquals(largePublicKey, tokenStorage.getPublicKey())
+    }
+
+    @Test
+    fun `public key encryption should handle special characters and unicode`() {
+        val tokenStorage = SharedPrefsTokenStorage(mockContext)
+        val specialPublicKey = """
+            {
+                "kty": "RSA",
+                "kid": "special-key-🔐-ñáéíóú-!@#$%^&*()",
+                "use": "enc",
+                "alg": "RSA-OAEP-256",
+                "n": "modulus-with-special-chars-测试",
+                "e": "AQAB"
+            }
+        """.trimIndent()
+        
+        // Save public key with special characters
+        tokenStorage.savePublicKey(specialPublicKey)
+        
+        // Verify special characters are handled correctly
+        assertEquals(specialPublicKey, tokenStorage.getPublicKey())
+    }
 } 
