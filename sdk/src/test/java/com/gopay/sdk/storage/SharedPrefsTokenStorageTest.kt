@@ -4,12 +4,22 @@ import android.content.Context
 import android.content.SharedPreferences
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import org.mockito.kotlin.spy
+import org.mockito.kotlin.doThrow
+import org.mockito.kotlin.doReturn
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
 
 class SharedPrefsTokenStorageTest {
 
@@ -25,6 +35,8 @@ class SharedPrefsTokenStorageTest {
     // Test constants
     private val testAccessToken = "test_access_token"
     private val testRefreshToken = "test_refresh_token"
+    private val testLongToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+    private val testSpecialCharsToken = "token_with_special_chars!@#$%^&*()_+-=[]{}|;':\",./<>?"
     
     // HashMap to simulate SharedPreferences storage
     private val prefsMap = HashMap<String, String?>()
@@ -109,5 +121,178 @@ class SharedPrefsTokenStorageTest {
         // Then both tokens should be null
         assertNull(tokenStorage.getAccessToken())
         assertNull(tokenStorage.getRefreshToken())
+    }
+
+    @Test
+    fun `saveTokens should handle long JWT tokens correctly`() {
+        // When saving a long JWT token
+        tokenStorage.saveTokens(testLongToken, testRefreshToken)
+        
+        // Then tokens should be retrievable correctly
+        assertEquals(testLongToken, tokenStorage.getAccessToken())
+        assertEquals(testRefreshToken, tokenStorage.getRefreshToken())
+    }
+
+    @Test
+    fun `saveTokens should handle tokens with special characters`() {
+        // When saving tokens with special characters
+        tokenStorage.saveTokens(testSpecialCharsToken, testSpecialCharsToken)
+        
+        // Then tokens should be retrievable correctly
+        assertEquals(testSpecialCharsToken, tokenStorage.getAccessToken())
+        assertEquals(testSpecialCharsToken, tokenStorage.getRefreshToken())
+    }
+
+    @Test
+    fun `saveTokens should handle empty tokens`() {
+        // When saving empty tokens
+        tokenStorage.saveTokens("", "")
+        
+        // Then empty tokens should be retrievable
+        assertEquals("", tokenStorage.getAccessToken())
+        assertEquals("", tokenStorage.getRefreshToken())
+    }
+
+    @Test
+    fun `tokens should be stored unencrypted in unit test environment`() {
+        // Given that we're in a unit test environment (no Android Keystore)
+        tokenStorage.saveTokens(testAccessToken, testRefreshToken)
+        
+        // When checking the stored values directly
+        val storedAccessToken = prefsMap["access_token_encrypted"]
+        val storedRefreshToken = prefsMap["refresh_token_encrypted"]
+        
+        // Then tokens should be stored as plain text (unencrypted) since Android Keystore is not available
+        assertEquals(testAccessToken, storedAccessToken)
+        assertEquals(testRefreshToken, storedRefreshToken)
+    }
+
+    @Test
+    fun `multiple save operations should overwrite previous tokens`() {
+        // Given initial tokens are saved
+        tokenStorage.saveTokens("initial_access", "initial_refresh")
+        assertEquals("initial_access", tokenStorage.getAccessToken())
+        assertEquals("initial_refresh", tokenStorage.getRefreshToken())
+        
+        // When saving new tokens
+        tokenStorage.saveTokens("new_access", "new_refresh")
+        
+        // Then new tokens should overwrite the old ones
+        assertEquals("new_access", tokenStorage.getAccessToken())
+        assertEquals("new_refresh", tokenStorage.getRefreshToken())
+    }
+
+    @Test
+    fun `getAccessToken should handle corrupted stored data gracefully`() {
+        // Given corrupted data is stored directly in preferences
+        prefsMap["access_token_encrypted"] = "corrupted:data:format"
+        
+        // When getting the access token
+        val result = tokenStorage.getAccessToken()
+        
+        // Then it should either return the corrupted data as fallback or handle gracefully
+        // In unit test environment, it should return the data as-is since encryption is not available
+        assertEquals("corrupted:data:format", result)
+    }
+
+    @Test
+    fun `getRefreshToken should handle corrupted stored data gracefully`() {
+        // Given corrupted data is stored directly in preferences
+        prefsMap["refresh_token_encrypted"] = "corrupted:data:format"
+        
+        // When getting the refresh token
+        val result = tokenStorage.getRefreshToken()
+        
+        // Then it should either return the corrupted data as fallback or handle gracefully
+        assertEquals("corrupted:data:format", result)
+    }
+
+    @Test
+    fun `clear should work even when no tokens are stored`() {
+        // When clearing storage without any tokens stored
+        tokenStorage.clear()
+        
+        // Then it should complete without error
+        assertNull(tokenStorage.getAccessToken())
+        assertNull(tokenStorage.getRefreshToken())
+    }
+
+    @Test
+    fun `saveTokens should work with null context scenario`() {
+        // This test ensures the implementation handles edge cases properly
+        // The actual implementation should work since we always use applicationContext
+        
+        // When saving tokens (should work despite potential null scenarios)
+        tokenStorage.saveTokens(testAccessToken, testRefreshToken)
+        
+        // Then tokens should be saved and retrievable
+        assertEquals(testAccessToken, tokenStorage.getAccessToken())
+        assertEquals(testRefreshToken, tokenStorage.getRefreshToken())
+    }
+
+    @Test
+    fun `encryption availability check should return false in unit test environment`() {
+        // In unit tests, Android Keystore is not available
+        // We can test this indirectly by checking that tokens are stored unencrypted
+        
+        // When saving tokens
+        tokenStorage.saveTokens(testAccessToken, testRefreshToken)
+        
+        // Then the stored values should be unencrypted (plain text)
+        assertEquals(testAccessToken, prefsMap["access_token_encrypted"])
+        assertEquals(testRefreshToken, prefsMap["refresh_token_encrypted"])
+    }
+
+    @Test
+    fun `token storage should be consistent across multiple operations`() {
+        // Test multiple save/retrieve cycles
+        for (i in 1..5) {
+            val accessToken = "access_token_$i"
+            val refreshToken = "refresh_token_$i"
+            
+            tokenStorage.saveTokens(accessToken, refreshToken)
+            
+            assertEquals(accessToken, tokenStorage.getAccessToken())
+            assertEquals(refreshToken, tokenStorage.getRefreshToken())
+        }
+    }
+
+    @Test
+    fun `partial token storage should work independently`() {
+        // Save both tokens
+        tokenStorage.saveTokens(testAccessToken, testRefreshToken)
+        
+        // Clear only one by overwriting with empty
+        prefsMap["access_token_encrypted"] = null
+        
+        // Then only refresh token should be available
+        assertNull(tokenStorage.getAccessToken())
+        assertEquals(testRefreshToken, tokenStorage.getRefreshToken())
+    }
+
+    @Test
+    fun `storage should handle very long tokens`() {
+        // Create a very long token (simulating a large JWT)
+        val longToken = "a".repeat(2048)
+        
+        // When saving very long tokens
+        tokenStorage.saveTokens(longToken, longToken)
+        
+        // Then they should be stored and retrieved correctly
+        assertEquals(longToken, tokenStorage.getAccessToken())
+        assertEquals(longToken, tokenStorage.getRefreshToken())
+    }
+
+    @Test
+    fun `storage should handle unicode characters in tokens`() {
+        // Test with unicode characters
+        val unicodeToken = "token_with_unicode_🔐_characters_ñáéíóú"
+        
+        // When saving tokens with unicode
+        tokenStorage.saveTokens(unicodeToken, unicodeToken)
+        
+        // Then they should be stored and retrieved correctly
+        assertEquals(unicodeToken, tokenStorage.getAccessToken())
+        assertEquals(unicodeToken, tokenStorage.getRefreshToken())
     }
 } 

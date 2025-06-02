@@ -1,7 +1,6 @@
 package com.gopay.sdk.storage
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -57,7 +56,7 @@ class SharedPrefsTokenStorage(context: Context) : TokenStorage {
         private const val KEY_ACCESS_TOKEN = "access_token_encrypted"
         private const val KEY_REFRESH_TOKEN = "refresh_token_encrypted"
         private const val KEY_ALIAS = "gopay_sdk_token_key"
-        private const val TRANSFORMATION = "AES/CBC/PKCS7Padding"
+        private const val TRANSFORMATION = "AES/CBC/NoPadding"
         private const val IV_SEPARATOR = ":"
     }
     
@@ -193,9 +192,7 @@ class SharedPrefsTokenStorage(context: Context) : TokenStorage {
      */
     private fun decrypt(encryptedData: String): String {
         val parts = encryptedData.split(IV_SEPARATOR)
-        if (parts.size != 2) {
-            throw IllegalArgumentException("Invalid encrypted data format")
-        }
+        check(parts.size == 2);
         
         val iv = Base64.decode(parts[0], Base64.NO_WRAP)
         val encrypted = Base64.decode(parts[1], Base64.NO_WRAP)
