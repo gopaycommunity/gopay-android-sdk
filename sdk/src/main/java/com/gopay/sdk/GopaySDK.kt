@@ -14,8 +14,6 @@ import com.gopay.sdk.service.PaymentService
 import com.gopay.sdk.storage.TokenStorage
 import com.gopay.sdk.util.Base64Utils
 import com.gopay.sdk.util.JwtUtils
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import okhttp3.CertificatePinner
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509TrustManager
@@ -176,7 +174,7 @@ class GopaySDK private constructor(
      * @return AuthenticationResponse with new tokens
      * @throws GopaySDKException if refresh fails
      */
-    suspend fun refreshToken(): AuthenticationResponse = withContext(Dispatchers.IO) {
+    suspend fun refreshToken(): AuthenticationResponse {
         try {
             val tokenStorage = getTokenStorage()
             val refreshToken = tokenStorage.getRefreshToken()
@@ -210,7 +208,7 @@ class GopaySDK private constructor(
             // Automatically save the new tokens to storage
             setAuthenticationResponse(authResponse)
             
-            authResponse
+            return authResponse
         } catch (e: Exception) {
             when (e) {
                 is GopaySDKException -> throw e
@@ -230,28 +228,10 @@ class GopaySDK private constructor(
      * @return JwkResponse containing the public encryption key
      * @throws GopaySDKException if the request fails or user is not authenticated
      */
-    suspend fun getPublicKey(): JwkResponse = withContext(Dispatchers.IO) {
+    suspend fun getPublicKey(): JwkResponse {
         try {
-            val tokenStorage = getTokenStorage()
-            val accessToken = tokenStorage.getAccessToken()
-                ?: throw GopaySDKException(
-                    errorCode = GopayErrorCodes.AUTH_NO_TOKENS_AVAILABLE,
-                    message = "No access token available. Please authenticate first."
-                )
-            
-            // Check if token is expired
-            if (JwtUtils.isTokenExpired(accessToken)) {
-                throw GopaySDKException(
-                    errorCode = GopayErrorCodes.AUTH_ACCESS_TOKEN_EXPIRED,
-                    message = "Access token is expired. Please refresh or re-authenticate."
-                )
-            }
-            
-            // Create Bearer token header
-            val authHeader = "Bearer $accessToken"
-            
-            // Call the API service
-            networkManager.apiService.getPublicKey(authHeader)
+            // Call the API service - AuthenticationInterceptor handles token validation and refresh
+            return networkManager.apiService.getPublicKey()
             
         } catch (e: Exception) {
             when (e) {

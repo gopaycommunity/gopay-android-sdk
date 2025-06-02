@@ -46,17 +46,15 @@ interface GopayApiService {
     
     /**
      * Gets the public encryption key used for encrypting card data.
+     * Authorization header is automatically added by AuthenticationInterceptor.
      * 
-     * @param authorization Bearer token for authentication
      * @return JWK (JSON Web Key) containing the public encryption key
      */
     @GET("encryption/public-key")
     @Headers(
         "Accept: application/json"
     )
-    suspend fun getPublicKey(
-        @Header("Authorization") authorization: String
-    ): JwkResponse
+    suspend fun getPublicKey(): JwkResponse
     
     // Additional API methods will be added here later
 }
