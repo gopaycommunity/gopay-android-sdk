@@ -248,3 +248,51 @@ The manual context method is still available for special use cases, but the auto
 ## License
 
 [Add your license information here]
+
+## Security Considerations
+
+### App Backup Settings
+
+The GoPay SDK stores authentication tokens securely using Android Keystore encryption. However, as an app developer, you should consider your backup policy:
+
+#### Recommended: Disable Backup for Sensitive Data
+```xml
+<!-- In your app's AndroidManifest.xml -->
+<application
+    android:allowBackup="false"
+    ... >
+```
+
+#### Alternative: Selective Backup Rules
+If you need backup functionality, exclude sensitive data:
+
+**res/xml/backup_rules.xml:**
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="gopay_sdk_secure_prefs.xml"/>
+    <!-- Exclude other sensitive preferences -->
+</full-backup-content>
+```
+
+**AndroidManifest.xml:**
+```xml
+<application
+    android:allowBackup="true"
+    android:fullBackupContent="@xml/backup_rules"
+    ... >
+```
+
+#### Why This Matters
+- **Backup exposure**: `android:allowBackup="true"` backs up app data to Google Drive
+- **Token security**: Even encrypted tokens shouldn't be unnecessarily exposed
+- **Compliance**: Some regulations require preventing data backup
+
+### SDK Security Features
+
+The GoPay SDK implements multiple security layers:
+
+1. **Android Keystore Encryption**: Tokens are encrypted using hardware-backed keys when available
+2. **Secure Storage**: Uses Android's secure SharedPreferences mechanisms
+3. **Token Validation**: Automatic JWT validation and refresh
+4. **Network Security**: HTTPS-only communication with certificate pinning support

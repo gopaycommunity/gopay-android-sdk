@@ -3,7 +3,6 @@
 
     <application
         android:usesCleartextTraffic="false"
-        android:allowBackup="false"
         >
         <!-- 
         ContentProvider that automatically initializes GopaySDK with Application context.
