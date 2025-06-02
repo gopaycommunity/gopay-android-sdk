@@ -221,8 +221,8 @@ class GopaySDKAuthenticationTest {
             networkManagerField.isAccessible = true
             val networkManager = networkManagerField.get(sdk)
             
-            // Get the tokenStorage field in NetworkManager
-            val tokenStorageField = networkManager::class.java.getDeclaredField("tokenStorage")
+            // Get the _tokenStorage field in NetworkManager (private backing field)
+            val tokenStorageField = networkManager::class.java.getDeclaredField("_tokenStorage")
             tokenStorageField.isAccessible = true
             tokenStorageField.set(networkManager, mockTokenStorage)
         } catch (e: Exception) {

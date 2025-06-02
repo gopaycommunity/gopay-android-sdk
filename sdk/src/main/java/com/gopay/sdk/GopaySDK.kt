@@ -5,7 +5,6 @@ import com.gopay.sdk.config.GopayConfig
 import com.gopay.sdk.exception.ErrorReporter
 import com.gopay.sdk.exception.GopayErrorCodes
 import com.gopay.sdk.exception.GopaySDKException
-import com.gopay.sdk.exception.HttpErrorContext
 import com.gopay.sdk.internal.GopayContextProvider
 import com.gopay.sdk.model.AuthenticationResponse
 import com.gopay.sdk.model.PaymentMethod
@@ -63,7 +62,7 @@ class GopaySDK private constructor(
      * 
      * @return TokenStorage instance
      */
-    fun getTokenStorage(): TokenStorage = networkManager.getTokenStorage()
+    fun getTokenStorage(): TokenStorage = networkManager.tokenStorage;
     
     /**
      * Sets authentication tokens from server-side authentication response.

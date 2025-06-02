@@ -154,7 +154,7 @@ fun SDKTestScreen() {
                                 resultText = "Logged out successfully"
                                 // Clear tokens
                                 try {
-                                    GopaySDK.getInstance().getTokenStorage().clear()
+                                    GopaySDK.getInstance().tokenStorage().clear()
                                 } catch (e: Exception) {
                                     resultText = "Error clearing tokens: ${e.message}"
                                 }

@@ -1,6 +1,7 @@
 package com.gopay.sdk.modules.network
 
 import android.content.Context
+import android.media.session.MediaSession.Token
 import com.gopay.sdk.config.GopayConfig
 import com.gopay.sdk.config.NetworkConfig
 import com.gopay.sdk.exception.GopaySDKException
@@ -31,17 +32,16 @@ internal class NetworkManager(
     /**
      * Token storage for authentication
      */
-    private val tokenStorage: TokenStorage
-    
+    // Initialize token storage with provided context
+    private val _tokenStorage: TokenStorage = SharedPrefsTokenStorage(context)
+
     /**
      * The API service interface implementation
      */
     val apiService: GopayApiService
     
     init {
-        // Initialize token storage with provided context
-        tokenStorage = SharedPrefsTokenStorage(context)
-        
+
         // Create authentication interceptor with token storage
         // Create a temporary API service for the interceptor to use for token refresh
         val tempNetworkConfig = NetworkConfig(
@@ -54,7 +54,7 @@ internal class NetworkManager(
         val tempRetrofit = NetworkModule.createRetrofit(tempClient, tempNetworkConfig.baseUrl)
         val tempApiService = tempRetrofit.create(GopayApiService::class.java)
         
-        val authInterceptor = AuthenticationInterceptor(tokenStorage, tempApiService)
+        val authInterceptor = AuthenticationInterceptor(_tokenStorage, tempApiService)
         
         // Convert GopayConfig to NetworkConfig with authentication interceptor
         val networkConfig = NetworkConfig(
@@ -75,10 +75,9 @@ internal class NetworkManager(
     
     /**
      * Gets the token storage instance
-     * 
-     * @return TokenStorage instance
      */
-    fun getTokenStorage(): TokenStorage = tokenStorage
+    val tokenStorage: TokenStorage
+        get() = _tokenStorage
     
     /**
      * Updates the NetworkManager with custom SSL settings

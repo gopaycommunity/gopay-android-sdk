@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <application>
+    <application
+        android:usesCleartextTraffic="false"
+        android:allowBackup="false"
+        >
         <!-- 
         ContentProvider that automatically initializes GopaySDK with Application context.
         This runs before any Activities are created, ensuring context is always available.
@@ -13,7 +16,8 @@
             android:name="com.gopay.sdk.internal.GopayInitProvider"
             android:authorities="${applicationId}.gopay-init"
             android:exported="false"
-            android:initOrder="100" />
+            android:initOrder="100"
+            />
     </application>
     
 </manifest>
