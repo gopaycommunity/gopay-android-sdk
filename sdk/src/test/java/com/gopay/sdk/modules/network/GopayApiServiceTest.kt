@@ -1,11 +1,15 @@
 package com.gopay.sdk.modules.network
 
+import com.gopay.sdk.model.CardTokenRequest
+import com.gopay.sdk.model.CardTokenResponse
+import com.gopay.sdk.model.Jwk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+import retrofit2.Response
 import retrofit2.mock.BehaviorDelegate
 import retrofit2.mock.MockRetrofit
 import retrofit2.mock.NetworkBehavior
@@ -72,12 +76,12 @@ class GopayApiServiceTest {
     @Test
     fun testGetPublicKey() = runTest {
         // Given a mock response for getPublicKey
-        val mockResponse = JwkResponse(
+        val mockResponse = Jwk(
             kty = "RSA",
-            kid = "custom-test-key-id",
+            kid = "test-key-id",
             use = "enc", 
             alg = "RSA-OAEP-256",
-            n = "custom-test-modulus-value",
+            n = "test-modulus-value",
             e = "AQAB"
         )
         mockApiService.setPublicKeyResponse(mockResponse)
@@ -85,8 +89,38 @@ class GopayApiServiceTest {
         // When calling getPublicKey
         val result = mockApiService.getPublicKey()
         
-        // Then the result should match the expected response
-        assertEquals(mockResponse, result)
+        // Then the result should be successful and contain the expected response
+        assertEquals(true, result.isSuccessful)
+        assertEquals(mockResponse, result.body())
+    }
+
+    @Test
+    fun testCreateCardToken() = runTest {
+        // Given a mock response for createCardToken
+        val mockResponse = CardTokenResponse(
+            maskedPan = "4444************",
+            expirationMonth = "01",
+            expirationYear = "27",
+            brand = "visa",
+            cardArtUrl = "https://example.com/card-art.png",
+            token = "test-card-token-12345",
+            fingerprint = "test-fingerprint",
+            maskedVirtualPan = "4444************"
+        )
+        mockApiService.setCardTokenResponse(mockResponse)
+        
+        // Given a card token request
+        val request = CardTokenRequest(
+            payload = "eyJhbGciOiJSU0EtT0FFUC0yNTYiLCJlbmMiOiJBMjU2R0NNIiwia2lkIjoidGVzdC1rZXktaWQifQ.test-encrypted-key.test-iv.test-ciphertext.test-tag",
+            permanent = false
+        )
+        
+        // When calling createCardToken
+        val result = mockApiService.createCardToken(request)
+        
+        // Then the result should be successful and contain the expected response
+        assertEquals(true, result.isSuccessful)
+        assertEquals(mockResponse, result.body())
     }
 
     // Mock implementation of GopayApiService for testing
@@ -99,21 +133,36 @@ class GopayApiServiceTest {
             refresh_token = "default_refresh_token"
         )
         
-        private var publicKeyResponse: JwkResponse = JwkResponse(
-            kty = "RSA",
-            kid = "test-key-id",
-            use = "enc",
-            alg = "RSA-OAEP-256",
-            n = "test-modulus-value",
-            e = "AQAB"
+        private var publicKeyResponse: Jwk = Jwk(
+        kty = "RSA",
+        kid = "test-key-id",
+        use = "enc",
+        alg = "RSA-OAEP-256",
+        n = "test-modulus-value",
+        e = "AQAB"
+    )
+
+        private var cardTokenResponse = CardTokenResponse(
+            maskedPan = "3242************",
+            expirationMonth = "12",
+            expirationYear = "2025",
+            brand = "visa",
+            cardArtUrl = "https://example.com",
+            token = "acsdsadcdafhgdhsjgfjh",
+            fingerprint = "AQFD",
+            maskedVirtualPan = "3242************"
         )
-        
+
         fun setAuthenticateResponse(response: AuthResponse) {
             authenticateResponse = response
         }
         
-        fun setPublicKeyResponse(response: JwkResponse) {
+        fun setPublicKeyResponse(response: Jwk) {
             publicKeyResponse = response
+        }
+        
+        fun setCardTokenResponse(response: CardTokenResponse) {
+            cardTokenResponse = response
         }
         
         override suspend fun authenticate(
@@ -127,9 +176,13 @@ class GopayApiServiceTest {
                 .authenticate(authorization, grantType, scope, refreshToken, clientId)
         }
         
-        override suspend fun getPublicKey(): JwkResponse {
+        override suspend fun getPublicKey(): Response<Jwk> {
             return delegate.returningResponse(publicKeyResponse)
                 .getPublicKey()
+        }
+
+        override suspend fun createCardToken(request: CardTokenRequest): Response<CardTokenResponse> {
+            return delegate.returningResponse(cardTokenResponse).createCardToken(request)
         }
     }
 } 

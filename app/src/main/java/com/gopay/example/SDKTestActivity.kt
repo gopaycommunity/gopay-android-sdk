@@ -24,6 +24,11 @@ import com.gopay.sdk.config.GopayConfig
 import com.gopay.sdk.exception.GopaySDKException
 import com.gopay.sdk.exception.GopayErrorCodes
 import com.gopay.sdk.model.AuthenticationResponse
+import com.gopay.sdk.model.CardData
+import com.gopay.sdk.service.TokenizationService
+import com.gopay.sdk.service.PublicKeyService
+import com.gopay.sdk.service.CardTokenizationService
+import com.gopay.sdk.modules.network.GopayApiService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -294,6 +299,166 @@ fun SDKTestScreen() {
                         enabled = !isLoading
                     ) {
                         Text("Get Public Key")
+                    }
+                    
+                    HorizontalDivider()
+                    
+                    // Card Tokenization Section
+                    Text(
+                        text = "Card Tokenization",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    
+                    // Show hardcoded card data being used
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            Text(
+                                text = "Test Card Data (Hardcoded)",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "PAN: 4444444444444448\nExp: 01/27\nCVV: 258",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    
+                    // JWE Encryption Test
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isLoading = true
+                                try {
+                                    val cardData = CardData(
+                                        cardPan = "4444444444444448",
+                                        expMonth = "01",
+                                        expYear = "27",
+                                        cvv = "258"
+                                    )
+                                    
+                                    val tokenStorage = GopaySDK.getInstance().getTokenStorage()
+                                    val tokenizationService = TokenizationService(tokenStorage)
+                                    
+                                    val jwePayload = withContext(Dispatchers.IO) {
+                                        tokenizationService.createJweEncryptedPayload(cardData)
+                                    }
+                                    
+                                    // Parse JWE parts for display
+                                    val jweParts = jwePayload.split(".")
+                                    
+                                    resultText = "✅ JWE Encryption successful!\n\n" +
+                                            "JWE Structure: ${jweParts.size} parts\n" +
+                                            "Header: ${jweParts[0].take(30)}...\n" +
+                                            "Encrypted Key: ${jweParts[1].take(30)}...\n" +
+                                            "IV: ${jweParts[2].take(20)}...\n" +
+                                            "Ciphertext: ${jweParts[3].take(30)}...\n" +
+                                            "Auth Tag: ${jweParts[4].take(20)}...\n\n" +
+                                            "Full JWE (${jwePayload.length} chars):\n${jwePayload.take(100)}..."
+                                            
+                                } catch (e: GopaySDKException) {
+                                    resultText = "JWE encryption failed:\n${formatError(e)}"
+                                } catch (e: Exception) {
+                                    resultText = "Unexpected error during encryption: ${e.message}\n${e.stackTraceToString().take(300)}"
+                                }
+                                isLoading = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading
+                    ) {
+                        Text("Test JWE Encryption")
+                    }
+                    
+                    // Full Card Tokenization Test
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isLoading = true
+                                try {
+                                    val cardData = CardData(
+                                        cardPan = "4444444444444448",
+                                        expMonth = "06",
+                                        expYear = "27",
+                                        cvv = "123"
+                                    )
+                                    
+                                    // Get required services from SDK
+                                    val tokenStorage = GopaySDK.getInstance().getTokenStorage()
+                                    val apiService = GopaySDK.getInstance().getApiService()
+                                    
+                                    val tokenizationService = TokenizationService(tokenStorage)
+                                    val publicKeyService = PublicKeyService(apiService, tokenStorage)
+                                    val cardTokenizationService = CardTokenizationService(
+                                        apiService,
+                                        tokenizationService,
+                                        publicKeyService,
+                                        tokenStorage
+                                    )
+                                    
+                                    // Step 1: Get public key (show this step)
+                                    val publicKey = withContext(Dispatchers.IO) {
+                                        publicKeyService.getPublicKey()
+                                    }
+                                    
+                                    // Step 2: Create JWE payload (show this step)
+                                    val jwePayload = withContext(Dispatchers.IO) {
+                                        tokenizationService.createJweEncryptedPayload(cardData)
+                                    }
+                                    
+                                    // Step 3: Call tokenization API (show result)
+                                    val response = withContext(Dispatchers.IO) {
+                                        cardTokenizationService.tokenizeCardWithValidation(
+                                            cardData = cardData,
+                                            permanent = false
+                                        )
+                                    }
+                                    
+                                    // Parse JWE parts for display
+                                    val jweParts = jwePayload.split(".")
+                                    
+                                    resultText = "✅ Full card tokenization successful!\n\n" +
+                                            "🔑 Public Key Retrieved:\n" +
+                                            "Key ID: ${publicKey.kid}\n" +
+                                            "Algorithm: ${publicKey.alg}\n\n" +
+                                            "🔒 JWE Encryption:\n" +
+                                            "Structure: ${jweParts.size} parts\n" +
+                                            "Length: ${jwePayload.length} chars\n" +
+                                            "Header: ${jweParts[0].take(25)}...\n" +
+                                            "Encrypted Key: ${jweParts[1].take(25)}...\n" +
+                                            "IV: ${jweParts[2]}\n" +
+                                            "Ciphertext: ${jweParts[3].take(25)}...\n" +
+                                            "Auth Tag: ${jweParts[4]}\n\n" +
+                                            "🏦 API Response:\n" +
+                                            "Token: ${response.token}\n" +
+                                            "Masked PAN: ${response.maskedPan}\n" +
+                                            "Brand: ${response.brand}\n" +
+                                            "Expiration: ${response.expirationMonth}/${response.expirationYear}\n" +
+                                            "Fingerprint: ${response.fingerprint}\n" +
+                                            "Expires In: ${response.expiresIn} seconds\n" +
+                                            "Card Art: ${response.cardArtUrl ?: "N/A"}"
+                                            
+                                } catch (e: GopaySDKException) {
+                                    resultText = "Card tokenization failed:\n${formatError(e)}"
+                                } catch (e: Exception) {
+                                    resultText = "Unexpected error during tokenization: ${e.message}\n${e.stackTraceToString().take(300)}"
+                                }
+                                isLoading = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading
+                    ) {
+                        Text("Tokenize Card (Full Flow)")
                     }
                 }
             }

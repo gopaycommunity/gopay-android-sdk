@@ -1,5 +1,10 @@
 package com.gopay.sdk.modules.network
 
+import com.gopay.sdk.model.CardTokenRequest
+import com.gopay.sdk.model.CardTokenResponse
+import com.gopay.sdk.model.Jwk
+import retrofit2.Response
+import retrofit2.http.Body
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
@@ -9,7 +14,8 @@ import retrofit2.http.POST
 
 /**
  * Retrofit interface for Gopay API calls
- * This will be expanded later with additional methods
+ * Consolidated interface for all GoPay API endpoints
+ * Authorization headers are automatically added by AuthenticationInterceptor
  */
 interface GopayApiService {
     /**
@@ -22,8 +28,6 @@ interface GopayApiService {
      * For refresh_token flow:
      * - Requires grant_type=refresh_token, refresh_token value, and client_id
      * 
-     * @param contentType Must be "application/x-www-form-urlencoded"
-     * @param accept Must be "application/json"
      * @param authorization Basic auth header for client_credentials (optional for refresh_token flow)
      * @param grantType Either "client_credentials" or "refresh_token"
      * @param scope Space-separated list of required scopes (for client_credentials)
@@ -54,7 +58,23 @@ interface GopayApiService {
     @Headers(
         "Accept: application/json"
     )
-    suspend fun getPublicKey(): JwkResponse
+    suspend fun getPublicKey(): Response<Jwk>
+    
+    /**
+     * Creates a card token using JWE encrypted payload
+     * Authorization header is automatically added by AuthenticationInterceptor.
+     * 
+     * @param request Card tokenization request with JWE payload
+     * @return Card tokenization response with token and metadata
+     */
+    @POST("cards/tokens")
+    @Headers(
+        "Content-Type: application/json",
+        "Accept: application/json"
+    )
+    suspend fun createCardToken(
+        @Body request: CardTokenRequest
+    ): Response<CardTokenResponse>
     
     // Additional API methods will be added here later
 }
@@ -70,9 +90,11 @@ data class AuthResponse(
 )
 
 /**
+ * @deprecated Use Jwk from model package instead
  * JWK (JSON Web Key) response for public encryption key
  * Used for encrypting card data according to RFC 7517
  */
+@Deprecated("Use Jwk from model package instead", ReplaceWith("Jwk", "com.gopay.sdk.model.Jwk"))
 data class JwkResponse(
     val kty: String,           // Key type, always "RSA"
     val kid: String,           // Key ID containing information about key age

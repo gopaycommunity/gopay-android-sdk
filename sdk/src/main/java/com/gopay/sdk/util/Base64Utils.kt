@@ -34,16 +34,26 @@ object Base64Utils {
         throw RuntimeException("Base64 decoding failed in both Android and Java environments", e)
     }
 
+    /**
+     * Encodes a string to Base64 URL-safe format without padding
+     */
     fun encodeUrlSafe(input: String): String {
+        return encodeUrlSafe(input.toByteArray())
+    }
+
+    /**
+     * Encodes a byte array to Base64 URL-safe format without padding
+     */
+    fun encodeUrlSafe(input: ByteArray): String {
         return try {    
-            android.util.Base64.encodeToString(input.toByteArray(), android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
+            android.util.Base64.encodeToString(input, android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
         } catch (e: Throwable) {
             // Fallback to Java's Base64 using reflection
             encodeUsingJavaBase64Encoder(input, e)
         }
     }
     
-    private fun encodeUsingJavaBase64Encoder(input: String, e: Throwable): String = try {
+    private fun encodeUsingJavaBase64Encoder(input: ByteArray, e: Throwable): String = try {
         // Use reflection to access java.util.Base64 (available in unit tests and API 26+)
         val base64Class = Class.forName("java.util.Base64")
         val getUrlEncoderMethod = base64Class.getMethod("getUrlEncoder")
@@ -51,7 +61,7 @@ object Base64Utils {
         val withoutPaddingMethod = encoder.javaClass.getMethod("withoutPadding")
         val encoderWithoutPadding = withoutPaddingMethod.invoke(encoder)
         val encodeToStringMethod = encoderWithoutPadding.javaClass.getMethod("encodeToString", ByteArray::class.java)
-        encodeToStringMethod.invoke(encoderWithoutPadding, input.toByteArray()) as String
+        encodeToStringMethod.invoke(encoderWithoutPadding, input) as String
     } catch (reflectionException: Throwable) {
         // If both fail, throw the original exception
         throw RuntimeException("Base64 encoding failed in both Android and Java environments", e)

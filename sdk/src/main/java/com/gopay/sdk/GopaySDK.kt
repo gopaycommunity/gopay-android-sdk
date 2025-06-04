@@ -7,9 +7,10 @@ import com.gopay.sdk.exception.GopayErrorCodes
 import com.gopay.sdk.exception.GopaySDKException
 import com.gopay.sdk.internal.GopayContextProvider
 import com.gopay.sdk.model.AuthenticationResponse
+import com.gopay.sdk.model.Jwk
 import com.gopay.sdk.model.PaymentMethod
 import com.gopay.sdk.modules.network.NetworkManager
-import com.gopay.sdk.modules.network.JwkResponse
+import com.gopay.sdk.modules.network.GopayApiService
 import com.gopay.sdk.service.PaymentService
 import com.gopay.sdk.storage.TokenStorage
 import com.gopay.sdk.util.Base64Utils
@@ -28,27 +29,28 @@ class GopaySDK private constructor(
      */
     val config: GopayConfig
 ) {
-    
+
     private val paymentService = PaymentService()
-    
+
     /**
      * Network manager handling HTTP client and API service.
      * Uses automatically obtained Application context.
      */
-    private val networkManager = NetworkManager(config, GopayContextProvider.getApplicationContext())
-    
+    private val networkManager =
+        NetworkManager(config, GopayContextProvider.getApplicationContext())
+
     /**
      * Get available payment methods.
-     * 
+     *
      * @return List of available payment methods
      */
     fun getPaymentMethods(): List<PaymentMethod> {
         return paymentService.getAvailablePaymentMethods()
     }
-    
+
     /**
      * Process a payment.
-     * 
+     *
      * @param paymentMethodId ID of the selected payment method
      * @param amount Amount to charge
      * @return True if payment was successful, false otherwise
@@ -56,24 +58,31 @@ class GopaySDK private constructor(
     fun processPayment(paymentMethodId: String, amount: Double): Boolean {
         return paymentService.processPayment(paymentMethodId, amount)
     }
-    
+
     /**
      * Gets the token storage instance for managing authentication tokens
-     * 
+     *
      * @return TokenStorage instance
      */
     fun getTokenStorage(): TokenStorage = networkManager.tokenStorage;
-    
+
+    /**
+     * Gets the API service instance for advanced usage and testing
+     *
+     * @return GopayApiService instance
+     */
+    fun getApiService(): GopayApiService = networkManager.apiService
+
     /**
      * Sets authentication tokens from server-side authentication response.
      * This method validates JWT expiration and saves the tokens to storage.
-     * 
+     *
      * @param authResponse The authentication response from server-side authentication
      * @throws GopaySDKException if the access token is expired or invalid
      */
     fun setAuthenticationResponse(authResponse: AuthenticationResponse) {
         val tokenStorage = getTokenStorage()
-        
+
         // Validate that the access token is not expired
         if (JwtUtils.isTokenExpired(authResponse.accessToken)) {
             throw GopaySDKException(
@@ -81,14 +90,14 @@ class GopaySDK private constructor(
                 message = "Access token is expired"
             )
         }
-        
+
         // Note: Refresh tokens are opaque strings (not JWTs) according to GoPay API documentation
         // Their validity is determined by the authorization server, not by client-side validation
-        
+
         // Save the tokens to storage
         tokenStorage.saveTokens(authResponse.accessToken, authResponse.refreshToken)
     }
-    
+
     /**
      * Configure advanced security settings for the SDK's network client.
      * Use this to set up certificate pinning or custom certificates.
@@ -114,17 +123,17 @@ class GopaySDK private constructor(
         //     trustManager = trustManager,
         //     certificatePinner = certificatePinner
         // )
-        
+
         // Use the withSecuritySettings method when implemented
         // networkManager.withSecuritySettings(securityConfig)
-        
+
         return this
     }
-    
+
     /**
      * Authenticates with the GoPay API using client credentials flow.
      * This method should be called from a coroutine context.
-     * 
+     *
      * @param clientId The client ID for authentication
      * @param clientSecret The client secret for authentication
      * @param scope Space-separated list of required scopes (optional)
@@ -141,17 +150,17 @@ class GopaySDK private constructor(
             val credentials = "$clientId:$clientSecret"
             val encodedCredentials = Base64Utils.encodeUrlSafe(credentials)
             val authHeader = "Basic $encodedCredentials"
-            
+
             // Call the API service
             val response = networkManager.apiService.authenticate(
                 authorization = authHeader,
                 grantType = "client_credentials",
                 scope = scope
             )
-            
+
             // Convert to public model
             val authResponse = AuthenticationResponse.fromAuthResponse(response)
-            
+
             // Automatically save the tokens to storage
             setAuthenticationResponse(authResponse)
 
@@ -167,11 +176,11 @@ class GopaySDK private constructor(
             }
         }
     }
-    
+
     /**
      * Refreshes the current access token using the stored refresh token.
      * This method should be called from a coroutine context.
-     * 
+     *
      * @return AuthenticationResponse with new tokens
      * @throws GopaySDKException if refresh fails
      */
@@ -183,7 +192,7 @@ class GopaySDK private constructor(
                     errorCode = GopayErrorCodes.AUTH_NO_TOKENS_AVAILABLE,
                     message = "No refresh token available"
                 )
-            
+
             // Extract client ID from current access token
             val accessToken = tokenStorage.getAccessToken()
             val clientId = if (accessToken != null) {
@@ -194,7 +203,7 @@ class GopaySDK private constructor(
                     message = "Cannot extract client ID from access token"
                 )
             }
-            
+
             // Call the API service for token refresh
             val response = networkManager.apiService.authenticate(
                 authorization = null,
@@ -202,13 +211,13 @@ class GopaySDK private constructor(
                 refreshToken = refreshToken,
                 clientId = clientId
             )
-            
+
             // Convert to public model
             val authResponse = AuthenticationResponse.fromAuthResponse(response)
-            
+
             // Automatically save the new tokens to storage
             setAuthenticationResponse(authResponse)
-            
+
             return authResponse
         } catch (e: Exception) {
             when (e) {
@@ -221,27 +230,27 @@ class GopaySDK private constructor(
             }
         }
     }
-    
+
     /**
      * Gets the public encryption key used for encrypting card data.
      * This method first checks for a cached key in storage and only fetches from the API if needed.
      * This method should be called from a coroutine context.
-     * 
+     *
      * @param forceRefresh If true, bypasses cache and fetches fresh key from API
      * @return JwkResponse containing the public encryption key
      * @throws GopaySDKException if the request fails or user is not authenticated
      */
-    suspend fun getPublicKey(forceRefresh: Boolean = false): JwkResponse {
+    suspend fun getPublicKey(forceRefresh: Boolean = false): Jwk {
         try {
             val tokenStorage = getTokenStorage()
-            
+
             // Check for cached key first (unless force refresh is requested)
             if (!forceRefresh) {
                 val cachedKey = tokenStorage.getPublicKey()
                 if (cachedKey != null) {
                     // Try to parse the cached key to ensure it's valid JSON
                     try {
-                        val parsedKey: JwkResponse? = JsonUtils.fromJson(cachedKey)
+                        val parsedKey: Jwk? = JsonUtils.fromJson(cachedKey)
                         if (parsedKey != null) {
                             return parsedKey
                         }
@@ -251,10 +260,33 @@ class GopaySDK private constructor(
                     }
                 }
             }
-            
+
             // Call the API service - AuthenticationInterceptor handles token validation and refresh
-            val publicKeyResponse = networkManager.apiService.getPublicKey()
-            
+            val response = networkManager.apiService.getPublicKey()
+
+            if (!response.isSuccessful) {
+                throw GopaySDKException(
+                    errorCode = GopayErrorCodes.NETWORK_SERVER_ERROR,
+                    message = "Failed to fetch public key: ${response.code()} ${response.message()}"
+                )
+            }
+
+            val jwk = response.body()
+                ?: throw GopaySDKException(
+                    errorCode = GopayErrorCodes.NETWORK_SERVER_ERROR,
+                    message = "Empty response body when fetching public key"
+                )
+
+            // Convert Jwk to JwkResponse for backward compatibility
+            val publicKeyResponse = Jwk(
+                kty = jwk.kty,
+                kid = jwk.kid,
+                use = jwk.use,
+                alg = jwk.alg,
+                n = jwk.n,
+                e = jwk.e
+            )
+
             // Cache the public key for future use
             try {
                 val publicKeyJson = JsonUtils.toJson(publicKeyResponse)
@@ -267,9 +299,9 @@ class GopaySDK private constructor(
                 // If serialization fails, continue without caching
                 // This won't affect the main functionality
             }
-            
+
             return publicKeyResponse
-            
+
         } catch (e: Exception) {
             when (e) {
                 is GopaySDKException -> throw e
@@ -281,29 +313,29 @@ class GopaySDK private constructor(
             }
         }
     }
-    
+
     /**
      * Checks if the user is currently authenticated (has valid access token).
-     * 
+     *
      * @return True if authenticated with valid token, false otherwise
      */
     fun isAuthenticated(): Boolean {
         val accessToken = getTokenStorage().getAccessToken()
         return accessToken != null && !JwtUtils.isTokenExpired(accessToken)
     }
-    
+
     /**
      * Clears all stored authentication tokens.
      */
     fun logout() {
         getTokenStorage().clear()
     }
-    
+
     companion object {
         // Singleton instance
         @Volatile
         private var instance: GopaySDK? = null
-        
+
         /**
          * Initialize the SDK with the given configuration.
          * Application context is obtained automatically.
@@ -317,7 +349,7 @@ class GopaySDK private constructor(
             ErrorReporter.setErrorCallback(config.errorCallback)
             instance = GopaySDK(config)
         }
-        
+
         /**
          * Initialize the SDK with manual context (for special cases).
          * This is provided for backward compatibility and special use cases
@@ -334,10 +366,10 @@ class GopaySDK private constructor(
             GopayContextProvider.setApplicationContext(context.applicationContext)
             instance = GopaySDK(config)
         }
-        
+
         /**
          * Get the singleton instance of the SDK.
-         * 
+         *
          * @throws GopaySDKException if SDK hasn't been initialized
          * @return The SDK instance
          */
@@ -348,7 +380,7 @@ class GopaySDK private constructor(
                 message = "GopaySDK has not been initialized. Call GopaySDK.initialize(config) first."
             )
         }
-        
+
         /**
          * Check if the SDK has been initialized.
          *
