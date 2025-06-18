@@ -486,13 +486,18 @@ This document provides a comprehensive reference for all error codes used in the
 ### 1. Catch Specific Errors
 ```kotlin
 try {
-    sdk.processPayment(methodId, amount)
+    sdk.authenticate(clientId, clientSecret)
 } catch (e: GopaySDKException) {
-    when {
-        e.isAuthenticationError() -> handleAuthError(e)
-        e.isNetworkError() -> handleNetworkError(e)
-        e.isPaymentError() -> handlePaymentError(e)
-        else -> handleGenericError(e)
+    when (e.errorCode) {
+        GopayErrorCodes.NETWORK_TIMEOUT -> {
+            // Handle timeout - maybe retry
+        }
+        GopayErrorCodes.AUTH_ACCESS_TOKEN_EXPIRED -> {
+            // Handle expired token - refresh token
+        }
+        else -> {
+            // Handle other errors
+        }
     }
 }
 ```

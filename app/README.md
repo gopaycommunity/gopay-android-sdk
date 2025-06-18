@@ -108,11 +108,12 @@ val sdk = GopaySDK.getInstance()
 // Authenticate with tokens
 sdk.setAuthenticationResponse(authResponse)
 
-// Get payment methods
-val methods = sdk.getPaymentMethods()
+// Check authentication status
+val isAuthenticated = sdk.isAuthenticated()
 
-// Process payment
-val success = sdk.processPayment("card", 100.0)
+// Access token storage
+val tokenStorage = sdk.getTokenStorage()
+val accessToken = tokenStorage.getAccessToken()
 ```
 
 ### Error Handling

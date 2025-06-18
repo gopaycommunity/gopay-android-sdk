@@ -7,15 +7,21 @@ import com.gopay.sdk.exception.GopayErrorCodes
 import com.gopay.sdk.exception.GopaySDKException
 import com.gopay.sdk.storage.SharedPrefsTokenStorage
 import com.gopay.sdk.storage.TokenStorage
+import okhttp3.CertificatePinner
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
+import javax.net.ssl.SSLSocketFactory
+import javax.net.ssl.X509TrustManager
 
 /**
  * Manages HTTP client and API service instances for the Gopay SDK
  */
 internal class NetworkManager(
     gopayConfig: GopayConfig,
-    context: Context
+    context: Context,
+    private val sslSocketFactory: SSLSocketFactory? = null,
+    private val trustManager: X509TrustManager? = null,
+    private val certificatePinner: CertificatePinner? = null
 ) {
     
     /**
@@ -47,7 +53,10 @@ internal class NetworkManager(
             baseUrl = gopayConfig.apiBaseUrl,
             readTimeoutSeconds = gopayConfig.requestTimeoutMs / 1000,
             connectTimeoutSeconds = gopayConfig.requestTimeoutMs / 2000,
-            enableLogging = gopayConfig.debugLoggingEnabled
+            enableLogging = gopayConfig.debugLoggingEnabled,
+            sslSocketFactory = sslSocketFactory,
+            trustManager = trustManager,
+            certificatePinner = certificatePinner
         )
         val tempClient = NetworkModule.createOkHttpClient(tempNetworkConfig)
         val tempRetrofit = NetworkModule.createRetrofit(tempClient, tempNetworkConfig.baseUrl)
@@ -61,7 +70,10 @@ internal class NetworkManager(
             readTimeoutSeconds = gopayConfig.requestTimeoutMs / 1000,
             connectTimeoutSeconds = gopayConfig.requestTimeoutMs / 2000, // Half the read timeout
             enableLogging = gopayConfig.debugLoggingEnabled,
-            interceptors = listOf(authInterceptor)
+            interceptors = listOf(authInterceptor),
+            sslSocketFactory = sslSocketFactory,
+            trustManager = trustManager,
+            certificatePinner = certificatePinner
         )
         
         // Create the HTTP client and Retrofit instance

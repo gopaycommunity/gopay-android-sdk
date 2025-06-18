@@ -15,7 +15,7 @@ import com.gopay.sdk.storage.TokenStorage
  */
 class CardTokenizationService(
     private val apiService: GopayApiService,
-    private val tokenizationService: TokenizationService,
+    private val encryptionService: EncryptionService,
     private val publicKeyService: PublicKeyService,
     private val tokenStorage: TokenStorage
 ) {
@@ -41,7 +41,7 @@ class CardTokenizationService(
         }
         
         // Create JWE encrypted payload
-        val jwePayload = tokenizationService.createJweEncryptedPayload(cardData)
+        val jwePayload = encryptionService.createJweEncryptedPayload(cardData)
         
         // Create request
         val request = CardTokenRequest(

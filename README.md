@@ -58,8 +58,8 @@ class MainActivity : AppCompatActivity() {
         // Set authentication - tokens are automatically stored
         sdk.setAuthenticationResponse(authResponse)
         
-        // Now you can make payments
-        val success = sdk.processPayment("card", 100.0)
+        // Check if authenticated
+        val isAuthenticated = sdk.isAuthenticated()
     }
 }
 ```
@@ -119,18 +119,6 @@ val isAuthenticated = sdk.getTokenStorage().getAccessToken() != null
 sdk.getTokenStorage().clear()
 ```
 
-### Payments
-
-```kotlin
-val sdk = GopaySDK.getInstance()
-
-// Get available payment methods
-val methods = sdk.getPaymentMethods()
-
-// Process a payment
-val success = sdk.processPayment("card", 100.0)
-```
-
 ## Environments
 
 | Environment | Description | API Base URL |
@@ -163,12 +151,12 @@ try {
 
 ```kotlin
 try {
-    sdk.processPayment("card", 100.0)
+    sdk.authenticate(clientId, clientSecret)
 } catch (e: GopaySDKException) {
     when (e.errorCode) {
         GopayErrorCodes.AUTH_ACCESS_TOKEN_EXPIRED -> refreshToken()
         GopayErrorCodes.NETWORK_TIMEOUT -> retryWithBackoff()
-        GopayErrorCodes.PAYMENT_INSUFFICIENT_FUNDS -> showAddFundsDialog()
+        GopayErrorCodes.AUTH_INVALID_CREDENTIALS -> showLoginError()
         else -> showGenericError(e.message)
     }
 }

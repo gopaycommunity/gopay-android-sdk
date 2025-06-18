@@ -105,7 +105,8 @@ class GopayApiServiceTest {
             cardArtUrl = "https://example.com/card-art.png",
             token = "test-card-token-12345",
             fingerprint = "test-fingerprint",
-            maskedVirtualPan = "4444************"
+            maskedVirtualPan = "4444************",
+            expiresIn = "123123123"
         )
         mockApiService.setCardTokenResponse(mockResponse)
         
@@ -150,7 +151,8 @@ class GopayApiServiceTest {
             cardArtUrl = "https://example.com",
             token = "acsdsadcdafhgdhsjgfjh",
             fingerprint = "AQFD",
-            maskedVirtualPan = "3242************"
+            maskedVirtualPan = "3242************",
+            expiresIn = "123123123"
         )
 
         fun setAuthenticateResponse(response: AuthResponse) {

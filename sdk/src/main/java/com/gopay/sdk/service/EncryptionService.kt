@@ -24,7 +24,7 @@ import javax.crypto.spec.PSource
  * Implements RFC 7516 JWE standard with RSA-OAEP-256 key encryption and A256GCM content encryption
  * Compatible with Nimbus JOSE+JWT library used by GoPay servers
  */
-class TokenizationService(
+class EncryptionService(
     private val tokenStorage: TokenStorage
 ) {
 
@@ -151,6 +151,9 @@ class TokenizationService(
      */
     private fun cardDataToJson(cardData: CardData): String {
         // Use JsonUtils for proper JSON serialization to avoid issues with special characters
+
+        // return "{\"card_pan\":\"${cardData.cardPan}\",\"exp_month\":\"${cardData.expMonth}\",\"exp_year\":\"${cardData.expYear}\",\"cvv\":\"${cardData.cvv}\"}"
+
         return JsonUtils.toJson(cardData)
             ?: throw IllegalStateException("Failed to serialize card data to JSON")
     }
@@ -214,4 +217,4 @@ class TokenizationService(
     private fun base64UrlDecode(encoded: String): ByteArray {
         return Base64Utils.decodeUrlSafe(encoded)
     }
-}
+} 

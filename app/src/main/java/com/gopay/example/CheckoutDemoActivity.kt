@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.gopay.example.ui.CheckoutScreen
+
 import com.gopay.example.ui.theme.ExampleAppTheme
 
 class CheckoutDemoActivity : ComponentActivity() {
@@ -13,7 +13,7 @@ class CheckoutDemoActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ExampleAppTheme {
-                CheckoutScreen()
+//                CheckoutScreen()
             }
         }
     }
