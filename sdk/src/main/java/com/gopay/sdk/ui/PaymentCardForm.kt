@@ -29,6 +29,20 @@ import androidx.compose.ui.unit.sp
 import com.gopay.sdk.GopaySDK
 import com.gopay.sdk.model.CardData
 import com.gopay.sdk.model.CardTokenResponse
+import com.gopay.sdk.ui.utils.CardNumberInputValidator
+import com.gopay.sdk.ui.utils.ExpirationDateInputValidator
+import com.gopay.sdk.ui.utils.CvvValidator
+import com.gopay.sdk.ui.utils.CardValidator
+import com.gopay.sdk.ui.utils.CardNumberVisualTransformation
+import com.gopay.sdk.ui.utils.ExpirationDateVisualTransformation
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.input.VisualTransformation
+import com.gopay.sdk.ui.utils.CardNumberMaskedVisualTransformation
+import com.gopay.sdk.ui.utils.CvvMaskedVisualTransformation
 
 /**
  * Result of card tokenization operation
@@ -45,16 +59,17 @@ data class InputFieldConfig(
     val label: String,
     val helperText: String? = null,
     val errorText: String? = null,
-    val hasError: Boolean = false
+    val hasError: Boolean = false,
+    val placeholder: String? = null
 )
 
 /**
  * Configuration for all input fields in the payment form
  */
 data class PaymentFormInputs(
-    val cardNumber: InputFieldConfig = InputFieldConfig(label = "Card Number"),
-    val expirationDate: InputFieldConfig = InputFieldConfig(label = "MM/YY"),
-    val cvv: InputFieldConfig = InputFieldConfig(label = "CVV")
+    val cardNumber: InputFieldConfig = InputFieldConfig(label = "Card Number", placeholder = "1234 1234 1234 1234"),
+    val expirationDate: InputFieldConfig = InputFieldConfig(label = "MM/YY", placeholder = "MM/YY"),
+    val cvv: InputFieldConfig = InputFieldConfig(label = "CVV", placeholder = "123")
 )
 
 /**
@@ -71,15 +86,11 @@ private fun formatExpirationForValidation(digits: String): String {
  * Helper function to parse expiration date
  */
 private fun parseExpirationDate(expirationDate: String): Pair<Int, Int>? {
-    val cleaned = expirationDate.replace("/", "")
-    if (cleaned.length != 4) return null
-    
-    val month = cleaned.substring(0, 2).toIntOrNull() ?: return null
-    val year = cleaned.substring(2, 4).toIntOrNull() ?: return null
-    
+    val parsed = CardValidator.parseExpirationDate(expirationDate) ?: return null
+    val month = parsed.first.toIntOrNull() ?: return null
+    val year = parsed.second.toIntOrNull() ?: return null
     if (month < 1 || month > 12) return null
-    
-    return Pair(month, 2000 + year) // Convert YY to full year
+    return Pair(month, 2000 + year)
 }
 
 /**
@@ -134,6 +145,15 @@ fun PaymentCardForm(
     var expirationDateDigits by remember { mutableStateOf("") }
     var cvv by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var isCardNumberFocused by remember { mutableStateOf(false) }
+    var isCvvFocused by remember { mutableStateOf(false) }
+    val isCardNumberValid = CardValidator.validateCardNumber(cardNumberDigits).isValid
+
+    // FocusRequesters for each field
+    val cardNumberFocusRequester = remember { FocusRequester() }
+    val expirationFocusRequester = remember { FocusRequester() }
+    val cvvFocusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
 
     // Create the submit function
     val submitCardData: suspend () -> TokenizationResult = {
@@ -210,10 +230,16 @@ fun PaymentCardForm(
             BasicTextField(
                 value = cardNumberDigits,
                 onValueChange = { newValue ->
-                    cardNumberDigits = CardNumberInputValidator.validateInput(newValue)
+                    val validated = CardNumberInputValidator.validateInput(newValue)
+                    cardNumberDigits = validated
+                    if (CardNumberInputValidator.isValidLength(validated) && CardNumberInputValidator.isValidLuhn(validated)) {
+                        coroutineScope.launch {
+                            expirationFocusRequester.requestFocus()
+                        }
+                    }
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                visualTransformation = CardNumberVisualTransformation(),
+                visualTransformation = if (!isCardNumberFocused && isCardNumberValid) CardNumberMaskedVisualTransformation() else CardNumberVisualTransformation(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(color = theme.inputBackgroundColor, shape = theme.inputShape)
@@ -222,9 +248,20 @@ fun PaymentCardForm(
                         color = if (inputFields.cardNumber.hasError) theme.inputErrorBorderColor else theme.inputBorderColor,
                         shape = theme.inputShape
                     )
-                    .padding(theme.inputPadding),
+                    .padding(theme.inputPadding)
+                    .focusRequester(cardNumberFocusRequester)
+                    .onFocusChanged { isCardNumberFocused = it.isFocused },
                 singleLine = true,
-                textStyle = theme.inputTextStyle
+                textStyle = theme.inputTextStyle,
+                decorationBox = { innerTextField ->
+                    if (cardNumberDigits.isEmpty() && inputFields.cardNumber.placeholder != null) {
+                        BasicText(
+                            text = inputFields.cardNumber.placeholder,
+                            style = theme.inputTextStyle.copy(color = Color.LightGray)
+                        )
+                    }
+                    innerTextField()
+                }
             )
             
             // Helper text or error text for card number
@@ -265,7 +302,13 @@ fun PaymentCardForm(
                 BasicTextField(
                     value = expirationDateDigits,
                     onValueChange = { newValue ->
-                        expirationDateDigits = ExpirationDateInputValidator.validateInput(newValue)
+                        val validated = ExpirationDateInputValidator.validateInput(newValue)
+                        expirationDateDigits = validated
+                        if (validated.length == 4) {
+                            coroutineScope.launch {
+                                cvvFocusRequester.requestFocus()
+                            }
+                        }
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     visualTransformation = ExpirationDateVisualTransformation(),
@@ -277,9 +320,19 @@ fun PaymentCardForm(
                             color = if (inputFields.expirationDate.hasError) theme.inputErrorBorderColor else theme.inputBorderColor,
                             shape = theme.inputShape
                         )
-                        .padding(theme.inputPadding),
+                        .padding(theme.inputPadding)
+                        .focusRequester(expirationFocusRequester),
                     singleLine = true,
-                    textStyle = theme.inputTextStyle
+                    textStyle = theme.inputTextStyle,
+                    decorationBox = { innerTextField ->
+                        if (expirationDateDigits.isEmpty() && inputFields.expirationDate.placeholder != null) {
+                            BasicText(
+                                text = inputFields.expirationDate.placeholder,
+                                style = theme.inputTextStyle.copy(color = Color.LightGray)
+                            )
+                        }
+                        innerTextField()
+                    }
                 )
                 
                 // Helper text or error text for expiration date
@@ -318,6 +371,7 @@ fun PaymentCardForm(
                         cvv = CvvValidator.validateInput(newValue, cvv)
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    visualTransformation = if (isCvvFocused) VisualTransformation.None else CvvMaskedVisualTransformation(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(color = theme.inputBackgroundColor, shape = theme.inputShape)
@@ -326,9 +380,20 @@ fun PaymentCardForm(
                             color = if (inputFields.cvv.hasError) theme.inputErrorBorderColor else theme.inputBorderColor,
                             shape = theme.inputShape
                         )
-                        .padding(theme.inputPadding),
+                        .padding(theme.inputPadding)
+                        .focusRequester(cvvFocusRequester)
+                        .onFocusChanged { isCvvFocused = it.isFocused },
                     singleLine = true,
-                    textStyle = theme.inputTextStyle
+                    textStyle = theme.inputTextStyle,
+                    decorationBox = { innerTextField ->
+                        if (cvv.isEmpty() && inputFields.cvv.placeholder != null) {
+                            BasicText(
+                                text = inputFields.cvv.placeholder,
+                                style = theme.inputTextStyle.copy(color = Color.LightGray)
+                            )
+                        }
+                        innerTextField()
+                    }
                 )
                 
                 // Helper text or error text for CVV

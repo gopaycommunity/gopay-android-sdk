@@ -1,6 +1,10 @@
 package com.gopay.sdk.ui
 
 import androidx.compose.ui.text.AnnotatedString
+import com.gopay.sdk.ui.utils.CardNumberInputValidator
+import com.gopay.sdk.ui.utils.ExpirationDateInputValidator
+import com.gopay.sdk.ui.utils.CardNumberVisualTransformation
+import com.gopay.sdk.ui.utils.ExpirationDateVisualTransformation
 import org.junit.Test
 import org.junit.Assert.*
 
@@ -131,13 +135,11 @@ class CardInputFormatterTest {
     fun `ExpirationDateInputValidator should validate future dates`() {
         // These tests may need updating when the current date changes
         // Valid future dates (assuming current date)
-        assertTrue(ExpirationDateInputValidator.isValidDate("1230")) // December 2030
-        
+        assertTrue(ExpirationDateInputValidator.isValidDate("12/30")) // December 2030
         // Invalid past dates
-        assertFalse(ExpirationDateInputValidator.isValidDate("0120")) // January 2020
-        
+        assertFalse(ExpirationDateInputValidator.isValidDate("01/20")) // January 2020
         // Invalid months
-        assertFalse(ExpirationDateInputValidator.isValidDate("1330")) // Month 13
-        assertFalse(ExpirationDateInputValidator.isValidDate("0030")) // Month 00
+        assertFalse(ExpirationDateInputValidator.isValidDate("13/30")) // Month 13
+        assertFalse(ExpirationDateInputValidator.isValidDate("00/30")) // Month 00
     }
 } 

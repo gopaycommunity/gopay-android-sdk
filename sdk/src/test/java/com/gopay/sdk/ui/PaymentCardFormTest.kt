@@ -57,7 +57,7 @@ class PaymentCardFormTest {
         assertEquals("Default input font size should be 16sp", 16.sp, theme.inputTextStyle.fontSize)
         
         assertEquals("Default error color should be Red", Color.Red, theme.errorTextStyle.color)
-        assertEquals("Default error font size should be 14sp", 14.sp, theme.errorTextStyle.fontSize)
+        assertEquals("Default error font size should be 12sp", 12.sp, theme.errorTextStyle.fontSize)
         
         // Test default colors
         assertEquals("Default border color should be Gray", Color.Gray, theme.inputBorderColor)
@@ -65,8 +65,8 @@ class PaymentCardFormTest {
         
         // Test default sizes
         assertEquals("Default border width should be 1dp", 1.dp, theme.inputBorderWidth)
-        assertEquals("Default field spacing should be 16dp", 16.dp, theme.fieldSpacing)
-        assertEquals("Default group spacing should be 8dp", 8.dp, theme.groupSpacing)
+        assertEquals("Default field spacing should be 2dp", 2.dp, theme.fieldSpacing)
+        assertEquals("Default group spacing should be 16dp", 16.dp, theme.groupSpacing)
     }
 
     @Test

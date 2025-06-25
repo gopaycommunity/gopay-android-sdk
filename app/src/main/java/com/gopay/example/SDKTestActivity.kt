@@ -456,15 +456,18 @@ fun PaymentCardFormDemo() {
             PaymentFormInputs(
                 cardNumber = InputFieldConfig(
                     label = "Card Number",
-                    helperText = ""
+                    helperText = "",
+                    placeholder = "1234 1234 1234 1234"
                 ),
                 expirationDate = InputFieldConfig(
                     label = "Expiry Date",
-                    helperText = ""
+                    helperText = "",
+                    placeholder = "12/27"
                 ),
                 cvv = InputFieldConfig(
                     label = "Security Code",
-                    helperText = ""
+                    helperText = "",
+                    placeholder = "123"
                 )
             )
         )
