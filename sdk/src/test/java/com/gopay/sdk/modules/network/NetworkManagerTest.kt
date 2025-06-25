@@ -51,17 +51,7 @@ class NetworkManagerTest {
         assertTrue("API service should be a GopayApiService instance", 
             apiService is GopayApiService)
     }
-    
-    @Test(expected = GopaySDKException::class)
-    fun testWithSecuritySettings_throwsException() {
-        // Given a NetworkManager
-        val networkManager = NetworkManager(defaultGopayConfig, mockContext)
-        
-        // When calling withSecuritySettings
-        // Then it should throw GopaySDKException
-        networkManager.withSecuritySettings(NetworkConfig(baseUrl = "https://example.com"))
-    }
-    
+
     @Test
     fun testConfigMapping() {
         // Given various GopayConfig values

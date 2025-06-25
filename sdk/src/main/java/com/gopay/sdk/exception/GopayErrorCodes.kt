@@ -110,6 +110,13 @@ object GopayErrorCodes {
     const val PAYMENT_TIMEOUT = "PAYMENT_007"
 
     // ========================================
+    // CARD ERRORS (CARD_XXX)
+    // ========================================
+    
+    /** Card tokenization failed */
+    const val CARD_TOKENIZATION_FAILED = "CARD_001"
+
+    // ========================================
     // VALIDATION ERRORS (VALIDATION_XXX)
     // ========================================
     
@@ -130,6 +137,9 @@ object GopayErrorCodes {
     
     /** Invalid phone number format */
     const val VALIDATION_INVALID_PHONE = "VALIDATION_006"
+    
+    /** Invalid input data provided */
+    const val VALIDATION_INVALID_INPUT = "VALIDATION_007"
 
     // ========================================
     // SECURITY ERRORS (SECURITY_XXX)

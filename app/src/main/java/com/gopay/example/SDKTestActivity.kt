@@ -42,6 +42,11 @@ import com.gopay.example.ui.theme.ExampleAppTheme
 import com.gopay.sdk.GopaySDK
 import com.gopay.sdk.exception.GopaySDKException
 import com.gopay.sdk.model.CardData
+import com.gopay.sdk.ui.PaymentCardForm
+import com.gopay.sdk.ui.PaymentCardFormTheme
+import com.gopay.sdk.ui.PaymentFormInputs
+import com.gopay.sdk.ui.InputFieldConfig
+import com.gopay.sdk.ui.TokenizationResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -387,6 +392,32 @@ fun SDKTestScreen() {
             }
         }
         
+        // PaymentCardForm Demo Section
+        if (isAuthenticated) {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Payment Card Form Demo",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    
+                    Text(
+                        text = "Secure card form with separate submit button",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    PaymentCardFormDemo()
+                }
+            }
+        }
+        
         // Results Section
         Card(
             modifier = Modifier.fillMaxWidth()
@@ -407,6 +438,221 @@ fun SDKTestScreen() {
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun PaymentCardFormDemo() {
+    var cardToken by remember { mutableStateOf<String?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isProcessing by remember { mutableStateOf(false) }
+    var submitCardData: (suspend () -> TokenizationResult)? by remember { mutableStateOf(null) }
+    
+    // State for managing input field configurations and validation errors
+    var inputFields by remember { 
+        mutableStateOf(
+            PaymentFormInputs(
+                cardNumber = InputFieldConfig(
+                    label = "Card Number",
+                    helperText = ""
+                ),
+                expirationDate = InputFieldConfig(
+                    label = "Expiry Date",
+                    helperText = ""
+                ),
+                cvv = InputFieldConfig(
+                    label = "Security Code",
+                    helperText = ""
+                )
+            )
+        )
+    }
+    
+    val scope = rememberCoroutineScope()
+
+    // Create a Material theme for the payment card form
+    val cardFormTheme = PaymentCardFormTheme(
+        labelTextStyle = MaterialTheme.typography.bodyMedium.copy(
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+        ),
+        inputTextStyle = MaterialTheme.typography.bodyLarge.copy(
+            color = MaterialTheme.colorScheme.onSurface
+        ),
+        helperTextStyle = MaterialTheme.typography.bodySmall.copy(
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        ),
+        errorTextStyle = MaterialTheme.typography.bodySmall.copy(
+            color = MaterialTheme.colorScheme.error
+        ),
+        loadingTextStyle = MaterialTheme.typography.bodySmall.copy(
+            color = MaterialTheme.colorScheme.primary
+        ),
+        inputBorderColor = MaterialTheme.colorScheme.outline,
+        inputErrorBorderColor = MaterialTheme.colorScheme.error,
+        inputBackgroundColor = MaterialTheme.colorScheme.surface,
+        inputShape = MaterialTheme.shapes.small,
+        inputBorderWidth = 1.dp
+    )
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Payment Card Form
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            PaymentCardForm(
+                onTokenizationComplete = { result ->
+                    isProcessing = false
+                    when (result) {
+                        is TokenizationResult.Success -> {
+                            cardToken = result.tokenResponse.token
+                            errorMessage = null
+                            // Clear any validation errors on success
+                            inputFields = inputFields.copy(
+                                cardNumber = inputFields.cardNumber.copy(hasError = false, errorText = null),
+                                expirationDate = inputFields.expirationDate.copy(hasError = false, errorText = null),
+                                cvv = inputFields.cvv.copy(hasError = false, errorText = null)
+                            )
+                        }
+                        is TokenizationResult.Error -> {
+                            cardToken = null
+                            errorMessage = result.message
+                        }
+                    }
+                },
+                onFormReady = { submitFn ->
+                    submitCardData = submitFn
+                },
+                onValidationError = { validation ->
+                    // Handle validation errors by updating input field states
+                    inputFields = inputFields.copy(
+                        cardNumber = inputFields.cardNumber.copy(
+                            hasError = !validation.cardNumber.isValid,
+                            errorText = if (!validation.cardNumber.isValid) 
+                                translateValidationError("cardNumber", validation.cardNumber.errorMessage)
+                            else null
+                        ),
+                        expirationDate = inputFields.expirationDate.copy(
+                            hasError = !validation.expirationDate.isValid,
+                            errorText = if (!validation.expirationDate.isValid) 
+                                translateValidationError("expirationDate", validation.expirationDate.errorMessage) 
+                            else null
+                        ),
+                        cvv = inputFields.cvv.copy(
+                            hasError = !validation.cvv.isValid,
+                            errorText = if (!validation.cvv.isValid) 
+                                translateValidationError("cvv", validation.cvv.errorMessage) 
+                            else null
+                        )
+                    )
+                    
+                    // Clear any previous general error message
+                    errorMessage = null
+                },
+                inputFields = inputFields,
+                theme = cardFormTheme,
+                permanent = false
+            )
+        }
+        
+        // Separate Submit Button
+        Button(
+            onClick = {
+                scope.launch {
+                    isProcessing = true
+                    cardToken = null
+                    errorMessage = null
+                    
+                    // Clear all validation errors and error states on submit
+                    inputFields = inputFields.copy(
+                        cardNumber = inputFields.cardNumber.copy(hasError = false, errorText = null),
+                        expirationDate = inputFields.expirationDate.copy(hasError = false, errorText = null),
+                        cvv = inputFields.cvv.copy(hasError = false, errorText = null)
+                    )
+                    
+                    try {
+                        submitCardData?.invoke()
+                        // Note: The result will be handled by onTokenizationComplete callback
+                        // so we don't need to do anything here
+                    } catch (e: Exception) {
+                        // Handle any unexpected errors
+                        isProcessing = false
+                        errorMessage = "Unexpected error: ${e.message}"
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = submitCardData != null && !isProcessing
+        ) {
+            if (isProcessing) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Text("Processing...")
+                }
+            } else {
+                Text("Submit Payment Card")
+            }
+        }
+        
+        // Results Display
+        cardToken?.let { token ->
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "✅ Card Token Generated Successfully!",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Token: ${token.take(30)}...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+        }
+        
+        errorMessage?.let { error ->
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "❌ Error",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
             }
         }
     }
@@ -443,6 +689,41 @@ private suspend fun authenticateUser(
         withContext(Dispatchers.Main) {
             onResult(false, "Unexpected error: ${e.message}")
         }
+    }
+}
+
+/**
+ * Helper function to translate validation error messages.
+ * In a real app, this would use proper localization resources.
+ */
+private fun translateValidationError(fieldType: String, originalMessage: String?): String {
+    // Return generic message if originalMessage is null
+    if (originalMessage == null) {
+        return when (fieldType) {
+            "cardNumber" -> "Invalid card number"
+            "expirationDate" -> "Invalid expiry date"
+            "cvv" -> "Invalid security code"
+            else -> "Validation error"
+        }
+    }
+    
+    // Example translation logic - in a real app this would use string resources
+    return when {
+        fieldType == "cardNumber" && originalMessage.contains("invalid", ignoreCase = true) -> 
+            "Please enter a valid card number"
+        fieldType == "cardNumber" && originalMessage.contains("required", ignoreCase = true) -> 
+            "Card number is required"
+        fieldType == "expirationDate" && originalMessage.contains("invalid", ignoreCase = true) -> 
+            "Please enter a valid expiry date (MM/YY)"
+        fieldType == "expirationDate" && originalMessage.contains("expired", ignoreCase = true) -> 
+            "This card has expired"
+        fieldType == "expirationDate" && originalMessage.contains("required", ignoreCase = true) -> 
+            "Expiry date is required"
+        fieldType == "cvv" && originalMessage.contains("invalid", ignoreCase = true) -> 
+            "Please enter a valid security code"
+        fieldType == "cvv" && originalMessage.contains("required", ignoreCase = true) -> 
+            "Security code is required"
+        else -> originalMessage // Fall back to original message
     }
 }
 

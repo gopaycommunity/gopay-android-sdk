@@ -89,18 +89,4 @@ internal class NetworkManager(
      */
     val tokenStorage: TokenStorage
         get() = _tokenStorage
-    
-    /**
-     * Updates the NetworkManager with custom SSL settings
-     * 
-     * @param networkConfig the network configuration with SSL settings
-     * @return a new NetworkManager with updated settings
-     */
-    fun withSecuritySettings(networkConfig: NetworkConfig): NetworkManager {
-        // This could be expanded to allow updating security settings after initialization
-        throw GopaySDKException(
-            errorCode = GopayErrorCodes.INTERNAL_NOT_IMPLEMENTED,
-            message = "Security settings configuration is not implemented yet"
-        )
-    }
 } 
