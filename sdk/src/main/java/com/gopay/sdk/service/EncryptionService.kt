@@ -150,12 +150,7 @@ class EncryptionService(
      * Converts card data to JSON string
      */
     private fun cardDataToJson(cardData: CardData): String {
-        // Use JsonUtils for proper JSON serialization to avoid issues with special characters
-
-        // return "{\"card_pan\":\"${cardData.cardPan}\",\"exp_month\":\"${cardData.expMonth}\",\"exp_year\":\"${cardData.expYear}\",\"cvv\":\"${cardData.cvv}\"}"
-
-        return JsonUtils.toJson(cardData)
-            ?: throw IllegalStateException("Failed to serialize card data to JSON")
+         return "{\"card_pan\":\"${cardData.cardPan}\",\"exp_month\":\"${cardData.expMonth}\",\"exp_year\":\"${cardData.expYear}\",\"cvv\":\"${cardData.cvv}\"}"
     }
 
     /**
