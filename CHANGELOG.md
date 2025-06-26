@@ -1,3 +1,22 @@
+# [1.3.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.2.0...1.3.0) (2025-06-26)
+
+
+### Bug Fixes
+
+* base64 android sdk 24 issue with reflection ([2db601f](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/2db601f9c4c7968aaf6910a394b375b094b2bd96))
+* reference error ([477ea4a](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/477ea4ae19f8dae241c9fd035522d95c3f217f84))
+* tokenstorage cypher issues ([77b2f5b](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/77b2f5b09ae5461c80a558a230f693a28c751252))
+
+
+### Features
+
+* add authentication endpoint ([ceee6e3](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/ceee6e3ad219baa8b16ddc08d681646ddd667a6f))
+* add token storage and tests ([bcd495b](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/bcd495bdfb0035056cd041f71b7e6a6a96e94b99))
+* add unified exception handling ([e21e189](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/e21e1894d127c533ced6e051460ad8113f853260))
+* example app demo space ([d61f005](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/d61f005dab7d52db9791698ad79fa0983da4da64))
+* introduce encryption to token storage ([1a23343](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/1a2334393167ebf79fa2858a3a04ed720abec84e))
+* jtw token handling ([faead8e](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/faead8ee5db6be0f59e26ce543d7a7e24edabe16))
+
 # [1.2.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.1.0...1.2.0) (2025-05-20)
 
 
