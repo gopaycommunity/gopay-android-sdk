@@ -7,21 +7,21 @@ import com.gopay.sdk.exception.GopayErrorCodes
 import com.gopay.sdk.exception.GopaySDKException
 import com.gopay.sdk.internal.GopayContextProvider
 import com.gopay.sdk.model.AuthenticationResponse
+import com.gopay.sdk.model.CardData
+import com.gopay.sdk.model.CardTokenResponse
 import com.gopay.sdk.model.Jwk
-import com.gopay.sdk.modules.network.NetworkManager
 import com.gopay.sdk.modules.network.GopayApiService
+import com.gopay.sdk.modules.network.NetworkManager
+import com.gopay.sdk.service.CardTokenizationService
+import com.gopay.sdk.service.EncryptionService
+import com.gopay.sdk.service.PublicKeyService
 import com.gopay.sdk.storage.TokenStorage
 import com.gopay.sdk.util.Base64Utils
-import com.gopay.sdk.util.JwtUtils
 import com.gopay.sdk.util.JsonUtils
+import com.gopay.sdk.util.JwtUtils
 import okhttp3.CertificatePinner
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509TrustManager
-import com.gopay.sdk.service.EncryptionService
-import com.gopay.sdk.service.PublicKeyService
-import com.gopay.sdk.service.CardTokenizationService
-import com.gopay.sdk.model.CardData
-import com.gopay.sdk.model.CardTokenResponse
 
 /**
  * Public interface for the Gopay SDK. Only methods in this interface are intended for public use.

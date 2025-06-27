@@ -1,7 +1,7 @@
 package com.gopay.sdk.modules.network
 
-import com.gopay.sdk.exception.GopaySDKException
 import com.gopay.sdk.exception.GopayErrorCodes
+import com.gopay.sdk.exception.GopaySDKException
 import com.gopay.sdk.exception.HttpErrorContext
 import com.gopay.sdk.storage.TokenStorage
 import com.gopay.sdk.util.JwtUtils

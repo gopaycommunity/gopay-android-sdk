@@ -2,8 +2,8 @@ package com.gopay.sdk.internal
 
 import android.app.Application
 import android.content.Context
-import com.gopay.sdk.exception.GopaySDKException
 import com.gopay.sdk.exception.GopayErrorCodes
+import com.gopay.sdk.exception.GopaySDKException
 
 /**
  * Internal utility for managing Application context in GopaySDK.

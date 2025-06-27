@@ -9,7 +9,10 @@ import com.gopay.sdk.model.AuthenticationResponse
 import com.gopay.sdk.storage.TokenStorage
 import com.gopay.sdk.util.JwtUtils
 import org.junit.After
-import org.junit.Assert.*
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.mock

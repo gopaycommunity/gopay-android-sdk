@@ -6,7 +6,10 @@ import com.gopay.sdk.config.Environment
 import com.gopay.sdk.config.GopayConfig
 import com.gopay.sdk.internal.GopayContextProvider
 import org.junit.After
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever

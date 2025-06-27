@@ -3,19 +3,15 @@ package com.gopay.sdk
 import android.content.Context
 import com.gopay.sdk.config.Environment
 import com.gopay.sdk.config.GopayConfig
+import com.gopay.sdk.exception.GopaySDKException
 import com.gopay.sdk.internal.GopayContextProvider
 import org.junit.After
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
-import com.gopay.sdk.exception.GopaySDKException
-import okhttp3.CertificatePinner
-import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLSocketFactory
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
-import java.security.cert.X509Certificate
 
 /**
  * Unit tests for the GopaySDK class.

@@ -3,23 +3,14 @@ package com.gopay.sdk.storage
 import android.content.Context
 import android.content.SharedPreferences
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertTrue
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
-import org.mockito.kotlin.spy
-import org.mockito.kotlin.doThrow
-import org.mockito.kotlin.doReturn
-import java.security.KeyStore
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
 
 class SharedPrefsTokenStorageTest {
 
