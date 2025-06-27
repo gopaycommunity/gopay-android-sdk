@@ -1,16 +1,37 @@
 package com.gopay.example
 
 import android.os.Bundle
-import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -19,13 +40,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.gopay.example.ui.theme.ExampleAppTheme
 import com.gopay.sdk.GopaySDK
-import com.gopay.sdk.config.Environment
-import com.gopay.sdk.config.GopayConfig
 import com.gopay.sdk.exception.GopaySDKException
-import com.gopay.sdk.exception.GopayErrorCodes
-import com.gopay.sdk.model.AuthenticationResponse
 import com.gopay.sdk.model.CardData
-import com.gopay.sdk.modules.network.GopayApiService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -46,8 +62,8 @@ class SDKTestActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SDKTestScreen() {
-    var username by remember { mutableStateOf("testclient") }
-    var password by remember { mutableStateOf("testsecret") }
+    var username by remember { mutableStateOf("SDK") }
+    var password by remember { mutableStateOf("hE8e8KNP") }
     var isAuthenticated by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var resultText by remember { mutableStateOf("Ready to test SDK methods") }

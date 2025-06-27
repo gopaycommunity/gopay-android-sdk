@@ -44,6 +44,31 @@ data class CardTokenRequest(
 )
 
 /**
+ * Card scheme enum
+ * Based on GoPay API specification for card tokenization
+ * https://speca.io/gopaycz/gopay-next-gen#card-scheme
+ */
+enum class CardScheme {
+    @Json(name = "VISA")
+    VISA,
+    @Json(name = "MASTERCARD")
+    MASTERCARD
+}
+
+
+/**
+ * Card scheme enum
+ * Based on GoPay API specification for card tokenization
+ * https://speca.io/gopaycz/gopay-next-gen#card-scheme
+ */
+enum class CardServiceType {
+    @Json(name = "DEBIT")
+    DEBIT,
+    @Json(name = "CREDIT")
+    CREDIT
+}
+
+/**
  * Card tokenization response
  * Maps server response fields (snake_case) to Kotlin properties (camelCase)
  * Based on actual GoPay API response format
@@ -55,7 +80,11 @@ data class CardTokenResponse(
     val expirationMonth: String,
     @Json(name = "expiration_year")
     val expirationYear: String,
+    val scheme: CardScheme,
     val brand: String,
+    @Json(name = "service_type")
+    val serviceType: CardServiceType,
+    val corporate: Boolean,
     val fingerprint: String,
     val token: String,
     @Json(name = "expires_in")
