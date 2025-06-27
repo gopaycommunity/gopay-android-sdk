@@ -80,15 +80,15 @@ data class CardTokenResponse(
     val expirationMonth: String,
     @Json(name = "expiration_year")
     val expirationYear: String,
-    val scheme: CardScheme,
-    val brand: String,
+    val scheme: CardScheme? = null,
+    val brand: String? = null,
     @Json(name = "service_type")
-    val serviceType: CardServiceType,
-    val corporate: Boolean,
+    val serviceType: CardServiceType? = null,
+    val corporate: Boolean? = null,
     val fingerprint: String,
     val token: String,
     @Json(name = "expires_in")
-    val expiresIn: String,
+    val expiresIn: String? = null,
     @Json(name = "card_art_url")
     val cardArtUrl: String? = null,
     @Json(name = "masked_virtual_pan")
