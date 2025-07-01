@@ -1,3 +1,20 @@
+# [1.4.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.3.0...1.4.0) (2025-07-01)
+
+
+### Bug Fixes
+
+* Card data json snake-case properties ([5b323a5](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/5b323a5e81f9ff7579fd608845852665ebccb000))
+* card tokenization response optional fields ([0451c32](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/0451c320c0cff404f9c1067082a3913023b89676))
+
+
+### Features
+
+* add public key api call ([755b85e](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/755b85ee3eac7a779501d2e3ec46da73db614b3e))
+* jwe data encryption and card tokenization ([18d23e0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/18d23e095db04e729c9b6ff6681c42a32ea76ed6))
+* public key ([f9d81ba](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/f9d81baca947ef7b74703f2027dda1e2bb362478))
+* public key api method GPMOB-60 ([52f3803](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/52f38035628291e99c78c15552272877cec54162))
+* SDK public facing interface ([0eda768](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/0eda768ec8c049645cad89765f271c608b8aac2c))
+
 # [1.3.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.2.0...1.3.0) (2025-06-26)
 
 
