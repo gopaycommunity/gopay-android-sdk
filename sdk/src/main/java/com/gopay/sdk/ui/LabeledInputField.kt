@@ -22,7 +22,10 @@ data class LabeledInputFieldConfig(
     val label: String,
     val error: String? = null,
     val helperText: String? = null,
-    val placeholder: String? = null
+    val placeholder: String? = null,
+    val textFieldModifier: Modifier = Modifier,
+    val keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    val visualTransformation: VisualTransformation = VisualTransformation.None
 )
 
 /**
@@ -34,9 +37,6 @@ fun LabeledInputField(
     onValueChange: (String) -> Unit,
     config: LabeledInputFieldConfig,
     modifier: Modifier = Modifier,
-    textFieldModifier: Modifier = Modifier,
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    visualTransformation: VisualTransformation = VisualTransformation.None,
     singleLine: Boolean = true,
     theme: PaymentCardFormTheme = PaymentCardFormTheme()
 ) {
@@ -53,9 +53,9 @@ fun LabeledInputField(
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
-            keyboardOptions = keyboardOptions,
-            visualTransformation = visualTransformation,
-            modifier = textFieldModifier
+            keyboardOptions = config.keyboardOptions,
+            visualTransformation = config.visualTransformation,
+            modifier = config.textFieldModifier
                 .fillMaxWidth()
                 .background(color = theme.inputBackgroundColor, shape = theme.inputShape)
                 .border(

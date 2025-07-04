@@ -187,13 +187,13 @@ fun PaymentCardForm(
                 label = inputFields.cardNumber.label,
                 error = inputFields.cardNumber.errorText,
                 helperText = inputFields.cardNumber.helperText,
-                placeholder = inputFields.cardNumber.placeholder
+                placeholder = inputFields.cardNumber.placeholder,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                visualTransformation = if (!isCardNumberFocused && isCardNumberValid) CardNumberMaskedVisualTransformation() else CardNumberVisualTransformation(),
+                textFieldModifier = Modifier
+                    .focusRequester(cardNumberFocusRequester)
+                    .onFocusChanged { isCardNumberFocused = it.isFocused }
             ),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            visualTransformation = if (!isCardNumberFocused && isCardNumberValid) CardNumberMaskedVisualTransformation() else CardNumberVisualTransformation(),
-            textFieldModifier = Modifier
-                .focusRequester(cardNumberFocusRequester)
-                .onFocusChanged { isCardNumberFocused = it.isFocused },
             theme = theme
         )
         // Expiration Date and CVV Row
@@ -217,12 +217,12 @@ fun PaymentCardForm(
                     label = inputFields.expirationDate.label,
                     error = inputFields.expirationDate.errorText,
                     helperText = inputFields.expirationDate.helperText,
-                    placeholder = inputFields.expirationDate.placeholder
+                    placeholder = inputFields.expirationDate.placeholder,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    visualTransformation = ExpirationDateVisualTransformation(),
+                    textFieldModifier = Modifier.focusRequester(expirationFocusRequester)
                 ),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                visualTransformation = ExpirationDateVisualTransformation(),
                 modifier = Modifier.weight(1f),
-                textFieldModifier = Modifier.focusRequester(expirationFocusRequester),
                 theme = theme
             )
             // CVV Input
@@ -235,14 +235,14 @@ fun PaymentCardForm(
                     label = inputFields.cvv.label,
                     error = inputFields.cvv.errorText,
                     helperText = inputFields.cvv.helperText,
-                    placeholder = inputFields.cvv.placeholder
+                    placeholder = inputFields.cvv.placeholder,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    visualTransformation = if (isCvvFocused) VisualTransformation.None else CvvMaskedVisualTransformation(),
+                    textFieldModifier = Modifier
+                        .focusRequester(cvvFocusRequester)
+                        .onFocusChanged { isCvvFocused = it.isFocused }
                 ),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                visualTransformation = if (isCvvFocused) VisualTransformation.None else CvvMaskedVisualTransformation(),
                 modifier = Modifier.weight(1f),
-                textFieldModifier = Modifier
-                    .focusRequester(cvvFocusRequester)
-                    .onFocusChanged { isCvvFocused = it.isFocused },
                 theme = theme
             )
         }
