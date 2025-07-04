@@ -113,8 +113,8 @@ object CardValidator {
         if (month < 1 || month > 12) return false
         val fullYear = if (year < 50) 2000 + year else 1900 + year
         val calendar = java.util.Calendar.getInstance()
-        val currentYear = calendar.get(java.util.Calendar.YEAR)
-        val currentMonth = calendar.get(java.util.Calendar.MONTH) + 1
+        val currentYear = calendar[java.util.Calendar.YEAR]
+        val currentMonth = calendar[java.util.Calendar.MONTH] + 1
         val maxYear = currentYear + 10
         val isNotPast = when {
             fullYear > currentYear -> true

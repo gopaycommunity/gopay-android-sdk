@@ -227,12 +227,25 @@ class GopaySDK private constructor(
     override fun logout() {
         getTokenStorage().clear()
     }
-
+    
     /**
-     * [DEV/INTERNAL] Tokenizes a card by encrypting card data and calling GoPay API.
-     *
      * WARNING: This method is intended for development and internal testing only.
      * It should NOT be called in production code. This API will be made private in production releases.
+     *
+     * @param cardData The card information to tokenize
+     * @return CardTokenResponse containing token and card metadata
+     * @throws IllegalArgumentException for invalid card data
+     * @throws IllegalStateException if no access token is available
+     * @throws Exception for encryption, network, or API errors
+     */
+    @Deprecated("This method is for development/testing only and will be made private in production.", level = DeprecationLevel.WARNING,
+        replaceWith = ReplaceWith("tokenizeCard(cardData, permanent = false)")
+    )
+    suspend fun tokenizeCard(cardData: CardData): CardTokenResponse {
+        return tokenizeCard(cardData, permanent = false)
+    }
+    /**
+     * Tokenizes a card by encrypting card data and calling GoPay API
      *
      * @param cardData The card information to tokenize
      * @param permanent Whether to save the card for permanent usage (default: false)
@@ -241,16 +254,24 @@ class GopaySDK private constructor(
      * @throws IllegalStateException if no access token is available
      * @throws Exception for encryption, network, or API errors
      */
-    @Deprecated("This method is for development/testing only and will be made private in production.", level = DeprecationLevel.WARNING)
-    suspend fun tokenizeCard(cardData: CardData, permanent: Boolean = false): CardTokenResponse {
+    internal suspend fun tokenizeCard(cardData: CardData, permanent: Boolean = false): CardTokenResponse {
         return cardTokenizationService.tokenizeCardWithValidation(cardData, permanent)
     }
 
     /**
-     * [DEV/INTERNAL] Gets the public encryption key used for encrypting card data.
+     * Gets the public encryption key used for encrypting card data.
      * This method first checks for a cached key in storage and only fetches from the API if needed.
      * This method should be called from a coroutine context.
      *
+     * @param forceRefresh If true, bypasses cache and fetches fresh key from API
+     * @return JwkResponse containing the public encryption key
+     * @throws GopaySDKException if the request fails or user is not authenticated
+     */
+    internal suspend fun getPublicKey(forceRefresh: Boolean = false): Jwk {
+        return publicKeyService.getPublicKey()
+    }
+
+    /**
      * WARNING: This method is intended for development and internal testing only.
      * It should NOT be called in production code. This API will be made private in production releases.
      *
@@ -258,79 +279,11 @@ class GopaySDK private constructor(
      * @return JwkResponse containing the public encryption key
      * @throws GopaySDKException if the request fails or user is not authenticated
      */
-    @Deprecated("This method is for development/testing only and will be made private in production.", level = DeprecationLevel.WARNING)
-    suspend fun getPublicKey(forceRefresh: Boolean = false): Jwk {
-        try {
-            val tokenStorage = getTokenStorage()
-
-            // Check for cached key first (unless force refresh is requested)
-            if (!forceRefresh) {
-                val cachedKey = tokenStorage.getPublicKey()
-                if (cachedKey != null) {
-                    // Try to parse the cached key to ensure it's valid JSON
-                    try {
-                        val parsedKey: Jwk? = JsonUtils.fromJson(cachedKey)
-                        if (parsedKey != null) {
-                            return parsedKey
-                        }
-                    } catch (e: Exception) {
-                        // If cached key is invalid, continue to fetch fresh key
-                        // Log or ignore the parse error and fetch from API
-                    }
-                }
-            }
-
-            // Call the API service - AuthenticationInterceptor handles token validation and refresh
-            val response = networkManager.apiService.getPublicKey()
-
-            if (!response.isSuccessful) {
-                throw GopaySDKException(
-                    errorCode = GopayErrorCodes.NETWORK_SERVER_ERROR,
-                    message = "Failed to fetch public key: ${response.code()} ${response.message()}"
-                )
-            }
-
-            val jwk = response.body()
-                ?: throw GopaySDKException(
-                    errorCode = GopayErrorCodes.NETWORK_SERVER_ERROR,
-                    message = "Empty response body when fetching public key"
-                )
-
-            // Convert Jwk to JwkResponse for backward compatibility
-            val publicKeyResponse = Jwk(
-                kty = jwk.kty,
-                kid = jwk.kid,
-                use = jwk.use,
-                alg = jwk.alg,
-                n = jwk.n,
-                e = jwk.e
-            )
-
-            // Cache the public key for future use
-            try {
-                val publicKeyJson = JsonUtils.toJson(publicKeyResponse)
-                if (publicKeyJson != null) {
-                    tokenStorage.savePublicKey(publicKeyJson)
-                }
-                // If serialization fails, continue without caching
-                // This won't affect the main functionality
-            } catch (e: Exception) {
-                // If serialization fails, continue without caching
-                // This won't affect the main functionality
-            }
-
-            return publicKeyResponse
-
-        } catch (e: Exception) {
-            when (e) {
-                is GopaySDKException -> throw e
-                else -> throw GopaySDKException(
-                    errorCode = GopayErrorCodes.NETWORK_SERVER_ERROR,
-                    message = "Failed to retrieve public key: ${e.message}",
-                    cause = e
-                )
-            }
-        }
+    @Deprecated("This method is for development/testing only and will be made private in production.", level = DeprecationLevel.WARNING,
+        replaceWith = ReplaceWith("getPublicKey(false)")
+    )
+    suspend fun getPublicKey(): Jwk {
+        return getPublicKey(false)
     }
 
     companion object {

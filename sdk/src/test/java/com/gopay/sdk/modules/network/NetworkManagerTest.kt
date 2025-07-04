@@ -3,8 +3,6 @@ package com.gopay.sdk.modules.network
 import android.content.Context
 import com.gopay.sdk.config.Environment
 import com.gopay.sdk.config.GopayConfig
-import com.gopay.sdk.config.NetworkConfig
-import com.gopay.sdk.exception.GopaySDKException
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before

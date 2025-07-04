@@ -364,7 +364,7 @@ fun SDKTestScreen() {
                                     
                                     // Use the SDK entrypoint for card tokenization
                                     val response = withContext(Dispatchers.IO) {
-                                        GopaySDK.getInstance().tokenizeCard(cardData, permanent = false)
+                                        GopaySDK.getInstance().tokenizeCard(cardData)
                                     }
                                     resultText = "✅ Full card tokenization successful!\n\n" +
                                             "🏦 API Response:\n" +

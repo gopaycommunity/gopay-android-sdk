@@ -1,28 +1,28 @@
 package com.gopay.sdk.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,19 +30,14 @@ import com.gopay.sdk.GopaySDK
 import com.gopay.sdk.model.CardData
 import com.gopay.sdk.model.CardTokenResponse
 import com.gopay.sdk.ui.utils.CardNumberInputValidator
-import com.gopay.sdk.ui.utils.ExpirationDateInputValidator
-import com.gopay.sdk.ui.utils.CvvValidator
-import com.gopay.sdk.ui.utils.CardValidator
-import com.gopay.sdk.ui.utils.CardNumberVisualTransformation
-import com.gopay.sdk.ui.utils.ExpirationDateVisualTransformation
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.text.input.VisualTransformation
 import com.gopay.sdk.ui.utils.CardNumberMaskedVisualTransformation
+import com.gopay.sdk.ui.utils.CardNumberVisualTransformation
+import com.gopay.sdk.ui.utils.CardValidator
 import com.gopay.sdk.ui.utils.CvvMaskedVisualTransformation
+import com.gopay.sdk.ui.utils.CvvValidator
+import com.gopay.sdk.ui.utils.ExpirationDateInputValidator
+import com.gopay.sdk.ui.utils.ExpirationDateVisualTransformation
+import kotlinx.coroutines.launch
 
 /**
  * Result of card tokenization operation
@@ -144,7 +139,6 @@ fun PaymentCardForm(
     var cardNumberDigits by remember { mutableStateOf("") }
     var expirationDateDigits by remember { mutableStateOf("") }
     var cvv by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(false) }
     var isCardNumberFocused by remember { mutableStateOf(false) }
     var isCvvFocused by remember { mutableStateOf(false) }
     val isCardNumberValid = CardValidator.validateCardNumber(cardNumberDigits).isValid
@@ -157,53 +151,14 @@ fun PaymentCardForm(
 
     // Create the submit function
     val submitCardData: suspend () -> TokenizationResult = {
-        val result = try {
-            isLoading = true
-            
-            // Validate all fields first
-            val validation = CardValidator.validateCard(
-                cardNumber = cardNumberDigits,
-                expirationDate = formatExpirationForValidation(expirationDateDigits),
-                cvv = cvv
-            )
-            
-            if (!validation.isAllValid) {
-                // Call validation error callback if provided
-                onValidationError?.invoke(validation)
-                throw IllegalArgumentException("Please fix the validation errors")
-            }
-            
-            // Parse expiration date using utility
-            val formattedExpDate = formatExpirationForValidation(expirationDateDigits)
-            val expParts = parseExpirationDate(formattedExpDate)
-                ?: throw IllegalArgumentException("Invalid expiration date format. Use MM/YY")
-            
-            val (expMonth, expYear) = expParts
-            
-            // Create card data - this stays within the SDK
-            val cardData = CardData(
-                cardPan = cardNumberDigits,
-                expMonth = expMonth.toString().padStart(2, '0'),
-                expYear = expYear.toString(),
-                cvv = cvv
-            )
-            
-            // Use SDK to tokenize card (using existing method)
-            val tokenResponse = GopaySDK.getInstance().tokenizeCard(cardData, permanent)
-            
-            TokenizationResult.Success(tokenResponse)
-        } catch (e: Exception) {
-            TokenizationResult.Error(
-                message = e.message ?: "Card tokenization failed",
-                exception = e
-            )
-        } finally {
-            isLoading = false
-        }
-        
-        // Call the completion callback with the result
-        onTokenizationComplete(result)
-        result
+        submitCardDataImpl(
+            cardNumberDigits = cardNumberDigits,
+            expirationDateDigits = expirationDateDigits,
+            cvv = cvv,
+            permanent = permanent,
+            onTokenizationComplete = onTokenizationComplete,
+            onValidationError = onValidationError
+        )
     }
 
     // Provide the submit function to parent if callback is provided
@@ -217,212 +172,132 @@ fun PaymentCardForm(
         verticalArrangement = Arrangement.spacedBy(theme.fieldSpacing)
     ) {
         // Card Number Input
-        Column {
-            BasicText(
-                text = inputFields.cardNumber.label,
-                style = if (inputFields.cardNumber.hasError) {
-                    theme.labelTextStyle.copy(color = theme.errorTextStyle.color)
-                } else {
-                    theme.labelTextStyle
-                },
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-            BasicTextField(
-                value = cardNumberDigits,
-                onValueChange = { newValue ->
-                    val validated = CardNumberInputValidator.validateInput(newValue)
-                    cardNumberDigits = validated
-                    if (CardNumberInputValidator.isValidLength(validated) && CardNumberInputValidator.isValidLuhn(validated)) {
-                        coroutineScope.launch {
-                            expirationFocusRequester.requestFocus()
-                        }
+        LabeledInputField(
+            value = cardNumberDigits,
+            onValueChange = { newValue ->
+                val validated = CardNumberInputValidator.validateInput(newValue)
+                cardNumberDigits = validated
+                if (CardNumberInputValidator.isValidLength(validated) && CardNumberInputValidator.isValidLuhn(validated)) {
+                    coroutineScope.launch {
+                        expirationFocusRequester.requestFocus()
                     }
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                visualTransformation = if (!isCardNumberFocused && isCardNumberValid) CardNumberMaskedVisualTransformation() else CardNumberVisualTransformation(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(color = theme.inputBackgroundColor, shape = theme.inputShape)
-                    .border(
-                        width = theme.inputBorderWidth,
-                        color = if (inputFields.cardNumber.hasError) theme.inputErrorBorderColor else theme.inputBorderColor,
-                        shape = theme.inputShape
-                    )
-                    .padding(theme.inputPadding)
-                    .focusRequester(cardNumberFocusRequester)
-                    .onFocusChanged { isCardNumberFocused = it.isFocused },
-                singleLine = true,
-                textStyle = theme.inputTextStyle,
-                decorationBox = { innerTextField ->
-                    if (cardNumberDigits.isEmpty() && inputFields.cardNumber.placeholder != null) {
-                        BasicText(
-                            text = inputFields.cardNumber.placeholder,
-                            style = theme.inputTextStyle.copy(color = Color.LightGray)
-                        )
-                    }
-                    innerTextField()
                 }
-            )
-            
-            // Helper text or error text for card number
-            when {
-                inputFields.cardNumber.hasError && inputFields.cardNumber.errorText != null -> {
-                    BasicText(
-                        text = inputFields.cardNumber.errorText!!,
-                        style = theme.errorTextStyle,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-                inputFields.cardNumber.helperText != null -> {
-                    BasicText(
-                        text = inputFields.cardNumber.helperText!!,
-                        style = theme.helperTextStyle,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-            }
-        }
-        
+            },
+            config = LabeledInputFieldConfig(
+                label = inputFields.cardNumber.label,
+                error = inputFields.cardNumber.errorText,
+                helperText = inputFields.cardNumber.helperText,
+                placeholder = inputFields.cardNumber.placeholder
+            ),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            visualTransformation = if (!isCardNumberFocused && isCardNumberValid) CardNumberMaskedVisualTransformation() else CardNumberVisualTransformation(),
+            textFieldModifier = Modifier
+                .focusRequester(cardNumberFocusRequester)
+                .onFocusChanged { isCardNumberFocused = it.isFocused },
+            theme = theme
+        )
         // Expiration Date and CVV Row
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(theme.groupSpacing)
         ) {
             // Expiration Date
-            Column(modifier = Modifier.weight(1f)) {
-                BasicText(
-                    text = inputFields.expirationDate.label,
-                    style = if (inputFields.expirationDate.hasError) {
-                        theme.labelTextStyle.copy(color = theme.errorTextStyle.color)
-                    } else {
-                        theme.labelTextStyle
-                    },
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                BasicTextField(
-                    value = expirationDateDigits,
-                    onValueChange = { newValue ->
-                        val validated = ExpirationDateInputValidator.validateInput(newValue)
-                        expirationDateDigits = validated
-                        if (validated.length == 4) {
-                            coroutineScope.launch {
-                                cvvFocusRequester.requestFocus()
-                            }
+            LabeledInputField(
+                value = expirationDateDigits,
+                onValueChange = { newValue ->
+                    val validated = ExpirationDateInputValidator.validateInput(newValue)
+                    expirationDateDigits = validated
+                    if (validated.length == 4) {
+                        coroutineScope.launch {
+                            cvvFocusRequester.requestFocus()
                         }
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    visualTransformation = ExpirationDateVisualTransformation(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(color = theme.inputBackgroundColor, shape = theme.inputShape)
-                        .border(
-                            width = theme.inputBorderWidth,
-                            color = if (inputFields.expirationDate.hasError) theme.inputErrorBorderColor else theme.inputBorderColor,
-                            shape = theme.inputShape
-                        )
-                        .padding(theme.inputPadding)
-                        .focusRequester(expirationFocusRequester),
-                    singleLine = true,
-                    textStyle = theme.inputTextStyle,
-                    decorationBox = { innerTextField ->
-                        if (expirationDateDigits.isEmpty() && inputFields.expirationDate.placeholder != null) {
-                            BasicText(
-                                text = inputFields.expirationDate.placeholder,
-                                style = theme.inputTextStyle.copy(color = Color.LightGray)
-                            )
-                        }
-                        innerTextField()
                     }
-                )
-                
-                // Helper text or error text for expiration date
-                when {
-                    inputFields.expirationDate.hasError && inputFields.expirationDate.errorText != null -> {
-                        BasicText(
-                            text = inputFields.expirationDate.errorText!!,
-                            style = theme.errorTextStyle,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    inputFields.expirationDate.helperText != null -> {
-                        BasicText(
-                            text = inputFields.expirationDate.helperText!!,
-                            style = theme.helperTextStyle,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-            }
-            
+                },
+                config = LabeledInputFieldConfig(
+                    label = inputFields.expirationDate.label,
+                    error = inputFields.expirationDate.errorText,
+                    helperText = inputFields.expirationDate.helperText,
+                    placeholder = inputFields.expirationDate.placeholder
+                ),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                visualTransformation = ExpirationDateVisualTransformation(),
+                modifier = Modifier.weight(1f),
+                textFieldModifier = Modifier.focusRequester(expirationFocusRequester),
+                theme = theme
+            )
             // CVV Input
-            Column(modifier = Modifier.weight(1f)) {
-                BasicText(
-                    text = inputFields.cvv.label,
-                    style = if (inputFields.cvv.hasError) {
-                        theme.labelTextStyle.copy(color = theme.errorTextStyle.color)
-                    } else {
-                        theme.labelTextStyle
-                    },
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                BasicTextField(
-                    value = cvv,
-                    onValueChange = { newValue ->
-                        cvv = CvvValidator.validateInput(newValue, cvv)
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    visualTransformation = if (isCvvFocused) VisualTransformation.None else CvvMaskedVisualTransformation(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(color = theme.inputBackgroundColor, shape = theme.inputShape)
-                        .border(
-                            width = theme.inputBorderWidth,
-                            color = if (inputFields.cvv.hasError) theme.inputErrorBorderColor else theme.inputBorderColor,
-                            shape = theme.inputShape
-                        )
-                        .padding(theme.inputPadding)
-                        .focusRequester(cvvFocusRequester)
-                        .onFocusChanged { isCvvFocused = it.isFocused },
-                    singleLine = true,
-                    textStyle = theme.inputTextStyle,
-                    decorationBox = { innerTextField ->
-                        if (cvv.isEmpty() && inputFields.cvv.placeholder != null) {
-                            BasicText(
-                                text = inputFields.cvv.placeholder,
-                                style = theme.inputTextStyle.copy(color = Color.LightGray)
-                            )
-                        }
-                        innerTextField()
-                    }
-                )
-                
-                // Helper text or error text for CVV
-                when {
-                    inputFields.cvv.hasError && inputFields.cvv.errorText != null -> {
-                        BasicText(
-                            text = inputFields.cvv.errorText!!,
-                            style = theme.errorTextStyle,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    inputFields.cvv.helperText != null -> {
-                        BasicText(
-                            text = inputFields.cvv.helperText!!,
-                            style = theme.helperTextStyle,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        // Loading indicator
-        if (isLoading) {
-            BasicText(
-                text = "Processing...",
-                style = theme.loadingTextStyle,
-                modifier = Modifier.padding(vertical = 8.dp)
+            LabeledInputField(
+                value = cvv,
+                onValueChange = { newValue ->
+                    cvv = CvvValidator.validateInput(newValue, cvv)
+                },
+                config = LabeledInputFieldConfig(
+                    label = inputFields.cvv.label,
+                    error = inputFields.cvv.errorText,
+                    helperText = inputFields.cvv.helperText,
+                    placeholder = inputFields.cvv.placeholder
+                ),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                visualTransformation = if (isCvvFocused) VisualTransformation.None else CvvMaskedVisualTransformation(),
+                modifier = Modifier.weight(1f),
+                textFieldModifier = Modifier
+                    .focusRequester(cvvFocusRequester)
+                    .onFocusChanged { isCvvFocused = it.isFocused },
+                theme = theme
             )
         }
+    }
+}
+
+private suspend fun submitCardDataImpl(
+    cardNumberDigits: String,
+    expirationDateDigits: String,
+    cvv: String,
+    permanent: Boolean,
+    onTokenizationComplete: (TokenizationResult) -> Unit,
+    onValidationError: ((CardValidator.CardValidationResult) -> Unit)?
+): TokenizationResult {
+    return try {
+        // Validate all fields first
+        val validation = CardValidator.validateCard(
+            cardNumber = cardNumberDigits,
+            expirationDate = formatExpirationForValidation(expirationDateDigits),
+            cvv = cvv
+        )
+
+        if (!validation.isAllValid) {
+            // Call validation error callback if provided
+            onValidationError?.invoke(validation)
+            throw IllegalArgumentException("Please fix the validation errors")
+        }
+
+        // Parse expiration date using utility
+        val formattedExpDate = formatExpirationForValidation(expirationDateDigits)
+        val expParts = parseExpirationDate(formattedExpDate)
+            ?: throw IllegalArgumentException("Invalid expiration date format. Use MM/YY")
+
+        val (expMonth, expYear) = expParts
+
+        // Create card data - this stays within the SDK
+        val cardData = CardData(
+            cardPan = cardNumberDigits,
+            expMonth = expMonth.toString().padStart(2, '0'),
+            expYear = expYear.toString(),
+            cvv = cvv
+        )
+
+        // Use SDK to tokenize card (using existing method)
+        val tokenResponse = GopaySDK.getInstance().tokenizeCard(cardData, permanent)
+
+        val result = TokenizationResult.Success(tokenResponse)
+        onTokenizationComplete(result)
+        result
+    } catch (e: Exception) {
+        val result = TokenizationResult.Error(
+            message = e.message ?: "Card tokenization failed",
+            exception = e
+        )
+        onTokenizationComplete(result)
+        result
     }
 } 
