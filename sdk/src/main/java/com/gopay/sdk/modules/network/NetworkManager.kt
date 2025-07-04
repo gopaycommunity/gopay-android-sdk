@@ -3,8 +3,6 @@ package com.gopay.sdk.modules.network
 import android.content.Context
 import com.gopay.sdk.config.GopayConfig
 import com.gopay.sdk.config.NetworkConfig
-import com.gopay.sdk.exception.GopayErrorCodes
-import com.gopay.sdk.exception.GopaySDKException
 import com.gopay.sdk.storage.SharedPrefsTokenStorage
 import com.gopay.sdk.storage.TokenStorage
 import okhttp3.CertificatePinner

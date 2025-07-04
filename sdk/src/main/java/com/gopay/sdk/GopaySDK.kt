@@ -17,7 +17,6 @@ import com.gopay.sdk.service.EncryptionService
 import com.gopay.sdk.service.PublicKeyService
 import com.gopay.sdk.storage.TokenStorage
 import com.gopay.sdk.util.Base64Utils
-import com.gopay.sdk.util.JsonUtils
 import com.gopay.sdk.util.JwtUtils
 import okhttp3.CertificatePinner
 import javax.net.ssl.SSLSocketFactory
