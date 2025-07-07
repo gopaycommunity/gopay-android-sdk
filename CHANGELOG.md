@@ -1,3 +1,12 @@
+# [1.5.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.4.0...1.5.0) (2025-07-07)
+
+
+### Features
+
+* card form validations and formatters GPMOB-67 ([d0ebfd1](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/d0ebfd193a8e985875ef62d0d614b092f4876bd4))
+* PaymentCard form GPMOB-67 ([27bf103](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/27bf1033cd0c709294e604ac40efb214b3614b07))
+* update readme GPMOB-67 ([4243eb0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/4243eb01717c6641e4b6962276d6692ded147e25))
+
 # [1.4.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.3.0...1.4.0) (2025-07-01)
 
 
