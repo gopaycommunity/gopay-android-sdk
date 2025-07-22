@@ -16,6 +16,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven {
+            name = "localRepo"
+            url = uri("${rootProject.projectDir}/sdk/build/repo")
+        }
     }
 }
 

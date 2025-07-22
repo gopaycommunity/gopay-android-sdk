@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     jacoco
+    `maven-publish`
 }
 
 android {
@@ -40,6 +41,95 @@ android {
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.1"
+    }
+}
+
+// Publishing configuration
+afterEvaluate {
+    publishing {
+        publications {
+            create<MavenPublication>("release") {
+                groupId = project.findProperty("sdk.groupId") as String? ?: "com.gopay"
+                artifactId = project.findProperty("sdk.artifactId") as String? ?: "sdk"
+                version = project.findProperty("sdk.version") as String? ?: "1.0.0"
+
+                from(components["release"])
+                
+                pom {
+                    name.set("GoPay Android SDK")
+                    description.set("Android SDK for GoPay payment integration")
+                    url.set("https://github.com/gopay/gpy-sdk-android")
+                    
+                    licenses {
+                        license {
+                            name.set("MIT License")
+                            url.set("https://opensource.org/licenses/MIT")
+                        }
+                    }
+                    
+                    developers {
+                        developer {
+                            id.set("gopay")
+                            name.set("GoPay Team")
+                            email.set("dev@gopay.com")
+                        }
+                    }
+                    
+                    scm {
+                        connection.set("scm:git:git://github.com/gopay/gpy-sdk-android.git")
+                        developerConnection.set("scm:git:ssh://github.com/gopay/gpy-sdk-android.git")
+                        url.set("https://github.com/gopay/gpy-sdk-android")
+                    }
+                }
+            }
+        }
+        
+        repositories {
+            // Local Maven repository for testing
+            maven {
+                name = "localRepo"
+                url = uri(layout.buildDirectory.dir("repo"))
+            }
+            
+            // Maven Local for development
+            mavenLocal()
+            
+            // Example: Remote repository (uncomment and configure as needed)
+            // maven {
+            //     name = "releaseRepo"
+            //     url = uri("https://your-maven-repo.com/releases")
+            //     credentials {
+            //         username = project.findProperty("mavenUsername") as String? ?: ""
+            //         password = project.findProperty("mavenPassword") as String? ?: ""
+            //     }
+            // }
+        }
+    }
+}
+
+// Custom tasks for publishing
+tasks.register("publishToLocalRepo") {
+    group = "publishing"
+    description = "Publishes the SDK to local Maven repository"
+    dependsOn("publishReleasePublicationToLocalRepoRepository")
+}
+
+// Task to show publishing information
+tasks.register("showPublishingInfo") {
+    group = "publishing"
+    description = "Shows the current publishing configuration"
+    
+    doLast {
+        val groupId = project.findProperty("sdk.groupId") as String? ?: "com.gopay"
+        val artifactId = project.findProperty("sdk.artifactId") as String? ?: "sdk"
+        val version = project.findProperty("sdk.version") as String? ?: "1.0.0"
+        
+        println("=== GoPay SDK Publishing Configuration ===")
+        println("Group ID: $groupId")
+        println("Artifact ID: $artifactId")
+        println("Version: $version")
+        println("Namespace: ${android.namespace}")
+        println("================================")
     }
 }
 
