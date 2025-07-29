@@ -5,19 +5,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Unit tests for the Environment enum.
+ * Unit tests for the Environment sealed class.
  */
 class EnvironmentTest {
 
     @Test
-    fun testEnvironmentValues() {
-        // Verify that all expected environments are defined
-        val environments = Environment.values()
-        assertEquals(4, environments.size)
-        assertTrue(environments.any { it.name == "PRODUCTION" })
-        assertTrue(environments.any { it.name == "SANDBOX" })
-        assertTrue(environments.any { it.name == "DEVELOPMENT" })
-        assertTrue(environments.any { it.name == "STAGING" })
+    fun testEnvironmentTypes() {
+        // Verify that all expected environments are defined and have correct types
+        assertTrue(Environment.PRODUCTION is Environment)
+        assertTrue(Environment.SANDBOX is Environment)
+        
+        // Verify specific object types
+        assertTrue(Environment.PRODUCTION is Environment.PRODUCTION)
+        assertTrue(Environment.SANDBOX is Environment.SANDBOX)
     }
 
     @Test
@@ -33,21 +33,37 @@ class EnvironmentTest {
     }
 
     @Test
-    fun testDevelopmentEnvironment() {
-        // Verify development environment properties
-        assertEquals("https://gw.alpha8.dev.gopay.com/gp-gw/api/4.0/", Environment.DEVELOPMENT.apiBaseUrl)
+    fun testDevelopmentEnvironmentWithCustomUrl() {
+        // Verify development environment with custom URL
+        val customUrl = "https://localhost:8080"
+        val developmentEnv = Environment.DEVELOPMENT.create(customUrl)
+        assertEquals("https://localhost:8080/", developmentEnv.apiBaseUrl)
     }
 
     @Test
-    fun testStagingEnvironment() {
-        // Verify staging environment properties
-        assertEquals("https://api.staging.gopay.com/v1/", Environment.STAGING.apiBaseUrl)
+    fun testDevelopmentEnvironmentWithTrailingSlash() {
+        // Verify development environment handles trailing slash correctly
+        val customUrl = "https://localhost:8080/"
+        val developmentEnv = Environment.DEVELOPMENT.create(customUrl)
+        assertEquals("https://localhost:8080/", developmentEnv.apiBaseUrl)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testDevelopmentEnvironmentWithEmptyUrl() {
+        // Verify development environment rejects empty URL
+        Environment.DEVELOPMENT.create("")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testDevelopmentEnvironmentWithInvalidUrl() {
+        // Verify development environment rejects invalid URL
+        Environment.DEVELOPMENT.create("invalid-url")
     }
 
     @Test
     fun testEndpointComposition() {
         // Verify that we can compose full endpoints correctly
-        val paymentEndpoint = Environment.PRODUCTION.apiBaseUrl + GopayConfig.PAYMENT_ENDPOINT
+        val paymentEndpoint = Environment.PRODUCTION.apiBaseUrl + "payments"
         assertEquals("https://api.gopay.com/v1/payments", paymentEndpoint)
     }
 } 

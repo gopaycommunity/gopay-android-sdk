@@ -55,7 +55,7 @@ class NetworkManagerTest {
         // Given various GopayConfig values
         val configs = listOf(
             GopayConfig(
-                environment = Environment.DEVELOPMENT,
+                environment = Environment.DEVELOPMENT.create("https://localhost:8080"),
                 requestTimeoutMs = 10000,
                 debugLoggingEnabled = true
             ),

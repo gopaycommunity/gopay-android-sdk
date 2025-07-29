@@ -16,7 +16,7 @@ data class GopayConfig(
     /**
      * Timeout for API requests in milliseconds.
      */
-    val requestTimeoutMs: Long = DEFAULT_REQUEST_TIMEOUT,
+    val requestTimeoutMs: Long = 30000,
     
     /**
      * Whether to enable debug logging.
@@ -34,46 +34,4 @@ data class GopayConfig(
      */
     val apiBaseUrl: String
         get() = environment.apiBaseUrl
-    
-    /**
-     * Gets a properly formatted URL for the payments endpoint.
-     * @return Full URL to the payments endpoint
-     */
-    fun getPaymentsUrl(): String {
-        return UrlUtils.composeUrl(apiBaseUrl, PAYMENT_ENDPOINT)
-    }
-    
-    /**
-     * Gets a properly formatted URL for the customers endpoint.
-     * @return Full URL to the customers endpoint
-     */
-    fun getCustomersUrl(): String {
-        return UrlUtils.composeUrl(apiBaseUrl, CUSTOMER_ENDPOINT)
-    }
-    
-    /**
-     * Creates a properly formatted URL for any endpoint.
-     * @param endpoint The endpoint to append to the base URL
-     * @return The complete URL
-     */
-    fun createUrl(endpoint: String): String {
-        return UrlUtils.composeUrl(apiBaseUrl, endpoint)
-    }
-    
-    companion object {
-        /**
-         * Default API request timeout in milliseconds (30 seconds).
-         */
-        const val DEFAULT_REQUEST_TIMEOUT: Long = 30000
-        
-        /**
-         * Payment API endpoints.
-         */
-        const val PAYMENT_ENDPOINT = "payments"
-        
-        /**
-         * Customer API endpoints.
-         */
-        const val CUSTOMER_ENDPOINT = "customers"
-    }
 } 
