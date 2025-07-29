@@ -1,7 +1,6 @@
 package com.gopay.sdk.config
 
 import com.gopay.sdk.exception.ErrorCallback
-import com.gopay.sdk.util.UrlUtils
 
 /**
  * Configuration class for the Gopay SDK.

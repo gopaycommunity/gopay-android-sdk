@@ -1,7 +1,6 @@
 package com.gopay.sdk.ui
 
 import android.app.Activity
-import android.view.View
 import android.view.WindowManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

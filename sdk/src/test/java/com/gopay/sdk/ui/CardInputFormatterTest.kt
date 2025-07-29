@@ -2,11 +2,13 @@ package com.gopay.sdk.ui
 
 import androidx.compose.ui.text.AnnotatedString
 import com.gopay.sdk.ui.utils.CardNumberInputValidator
-import com.gopay.sdk.ui.utils.ExpirationDateInputValidator
 import com.gopay.sdk.ui.utils.CardNumberVisualTransformation
+import com.gopay.sdk.ui.utils.ExpirationDateInputValidator
 import com.gopay.sdk.ui.utils.ExpirationDateVisualTransformation
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.Assert.*
 
 class CardInputFormatterTest {
 

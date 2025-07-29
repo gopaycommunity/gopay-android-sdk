@@ -2,11 +2,15 @@ package com.gopay.sdk.ui
 
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import com.gopay.sdk.ui.utils.formatExpirationDate
 import com.gopay.sdk.ui.utils.CardValidator
 import com.gopay.sdk.ui.utils.ExpirationDateInputValidator
+import com.gopay.sdk.ui.utils.formatExpirationDate
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.Assert.*
 import java.util.Calendar
 
 class ExpirationDateFormatterTest {
