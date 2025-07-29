@@ -19,7 +19,7 @@ class NetworkManagerTest {
     fun setup() {
         defaultGopayConfig = GopayConfig(
             environment = Environment.SANDBOX,
-            debugLoggingEnabled = true
+            debug = true
         )
         
         // Setup mock context
@@ -57,12 +57,12 @@ class NetworkManagerTest {
             GopayConfig(
                 environment = Environment.DEVELOPMENT.create("https://localhost:8080"),
                 requestTimeoutMs = 10000,
-                debugLoggingEnabled = true
+                debug = true
             ),
             GopayConfig(
                 environment = Environment.PRODUCTION,
                 requestTimeoutMs = 20000,
-                debugLoggingEnabled = false
+                debug = false
             )
         )
         

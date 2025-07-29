@@ -31,13 +31,13 @@ The SDK automatically obtains Application context - no manual context passing re
 class MyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        
+
         // Simple initialization - context is handled automatically
         val config = GopayConfig(
             environment = Environment.SANDBOX, // or PRODUCTION
-            debugLoggingEnabled = true
+            debug = true
         )
-        
+
         GopaySDK.initialize(config)
     }
 }
@@ -49,21 +49,20 @@ class MyApplication : Application() {
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         val sdk = GopaySDK.getInstance()
-        
+
         // Get authentication response from your server
         val authResponse = getAuthFromServer()
-        
+
         // Set authentication - tokens are automatically stored
         sdk.setAuthenticationResponse(authResponse)
-        
+
         // Check if authenticated
         val isAuthenticated = sdk.isAuthenticated()
     }
 }
 ```
-
 
 ## GopaySDK API Overview
 
@@ -104,6 +103,7 @@ val authResponse = sdk.authenticate(clientId, clientSecret, scope = null)
 ```
 
 #### Setting Authentication Response
+
 If you obtain tokens from your backend, you can set them directly:
 
 ```kotlin
@@ -177,6 +177,7 @@ fun MyPaymentScreen() {
 - You can customize field labels, error handling, and theme.
 
 #### Advanced: Manual Submission
+
 You can obtain a submit function for external triggering (e.g., from a button):
 
 ```kotlin
@@ -235,12 +236,12 @@ You can override any or all properties of `PaymentCardFormTheme` to achieve the 
 
 ## Environments
 
-| Environment | Description | API Base URL |
-|-------------|-------------|--------------|
+| Environment   | Description                                  | API Base URL                                       |
+| ------------- | -------------------------------------------- | -------------------------------------------------- |
 | `DEVELOPMENT` | Local development, local network access only | `"https://gw.alpha8.dev.gopay.com/gp-gw/api/4.0/"` |
-| `STAGING` | Pre-production testing | `not yet configured` |
-| `SANDBOX` | Sandbox testing | `not yet configured` |
-| `PRODUCTION` | Live production | `not yet configured` |
+| `STAGING`     | Pre-production testing                       | `not yet configured`                               |
+| `SANDBOX`     | Sandbox testing                              | `not yet configured`                               |
+| `PRODUCTION`  | Live production                              | `not yet configured`                               |
 
 ## Error Handling
 
@@ -314,6 +315,7 @@ For a complete list of error codes and handling recommendations, see [ERROR_CODE
 The GoPay SDK stores authentication tokens securely using Android Keystore encryption. However, as an app developer, you should consider your backup policy:
 
 #### Recommended: Disable Backup for Sensitive Data
+
 ```xml
 <!-- In your app's AndroidManifest.xml -->
 <application
@@ -322,9 +324,11 @@ The GoPay SDK stores authentication tokens securely using Android Keystore encry
 ```
 
 #### Alternative: Selective Backup Rules
+
 If you need backup functionality, exclude sensitive data:
 
 **res/xml/backup_rules.xml:**
+
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
@@ -334,6 +338,7 @@ If you need backup functionality, exclude sensitive data:
 ```
 
 **AndroidManifest.xml:**
+
 ```xml
 <application
     android:allowBackup="true"
@@ -342,6 +347,7 @@ If you need backup functionality, exclude sensitive data:
 ```
 
 #### Why This Matters
+
 - **Backup exposure**: `android:allowBackup="true"` backs up app data to Google Drive
 - **Token security**: Even encrypted tokens shouldn't be unnecessarily exposed
 - **Compliance**: Some regulations require preventing data backup
@@ -386,11 +392,13 @@ The SDK uses a modern approach similar to Firebase and Glide:
 If you were previously using manual context initialization:
 
 ### Before (Manual Context)
+
 ```kotlin
 GopaySDK.initialize(config, this) // Had to remember to pass context
 ```
 
 ### After (Auto Context)
+
 ```kotlin
 GopaySDK.initialize(config) // Context handled automatically
 ```
@@ -406,9 +414,11 @@ Not yet determined. Not in production.
 ## Upcoming Features
 
 ### Google Pay Integration
+
 A future release will add a Google Pay button and integration, allowing users to pay with their saved Google Pay cards directly in the PaymentCardForm UI.
 
 ### Charging a Payment Method
+
 After obtaining a card token (via `PaymentCardForm`), you will be able to use a new SDK method to charge the payment method securely. This will allow you to complete the payment flow end-to-end using only the token, without handling sensitive card data yourself.
 
 Stay tuned for updates in the SDK changelog!

@@ -36,6 +36,7 @@ interface GopaySDKInterface {
     ): AuthenticationResponse
     suspend fun refreshToken(): AuthenticationResponse
     fun isAuthenticated(): Boolean
+    fun isDebugEnabled(): Boolean
     fun logout()
 }
 
@@ -69,6 +70,8 @@ class GopaySDK private constructor(
         publicKeyService,
         tokenStorage
     )
+
+    override fun isDebugEnabled(): Boolean = config.debug
 
     /**
      * Gets the token storage instance for managing authentication tokens

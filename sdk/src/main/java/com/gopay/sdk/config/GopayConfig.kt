@@ -19,9 +19,9 @@ data class GopayConfig(
     val requestTimeoutMs: Long = 30000,
     
     /**
-     * Whether to enable debug logging.
+     * Whether to enable debug mode.
      */
-    val debugLoggingEnabled: Boolean = false,
+    val debug: Boolean = false,
     
     /**
      * Optional callback for error reporting.

@@ -7,6 +7,7 @@ import com.gopay.sdk.exception.GopaySDKException
 import com.gopay.sdk.internal.GopayContextProvider
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,7 +35,7 @@ class GopaySDKTest {
         // Given a configuration and mock context
         val config = GopayConfig(
             environment = Environment.SANDBOX,
-            debugLoggingEnabled = true
+            debug = true
         )
         
         // Mock context for auto-initialization
@@ -66,7 +67,7 @@ class GopaySDKTest {
         // Given configurations with different environments
         val sandboxConfig = GopayConfig(
             environment = Environment.SANDBOX,
-            debugLoggingEnabled = true
+            debug = true
         )
 
         // Mock context for auto-initialization
@@ -80,7 +81,7 @@ class GopaySDKTest {
 
         // Then the configuration should be correctly passed
         assertEquals(Environment.SANDBOX, sdk.config.environment)
-        assertTrue(sdk.config.debugLoggingEnabled)
+        assertTrue(sdk.isDebugEnabled())
         assertEquals(Environment.SANDBOX.apiBaseUrl, sdk.config.apiBaseUrl)
     }
 
@@ -131,4 +132,44 @@ class GopaySDKTest {
         val sdk = GopaySDK.getInstance()
         assertEquals(Environment.PRODUCTION, sdk.config.environment)
     }
-}
+
+    @Test
+    fun testDebugEnabled() {
+        // Given a configuration with debug enabled
+        val config = GopayConfig(
+            environment = Environment.SANDBOX,
+            debug = true
+        )
+
+        // Mock context for auto-initialization
+        val mockContext = mock<Context>()
+        whenever(mockContext.applicationContext).thenReturn(mockContext)
+        GopayContextProvider.setApplicationContext(mockContext)
+
+        // When initializing the SDK
+        GopaySDK.initialize(config)
+        val sdk = GopaySDK.getInstance()
+        // Then the debug should be enabled
+        assertTrue(sdk.isDebugEnabled())
+    }
+
+    @Test
+    fun testDebugDisabled() {
+        // Given a configuration with debug disabled
+        val config = GopayConfig(
+            environment = Environment.SANDBOX,
+            debug = false
+        )
+
+        // Mock context for auto-initialization
+        val mockContext = mock<Context>()
+        whenever(mockContext.applicationContext).thenReturn(mockContext)
+        GopayContextProvider.setApplicationContext(mockContext)
+
+        // When initializing the SDK
+        GopaySDK.initialize(config)
+        val sdk = GopaySDK.getInstance()
+        // Then the debug should be disabled
+        assertFalse(sdk.isDebugEnabled())
+    }
+}   

@@ -13,7 +13,7 @@ class ExampleApplication : Application() {
         // Initialize the Gopay SDK with global configuration
         val config = GopayConfig(
             environment = Environment.DEVELOPMENT.create("https://localhost:8080"),
-            debugLoggingEnabled = true,
+            debug = true,
             requestTimeoutMs = 5000,
             errorCallback = { error ->
                 // Global error reporting - in a real app you might want to:
@@ -40,7 +40,7 @@ class ExampleApplication : Application() {
         
         println("✅ Gopay SDK initialized successfully!")
         println("Environment: ${config.environment}")
-        println("Debug Logging: ${config.debugLoggingEnabled}")
+        println("Debug Logging: ${config.debug}")
         println("Request Timeout: ${config.requestTimeoutMs}ms")
     }
 } 

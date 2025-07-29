@@ -51,7 +51,7 @@ internal class NetworkManager(
             baseUrl = gopayConfig.apiBaseUrl,
             readTimeoutSeconds = gopayConfig.requestTimeoutMs / 1000,
             connectTimeoutSeconds = gopayConfig.requestTimeoutMs / 2000,
-            enableLogging = gopayConfig.debugLoggingEnabled,
+            enableLogging = gopayConfig.debug,
             sslSocketFactory = sslSocketFactory,
             trustManager = trustManager,
             certificatePinner = certificatePinner
@@ -67,7 +67,7 @@ internal class NetworkManager(
             baseUrl = gopayConfig.apiBaseUrl,
             readTimeoutSeconds = gopayConfig.requestTimeoutMs / 1000,
             connectTimeoutSeconds = gopayConfig.requestTimeoutMs / 2000, // Half the read timeout
-            enableLogging = gopayConfig.debugLoggingEnabled,
+            enableLogging = gopayConfig.debug,
             interceptors = listOf(authInterceptor),
             sslSocketFactory = sslSocketFactory,
             trustManager = trustManager,

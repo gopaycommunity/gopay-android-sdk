@@ -35,7 +35,7 @@ class ConfigurationIntegrationTest {
         // 1. Create configuration for sandbox environment
         val config = GopayConfig(
             environment = Environment.SANDBOX,
-            debugLoggingEnabled = true,
+            debug = true,
             requestTimeoutMs = 45000
         )
 
@@ -57,7 +57,7 @@ class ConfigurationIntegrationTest {
         // 4. Verify configuration is properly accessible
         assertEquals(Environment.SANDBOX, sdk.config.environment)
         assertEquals("https://api.sandbox.gopay.com/v1/", sdk.config.apiBaseUrl)
-        assertTrue(sdk.config.debugLoggingEnabled)
+        assertTrue(sdk.config.debug)
         assertEquals(45000L, sdk.config.requestTimeoutMs)
 
         // 5. Verify SDK is properly initialized and accessible

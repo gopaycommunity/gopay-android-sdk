@@ -19,7 +19,7 @@ class GopayConfigTest {
 
         // Then default values should be set
         assertEquals(Environment.PRODUCTION, config.environment)
-        assertFalse(config.debugLoggingEnabled)
+        assertFalse(config.debug)
     }
 
     @Test
@@ -33,13 +33,13 @@ class GopayConfigTest {
         val config = GopayConfig(
             environment = environment,
             requestTimeoutMs = timeoutMs,
-            debugLoggingEnabled = enableDebug
+            debug = enableDebug
         )
 
         // Then custom values should be set
         assertEquals(environment, config.environment)
         assertEquals(timeoutMs, config.requestTimeoutMs)
-        assertTrue(config.debugLoggingEnabled)
+        assertTrue(config.debug)
     }
 
     @Test
@@ -72,18 +72,18 @@ class GopayConfigTest {
         val originalConfig = GopayConfig(
             environment = Environment.SANDBOX,
             requestTimeoutMs = 30000L,
-            debugLoggingEnabled = false
+            debug = false
         )
         
         // When copying with a change
         val modifiedConfig = originalConfig.copy(
-            debugLoggingEnabled = true
+            debug = true
         )
         
         // Then only the specified parameter should be changed
         assertEquals(originalConfig.environment, modifiedConfig.environment)
         assertEquals(originalConfig.requestTimeoutMs, modifiedConfig.requestTimeoutMs)
-        assertTrue(modifiedConfig.debugLoggingEnabled)
+        assertTrue(modifiedConfig.debug)
     }
 
 } 

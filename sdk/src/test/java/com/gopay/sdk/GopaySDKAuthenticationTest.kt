@@ -32,7 +32,7 @@ class GopaySDKAuthenticationTest {
     fun setup() {
         config = GopayConfig(
             environment = Environment.SANDBOX,
-            debugLoggingEnabled = true
+            debug = true
         )
     }
 
