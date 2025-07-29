@@ -308,4 +308,29 @@ class PaymentCardFormTest {
             )
         }
     }
+
+    @Test
+    fun paymentFormInputs_defaultValues_areCorrect() {
+        val inputs = PaymentFormInputs()
+        
+        assertEquals("Default card number label should be 'Card Number'", "Card Number", inputs.cardNumber.label)
+        assertEquals("Default card number placeholder should be correct", "1234 1234 1234 1234", inputs.cardNumber.placeholder)
+        
+        assertEquals("Default expiration label should be 'MM/YY'", "MM/YY", inputs.expirationDate.label)
+        assertEquals("Default expiration placeholder should be 'MM/YY'", "MM/YY", inputs.expirationDate.placeholder)
+        
+        assertEquals("Default CVV label should be 'CVV'", "CVV", inputs.cvv.label)
+        assertEquals("Default CVV placeholder should be '123'", "123", inputs.cvv.placeholder)
+    }
+
+    @Test
+    fun inputFieldConfig_defaultValues_areCorrect() {
+        val config = InputFieldConfig(label = "Test Label")
+        
+        assertEquals("Label should be set", "Test Label", config.label)
+        assertNull("Helper text should be null by default", config.helperText)
+        assertNull("Error text should be null by default", config.errorText)
+        assertFalse("Has error should be false by default", config.hasError)
+        assertNull("Placeholder should be null by default", config.placeholder)
+    }
 } 

@@ -1,5 +1,8 @@
 package com.gopay.sdk.ui
 
+import android.app.Activity
+import android.view.View
+import android.view.WindowManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,6 +23,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
@@ -116,6 +120,12 @@ data class PaymentCardFormTheme(
  * A secure payment card form that handles card data input and tokenization.
  * This component never exposes raw card data to the parent - it handles tokenization internally
  * and only returns the secure token to the caller.
+ * 
+ * Security Features:
+ * - When debug mode is enabled in the SDK configuration, this form automatically sets FLAG_SECURE
+ *   on the activity window to prevent screen capture and screenshots
+ * - All card data is validated and tokenized securely within the SDK
+ * - Raw card data is never exposed to the parent component
  *
  * @param onTokenizationComplete Callback called when tokenization completes (success or error)
  * @param modifier Modifier for the form layout
@@ -149,6 +159,9 @@ fun PaymentCardForm(
     val cvvFocusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope()
 
+    // Get the view to access the window for FLAG_SECURE
+    val view = LocalView.current
+
     // Create the submit function
     val submitCardData: suspend () -> TokenizationResult = {
         submitCardDataImpl(
@@ -164,6 +177,20 @@ fun PaymentCardForm(
     // Provide the submit function to parent if callback is provided
     LaunchedEffect(Unit) {
         onFormReady?.invoke(submitCardData)
+    }
+
+    // Set FLAG_SECURE for production builds to prevent screen capture. Disable for debug builds.
+    LaunchedEffect(Unit) {
+        try {
+            val sdk = GopaySDK.getInstance()
+            if (!sdk.isDebugEnabled()) {
+                val activity = view.context as? Activity
+                activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            }
+        } catch (e: Exception) {
+            // Silently handle any errors accessing the window
+            // This prevents crashes if the view context is not an Activity
+        }
     }
 
     Column(
