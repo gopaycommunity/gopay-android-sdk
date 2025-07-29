@@ -42,10 +42,10 @@ import com.gopay.example.ui.theme.ExampleAppTheme
 import com.gopay.sdk.GopaySDK
 import com.gopay.sdk.exception.GopaySDKException
 import com.gopay.sdk.model.CardData
+import com.gopay.sdk.ui.InputFieldConfig
 import com.gopay.sdk.ui.PaymentCardForm
 import com.gopay.sdk.ui.PaymentCardFormTheme
 import com.gopay.sdk.ui.PaymentFormInputs
-import com.gopay.sdk.ui.InputFieldConfig
 import com.gopay.sdk.ui.TokenizationResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
