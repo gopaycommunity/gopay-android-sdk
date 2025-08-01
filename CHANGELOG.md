@@ -1,3 +1,12 @@
+# [1.6.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.5.0...1.6.0) (2025-08-01)
+
+
+### Features
+
+* add custom development environment option on sdk init GPMOB-111 ([fad7a53](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/fad7a532e4263926ce9df76fbca913d3e6525e1f))
+* add debug mode to sdk init GPMOB-111 ([4b0c0b0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/4b0c0b021234d87c19e24034b3ad1ab49f0ba8e2))
+* add secure_flag to payment form GPMOB-111 ([a5d72d0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/a5d72d0167349b546b7eb828ebf72d7d9915b299))
+
 # [1.5.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.4.0...1.5.0) (2025-07-07)
 
 
