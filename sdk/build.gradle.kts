@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.gopay.sdk"
+    namespace = "cz.gopay.sdk"
     compileSdk = 35
 
     defaultConfig {
@@ -49,7 +49,7 @@ afterEvaluate {
     publishing {
         publications {
             create<MavenPublication>("release") {
-                groupId = project.findProperty("sdk.groupId") as String? ?: "com.gopay"
+                groupId = project.findProperty("sdk.groupId") as String? ?: "cz.gopay"
                 artifactId = project.findProperty("sdk.artifactId") as String? ?: "sdk"
                 version = project.findProperty("sdk.version") as String? ?: "1.0.0"
 
@@ -120,7 +120,7 @@ tasks.register("showPublishingInfo") {
     description = "Shows the current publishing configuration"
     
     doLast {
-        val groupId = project.findProperty("sdk.groupId") as String? ?: "com.gopay"
+        val groupId = project.findProperty("sdk.groupId") as String? ?: "cz.gopay"
         val artifactId = project.findProperty("sdk.artifactId") as String? ?: "sdk"
         val version = project.findProperty("sdk.version") as String? ?: "1.0.0"
         

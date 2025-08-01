@@ -12,7 +12,7 @@
         initOrder="100" ensures this runs early in the app startup process.
         -->
         <provider
-            android:name="com.gopay.sdk.internal.GopayInitProvider"
+            android:name="cz.gopay.sdk.internal.GopayInitProvider"
             android:authorities="${applicationId}.gopay-init"
             android:exported="false"
             android:initOrder="100"

@@ -151,8 +151,8 @@ The SDK provides a secure, ready-to-use Jetpack Compose UI component for collect
 ### Usage Example
 
 ```kotlin
-import com.gopay.sdk.ui.PaymentCardForm
-import com.gopay.sdk.ui.TokenizationResult
+import cz.gopay.sdk.ui.PaymentCardForm
+import cz.gopay.sdk.ui.TokenizationResult
 
 @Composable
 fun MyPaymentScreen() {
@@ -202,8 +202,8 @@ The appearance of `PaymentCardForm` can be fully customized using the `PaymentCa
 #### Example: Custom Theme
 
 ```kotlin
-import com.gopay.sdk.ui.PaymentCardForm
-import com.gopay.sdk.ui.PaymentCardFormTheme
+import cz.gopay.sdk.ui.PaymentCardForm
+import cz.gopay.sdk.ui.PaymentCardFormTheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp

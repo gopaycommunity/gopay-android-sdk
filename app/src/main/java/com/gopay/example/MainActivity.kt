@@ -25,7 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.gopay.example.ui.theme.ExampleAppTheme
-import com.gopay.sdk.GopaySDK
+import cz.gopay.sdk.GopaySDK
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

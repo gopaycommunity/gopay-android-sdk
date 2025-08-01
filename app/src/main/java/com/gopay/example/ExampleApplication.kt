@@ -1,9 +1,9 @@
 package com.gopay.example
 
 import android.app.Application
-import com.gopay.sdk.GopaySDK
-import com.gopay.sdk.config.Environment
-import com.gopay.sdk.config.GopayConfig
+import cz.gopay.sdk.GopaySDK
+import cz.gopay.sdk.config.Environment
+import cz.gopay.sdk.config.GopayConfig
 
 class ExampleApplication : Application() {
     

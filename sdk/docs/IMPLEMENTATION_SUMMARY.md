@@ -18,7 +18,7 @@ Successfully implemented the Maven Publish Plugin for the GoPay Android SDK libr
 
 **Key Features**:
 
-- **Group ID**: `com.gopay`
+- **Group ID**: `cz.gopay`
 - **Artifact ID**: `sdk`
 - **Version**: `1.0.0` (configurable)
 - **Component**: Uses Android library's `release` component
@@ -107,7 +107,7 @@ The publishing process generates:
 ```kotlin
 // In consuming project's build.gradle.kts
 dependencies {
-    implementation("com.gopay:sdk:1.0.0")
+    implementation("cz.gopay:sdk:1.0.0")
 }
 ```
 

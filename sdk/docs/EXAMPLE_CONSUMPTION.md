@@ -9,7 +9,7 @@ If you've published the SDK to your local Maven cache:
 ```kotlin
 // In your app's build.gradle.kts
 dependencies {
-    implementation("com.gopay:sdk:1.0.0")
+    implementation("cz.gopay:sdk:1.0.0")
 }
 ```
 
@@ -26,7 +26,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.gopay:sdk:1.0.0")
+    implementation("cz.gopay:sdk:1.0.0")
 }
 ```
 
@@ -43,7 +43,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.gopay:sdk:1.0.0")
+    implementation("cz.gopay:sdk:1.0.0")
 }
 ```
 
@@ -86,13 +86,13 @@ To use a specific version:
 ```kotlin
 dependencies {
     // Use exact version
-    implementation("com.gopay:sdk:1.0.0")
+    implementation("cz.gopay:sdk:1.0.0")
 
     // Use version range
-    implementation("com.gopay:sdk:[1.0.0,2.0.0)")
+    implementation("cz.gopay:sdk:[1.0.0,2.0.0)")
 
     // Use latest version (not recommended for production)
-    implementation("com.gopay:sdk:1.+")
+    implementation("cz.gopay:sdk:1.+")
 }
 ```
 
@@ -105,7 +105,7 @@ If you encounter version conflicts, you can force a specific version:
 ```kotlin
 configurations.all {
     resolutionStrategy {
-        force("com.gopay:sdk:1.0.0")
+        force("cz.gopay:sdk:1.0.0")
     }
 }
 ```

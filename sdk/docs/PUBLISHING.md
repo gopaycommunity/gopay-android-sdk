@@ -14,7 +14,7 @@ The SDK version is managed through properties in `gradle.properties`:
 
 ```properties
 sdk.version=1.0.0
-sdk.groupId=com.gopay
+sdk.groupId=cz.gopay
 sdk.artifactId=sdk
 ```
 
@@ -22,7 +22,7 @@ sdk.artifactId=sdk
 
 The SDK publishes with the following metadata:
 
-- **Group ID**: `com.gopay`
+- **Group ID**: `cz.gopay`
 - **Artifact ID**: `sdk`
 - **Version**: Configurable via `sdk.version` property
 - **Description**: Android SDK for GoPay payment integration
@@ -131,7 +131,7 @@ And publish:
 ```kotlin
 // In your app's build.gradle.kts
 dependencies {
-    implementation("com.gopay:sdk:1.0.0")
+    implementation("cz.gopay:sdk:1.0.0")
 }
 ```
 
@@ -146,7 +146,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.gopay:sdk:1.0.0")
+    implementation("cz.gopay:sdk:1.0.0")
 }
 ```
 
@@ -161,7 +161,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.gopay:sdk:1.0.0")
+    implementation("cz.gopay:sdk:1.0.0")
 }
 ```
 
