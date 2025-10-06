@@ -32,6 +32,20 @@ definitions:
                       variables:
                           SONAR_SCANNER_OPTS: '-Dsonar.projectBaseDir=.'
                   -   pipe: sonarsource/sonarcloud-quality-gate:0.1.6
+        - step: &github-sync
+              name: Sync to GitHub
+              clone:
+                  depth: full
+              script:
+                  - git fetch origin master
+                  - git checkout master
+                  # Add GitHub as remote repository (ignore if already exists)
+                  # Use GITHUB_PERSONAL_ACCESS_TOKEN for personal token or GITHUB_APP_TOKEN for GitHub App
+                  - git remote add github https://${GITHUB_PERSONAL_ACCESS_TOKEN}@github.com/gopaycommunity/gopay-android-sdk.git || true
+                  # Fetch current state of GitHub repository to avoid conflicts
+                  - git fetch github
+                  # Push master branch to GitHub with safe force push
+                  - git push github master --force-with-lease
 
 pipelines:
     branches:
@@ -44,3 +58,6 @@ pipelines:
         '**':
             - step: *tests
             - step: *sonarcloud-analysis
+    custom:
+        github-sync:
+            - step: *github-sync
