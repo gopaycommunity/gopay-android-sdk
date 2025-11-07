@@ -26,6 +26,9 @@ internal object NetworkModule {
             .readTimeout(config.readTimeoutSeconds, TimeUnit.SECONDS)
             .writeTimeout(config.readTimeoutSeconds, TimeUnit.SECONDS)
 
+        // Add User-Agent interceptor first to ensure it's applied to all requests
+        builder.addInterceptor(UserAgentInterceptor())
+
         // Add logging if enabled
         if (config.enableLogging) {
             val loggingInterceptor = HttpLoggingInterceptor().apply {

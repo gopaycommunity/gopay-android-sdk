@@ -84,6 +84,43 @@ class NetworkModuleTest {
     }
     
     @Test
+    fun testCreateOkHttpClient_hasUserAgentInterceptor() {
+        // Given a network config
+        val config = NetworkConfig(baseUrl = "https://api.example.com")
+        
+        // When creating an OkHttpClient
+        val client = NetworkModule.createOkHttpClient(config)
+        
+        // Then client should have a UserAgentInterceptor
+        val hasUserAgentInterceptor = client.interceptors.any { it is UserAgentInterceptor }
+        assertTrue("Client should have a User-Agent interceptor", hasUserAgentInterceptor)
+    }
+    
+    @Test
+    fun testCreateOkHttpClient_userAgentInterceptorIsFirst() {
+        // Given a network config with logging enabled and custom interceptors
+        val testInterceptor = object : Interceptor {
+            override fun intercept(chain: Interceptor.Chain): Response {
+                return chain.proceed(chain.request())
+            }
+        }
+        
+        val config = NetworkConfig(
+            baseUrl = "https://api.example.com",
+            enableLogging = true,
+            interceptors = listOf(testInterceptor)
+        )
+        
+        // When creating an OkHttpClient
+        val client = NetworkModule.createOkHttpClient(config)
+        
+        // Then UserAgentInterceptor should be the first interceptor
+        val firstInterceptor = client.interceptors.firstOrNull()
+        assertTrue("User-Agent interceptor should be first", 
+            firstInterceptor is UserAgentInterceptor)
+    }
+    
+    @Test
     fun testCreateMoshi() {
         // When creating a Moshi instance
         val moshi = NetworkModule.createMoshi()
