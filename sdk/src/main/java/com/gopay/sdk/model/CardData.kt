@@ -92,5 +92,7 @@ data class CardTokenResponse(
     @Json(name = "card_art_url")
     val cardArtUrl: String? = null,
     @Json(name = "masked_virtual_pan")
-    val maskedVirtualPan: String? = null
+    val maskedVirtualPan: String? = null,
+    @Json(name = "card_id")
+    val cardId: String? = null
 ) 
