@@ -12,7 +12,7 @@ class ExampleApplication : Application() {
         
         // Initialize the Gopay SDK with global configuration
         val config = GopayConfig(
-            environment = Environment.DEVELOPMENT.create("https://localhost:8080"),
+            environment = Environment.DEVELOPMENT.create("https://gw.alpha8.dev.gopay.com/gp-gw/api/4.0"),
             debug = true,
             requestTimeoutMs = 5000,
             errorCallback = { error ->

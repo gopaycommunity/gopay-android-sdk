@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     jacoco
     `maven-publish`
+    signing
 }
 
 android {
@@ -104,6 +105,20 @@ afterEvaluate {
             //     }
             // }
         }
+    }
+    
+    // Configure signing
+    signing {
+        // Force signing to be required when signatory is configured
+        setRequired {
+            val isReleaseVersion = !(project.findProperty("sdk.version") as String? ?: "1.0.0").endsWith("SNAPSHOT")
+            val isPublishing = gradle.taskGraph.hasTask("publish")
+            val hasSignatory = project.findProperty("signing.gnupg.keyName") != null
+            (isReleaseVersion && isPublishing) || hasSignatory
+        }
+        
+        // Sign the release publication
+        sign(publishing.publications["release"])
     }
 }
 
