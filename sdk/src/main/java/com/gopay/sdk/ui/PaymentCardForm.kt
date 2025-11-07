@@ -152,6 +152,15 @@ fun PaymentCardForm(
     var isCvvFocused by remember { mutableStateOf(false) }
     val isCardNumberValid = CardValidator.validateCardNumber(cardNumberDigits).isValid
 
+    // Reset function to clear all form fields
+    val resetForm = {
+        cardNumberDigits = ""
+        expirationDateDigits = ""
+        cvv = ""
+        isCardNumberFocused = false
+        isCvvFocused = false
+    }
+
     // FocusRequesters for each field
     val cardNumberFocusRequester = remember { FocusRequester() }
     val expirationFocusRequester = remember { FocusRequester() }
@@ -169,7 +178,8 @@ fun PaymentCardForm(
             cvv = cvv,
             permanent = permanent,
             onTokenizationComplete = onTokenizationComplete,
-            onValidationError = onValidationError
+            onValidationError = onValidationError,
+            resetForm = resetForm
         )
     }
 
@@ -281,7 +291,8 @@ private suspend fun submitCardDataImpl(
     cvv: String,
     permanent: Boolean,
     onTokenizationComplete: (TokenizationResult) -> Unit,
-    onValidationError: ((CardValidator.CardValidationResult) -> Unit)?
+    onValidationError: ((CardValidator.CardValidationResult) -> Unit)?,
+    resetForm: () -> Unit
 ): TokenizationResult {
     return try {
         // Validate all fields first
@@ -316,6 +327,10 @@ private suspend fun submitCardDataImpl(
         val tokenResponse = GopaySDK.getInstance().tokenizeCard(cardData, permanent)
 
         val result = TokenizationResult.Success(tokenResponse)
+        
+        // Reset the form after successful tokenization
+        resetForm()
+        
         onTokenizationComplete(result)
         result
     } catch (e: Exception) {
