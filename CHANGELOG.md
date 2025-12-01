@@ -1,3 +1,10 @@
+# [1.7.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.6.0...1.7.0) (2025-12-01)
+
+
+### Features
+
+* reset card form after submit GPMOB-112 ([71217d4](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/71217d4dc1a30171e8e3c49e4bbfd7ae5af004f6))
+
 # [1.6.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.5.0...1.6.0) (2025-08-01)
 
 
