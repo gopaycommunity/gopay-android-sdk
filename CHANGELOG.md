@@ -1,3 +1,10 @@
+# [1.8.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.7.0...1.8.0) (2025-12-02)
+
+
+### Features
+
+* add user-agent interceptor to network module GPMOB-110 ([47803e5](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/47803e5afab9178c58ba9a81141b3c5eaf1da9c2))
+
 # [1.7.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.6.0...1.7.0) (2025-12-01)
 
 
