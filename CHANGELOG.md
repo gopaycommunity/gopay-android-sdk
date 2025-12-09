@@ -1,3 +1,10 @@
+## [1.8.1](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.8.0...1.8.1) (2025-12-09)
+
+
+### Bug Fixes
+
+* import fix after renaming the package GPMOB-108 ([14cd7f2](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/14cd7f2ee3137a826c6771a37f775e88573fd464))
+
 # [1.8.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.7.0...1.8.0) (2025-12-02)
 
 
