@@ -1,5 +1,6 @@
 package cz.gopay.sdk.modules.network
 
+import cz.gopay.sdk.modules.network.UserAgentInterceptor
 import cz.gopay.sdk.config.NetworkConfig
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory

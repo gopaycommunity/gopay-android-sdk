@@ -67,8 +67,8 @@ class SDKTestActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SDKTestScreen() {
-    var username by remember { mutableStateOf("SDK") }
-    var password by remember { mutableStateOf("hE8e8KNP") }
+    var username by remember { mutableStateOf("1836340462") }
+    var password by remember { mutableStateOf("NUBTBzPH") }
     var isAuthenticated by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var resultText by remember { mutableStateOf("Ready to test SDK methods") }

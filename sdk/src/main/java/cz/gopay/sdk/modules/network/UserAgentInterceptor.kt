@@ -1,6 +1,6 @@
-package com.gopay.sdk.modules.network
+package cz.gopay.sdk.modules.network
 
-import com.gopay.sdk.BuildConfig
+import cz.gopay.sdk.BuildConfig
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.io.IOException
