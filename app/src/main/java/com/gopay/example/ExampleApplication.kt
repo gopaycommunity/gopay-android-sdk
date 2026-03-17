@@ -42,5 +42,36 @@ class ExampleApplication : Application() {
         println("Environment: ${config.environment}")
         println("Debug Logging: ${config.debug}")
         println("Request Timeout: ${config.requestTimeoutMs}ms")
+
+        // Example usage of createPayment API (for demonstration purposes only)
+        // In a real application, this should be called from a coroutine scope.
+        /*
+        val sdk = GopaySDK.getInstance()
+        val request = PaymentCreateRequest(
+            amount = 10000, // in cents
+            currency = Currency.CZK,
+            orderNumber = "2025010199",
+            orderDescription = "Test order from ExampleApplication",
+            customer = PaymentCustomer(
+                email = "john.doe@example.com",
+                firstName = "John",
+                lastName = "Doe"
+            ),
+            callback = PaymentCallback(
+                notificationUrl = "https://example.com/notify",
+                returnUrl = "https://example.com/return"
+            )
+        )
+
+        // Example coroutine usage:
+        // CoroutineScope(Dispatchers.IO).launch {
+        //     try {
+        //         val response = sdk.createPayment(goid = "123456", request = request)
+        //         println("Created payment with ID: ${response.id}, gwUrl: ${response.gwUrl}")
+        //     } catch (e: Exception) {
+        //         println("Failed to create payment: ${e.message}")
+        //     }
+        // }
+        */
     }
 } 

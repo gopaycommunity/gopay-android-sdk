@@ -132,6 +132,36 @@ You can also manually trigger a token refresh if needed:
 val newAuthResponse = sdk.refreshToken()
 ```
 
+### Creating Payments
+
+Once authenticated with a token that includes at least the `payment:create` scope, you can create a payment session for a specific e-shop (`goid`):
+
+```kotlin
+val sdk = GopaySDK.getInstance()
+
+val request = PaymentCreateRequest(
+    amount = 10000, // in cents
+    currency = Currency.CZK,
+    orderNumber = "2025010199",
+    orderDescription = "Test order",
+    customer = PaymentCustomer(
+        email = "john.doe@example.com",
+        firstName = "John",
+        lastName = "Doe"
+    ),
+    callback = PaymentCallback(
+        notificationUrl = "https://example.com/notify",
+        returnUrl = "https://example.com/return"
+    )
+)
+
+// This should be called from a coroutine context:
+val response = sdk.createPayment(goid = "123456", request = request)
+
+// Use response.gwUrl to redirect the customer to the GoPay payment gateway
+println("Created payment with ID: ${response.id}, gwUrl: ${response.gwUrl}")
+```
+
 ### Token Storage Access
 
 You can access the underlying token storage for advanced use cases:

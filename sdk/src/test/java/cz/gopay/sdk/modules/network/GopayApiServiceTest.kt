@@ -2,7 +2,13 @@ package cz.gopay.sdk.modules.network
 
 import cz.gopay.sdk.model.CardTokenRequest
 import cz.gopay.sdk.model.CardTokenResponse
+import cz.gopay.sdk.model.Currency
 import cz.gopay.sdk.model.Jwk
+import cz.gopay.sdk.model.PaymentCallback
+import cz.gopay.sdk.model.PaymentCreateRequest
+import cz.gopay.sdk.model.PaymentCreateResponse
+import cz.gopay.sdk.model.PaymentCustomer
+import cz.gopay.sdk.model.PaymentState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
@@ -124,6 +130,50 @@ class GopayApiServiceTest {
         assertEquals(mockResponse, result.body())
     }
 
+    @Test
+    fun testCreatePayment() = runTest {
+        // Given a mock response for createPayment
+        val mockResponse = PaymentCreateResponse(
+            id = "300000001",
+            orderNumber = "2025010199",
+            state = PaymentState.CREATED,
+            amount = 10000,
+            currency = Currency.CZK,
+            customer = PaymentCustomer(
+                email = "john.doe@example.com",
+                firstName = "John",
+                lastName = "Doe"
+            ),
+            gwUrl = "https://gw.sandbox.gopay.com/gw/pay/300000001"
+        )
+        mockApiService.setPaymentCreateResponse(mockResponse)
+
+        // Given a payment create request
+        val request = PaymentCreateRequest(
+            amount = 10000,
+            currency = Currency.CZK,
+            orderNumber = "2025010199",
+            orderDescription = "Test order",
+            customer = PaymentCustomer(
+                email = "john.doe@example.com",
+                firstName = "John",
+                lastName = "Doe"
+            ),
+            additionalParams = null,
+            callback = PaymentCallback(
+                notificationUrl = "https://example.com/notify",
+                returnUrl = "https://example.com/return"
+            )
+        )
+
+        // When calling createPayment
+        val result = mockApiService.createPayment("123456", request)
+
+        // Then the result should be successful and contain the expected response
+        assertEquals(true, result.isSuccessful)
+        assertEquals(mockResponse, result.body())
+    }
+
     // Mock implementation of GopayApiService for testing
     private class MockGopayApiService(
         private val delegate: BehaviorDelegate<GopayApiService>
@@ -155,6 +205,18 @@ class GopayApiServiceTest {
             expiresIn = "123123123"
         )
 
+        private var paymentCreateResponse: PaymentCreateResponse = PaymentCreateResponse(
+            id = "300000001",
+            orderNumber = "2025010199",
+            state = PaymentState.CREATED,
+            amount = 10000,
+            currency = Currency.CZK,
+            customer = PaymentCustomer(
+                email = "john.doe@example.com"
+            ),
+            gwUrl = "https://gw.sandbox.gopay.com/gw/pay/300000001"
+        )
+
         fun setAuthenticateResponse(response: AuthResponse) {
             authenticateResponse = response
         }
@@ -165,6 +227,10 @@ class GopayApiServiceTest {
         
         fun setCardTokenResponse(response: CardTokenResponse) {
             cardTokenResponse = response
+        }
+
+        fun setPaymentCreateResponse(response: PaymentCreateResponse) {
+            paymentCreateResponse = response
         }
         
         override suspend fun authenticate(
@@ -185,6 +251,13 @@ class GopayApiServiceTest {
 
         override suspend fun createCardToken(request: CardTokenRequest): Response<CardTokenResponse> {
             return delegate.returningResponse(cardTokenResponse).createCardToken(request)
+        }
+
+        override suspend fun createPayment(
+            goid: String,
+            request: PaymentCreateRequest
+        ): Response<PaymentCreateResponse> {
+            return delegate.returningResponse(paymentCreateResponse).createPayment(goid, request)
         }
     }
 } 

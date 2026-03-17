@@ -62,8 +62,8 @@ android {
 val materialIconsVersion = "1.5.4"
 
 dependencies {
-    // https://mvnrepository.com/artifact/cz.gopay/sdk
-    implementation(libs.sdk)
+    // Use local SDK module to test in-progress SDK API changes.
+    implementation(project(":sdk"))
     
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

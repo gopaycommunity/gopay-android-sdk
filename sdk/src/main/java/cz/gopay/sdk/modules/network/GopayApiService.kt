@@ -3,6 +3,8 @@ package cz.gopay.sdk.modules.network
 import cz.gopay.sdk.model.CardTokenRequest
 import cz.gopay.sdk.model.CardTokenResponse
 import cz.gopay.sdk.model.Jwk
+import cz.gopay.sdk.model.PaymentCreateRequest
+import cz.gopay.sdk.model.PaymentCreateResponse
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.Field
@@ -11,6 +13,7 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.Headers
 import retrofit2.http.POST
+import retrofit2.http.Path
 
 /**
  * Retrofit interface for Gopay API calls
@@ -75,7 +78,23 @@ interface GopayApiService {
     suspend fun createCardToken(
         @Body request: CardTokenRequest
     ): Response<CardTokenResponse>
-    
+
+    /**
+     * Creates a payment for a specific e-shop (goid).
+     * Authorization header is automatically added by AuthenticationInterceptor.
+     *
+     * Maps to POST /eshops/{goid}/payments in Payments.yaml.
+     */
+    @POST("eshops/{goid}/payments")
+    @Headers(
+        "Content-Type: application/json",
+        "Accept: application/json"
+    )
+    suspend fun createPayment(
+        @Path("goid") goid: String,
+        @Body request: PaymentCreateRequest
+    ): Response<PaymentCreateResponse>
+
     // Additional API methods will be added here later
 }
 

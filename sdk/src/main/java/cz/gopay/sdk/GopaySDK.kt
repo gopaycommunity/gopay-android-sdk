@@ -14,6 +14,7 @@ import cz.gopay.sdk.modules.network.GopayApiService
 import cz.gopay.sdk.modules.network.NetworkManager
 import cz.gopay.sdk.service.CardTokenizationService
 import cz.gopay.sdk.service.EncryptionService
+import cz.gopay.sdk.service.PaymentService
 import cz.gopay.sdk.service.PublicKeyService
 import cz.gopay.sdk.storage.TokenStorage
 import cz.gopay.sdk.util.Base64Utils
@@ -70,6 +71,7 @@ class GopaySDK private constructor(
         publicKeyService,
         tokenStorage
     )
+    private val paymentService = PaymentService(apiService)
 
     override fun isDebugEnabled(): Boolean = config.debug
 
@@ -286,6 +288,24 @@ class GopaySDK private constructor(
     )
     suspend fun getPublicKey(): Jwk {
         return getPublicKey(false)
+    }
+
+    /**
+     * Creates a payment for the specified e-shop (goid).
+     * This method should be called from a coroutine context.
+     *
+     * Requires a valid access token with at least the "payment:create" scope.
+     *
+     * @param goid E-shop identifier
+     * @param request Payment creation request
+     * @return PaymentCreateResponse with payment details and gateway URL
+     * @throws Exception for network or API errors
+     */
+    suspend fun createPayment(
+        goid: String,
+        request: cz.gopay.sdk.model.PaymentCreateRequest
+    ): cz.gopay.sdk.model.PaymentCreateResponse {
+        return paymentService.createPayment(goid, request)
     }
 
     companion object {

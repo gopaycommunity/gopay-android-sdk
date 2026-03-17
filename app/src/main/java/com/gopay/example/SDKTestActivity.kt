@@ -42,6 +42,10 @@ import com.gopay.example.ui.theme.ExampleAppTheme
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.Currency
+import cz.gopay.sdk.model.PaymentCallback
+import cz.gopay.sdk.model.PaymentCreateRequest
+import cz.gopay.sdk.model.PaymentCustomer
 import cz.gopay.sdk.ui.InputFieldConfig
 import cz.gopay.sdk.ui.PaymentCardForm
 import cz.gopay.sdk.ui.PaymentCardFormTheme
@@ -67,8 +71,9 @@ class SDKTestActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SDKTestScreen() {
-    var username by remember { mutableStateOf("1836340462") }
-    var password by remember { mutableStateOf("NUBTBzPH") }
+    var username by remember { mutableStateOf("sdk") }
+    var password by remember { mutableStateOf("JcsUVzQw") }
+    var goid by remember { mutableStateOf("123456") }
     var isAuthenticated by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var resultText by remember { mutableStateOf("Ready to test SDK methods") }
@@ -387,6 +392,71 @@ fun SDKTestScreen() {
                         enabled = !isLoading
                     ) {
                         Text("Tokenize Card (DEV)")
+                    }
+
+                    HorizontalDivider()
+
+                    // Create Payment Example Section
+                    Text(
+                        text = "Create Payment Example (eshops/{goid}/payments)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    OutlinedTextField(
+                        value = goid,
+                        onValueChange = { goid = it },
+                        label = { Text("Eshop GOID") },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading
+                    )
+
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isLoading = true
+                                try {
+                                    val request = PaymentCreateRequest(
+                                        amount = 10000, // in cents
+                                        currency = Currency.CZK,
+                                        orderNumber = "SDK-DEMO-ORDER-001",
+                                        orderDescription = "Test payment from SDKTestActivity",
+                                        customer = PaymentCustomer(
+                                            email = "john.doe@example.com",
+                                            firstName = "John",
+                                            lastName = "Doe"
+                                        ),
+                                        callback = PaymentCallback(
+                                            notificationUrl = "https://example.com/notify",
+                                            returnUrl = "https://example.com/return"
+                                        )
+                                    )
+
+                                    val response = withContext(Dispatchers.IO) {
+                                        GopaySDK.getInstance().createPayment(
+                                            goid = goid.trim(),
+                                            request = request
+                                        )
+                                    }
+
+                                    resultText = "✅ Payment created successfully!\n" +
+                                            "ID: ${response.id}\n" +
+                                            "Order: ${response.orderNumber}\n" +
+                                            "Amount: ${response.amount} ${response.currency}\n" +
+                                            "State: ${response.state}\n" +
+                                            "gwUrl: ${response.gwUrl}"
+                                } catch (e: GopaySDKException) {
+                                    resultText = "Payment creation failed:\n${formatError(e)}"
+                                } catch (e: Exception) {
+                                    resultText = "Unexpected error during payment creation: ${e.message}"
+                                }
+                                isLoading = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading && goid.isNotBlank()
+                    ) {
+                        Text("Create Test Payment")
                     }
                 }
             }
