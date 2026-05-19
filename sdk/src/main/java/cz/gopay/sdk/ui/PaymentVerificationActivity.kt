@@ -9,10 +9,10 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ProgressBar
+import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AppCompatActivity
 
-internal class PaymentVerificationActivity : AppCompatActivity() {
+internal class PaymentVerificationActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_REDIRECT_URL = "redirect_url"

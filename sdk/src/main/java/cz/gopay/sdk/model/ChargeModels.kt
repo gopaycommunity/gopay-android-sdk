@@ -131,7 +131,7 @@ data class BrowserData(
  */
 data class ChargePaymentRequest(
     @Json(name = "payment_instrument") val paymentInstrument: PaymentInstrumentInput,
-    @Json(name = "return_url") val returnUrl: String,
+    @Json(name = "return_url") val returnUrl: String = "cz.gopay.sdk://3ds-complete",
     @Json(name = "browser_data") val browserData: BrowserData? = null
 )
 
