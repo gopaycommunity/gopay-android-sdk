@@ -2,6 +2,8 @@ package cz.gopay.sdk.modules.network
 
 import cz.gopay.sdk.model.CardTokenRequest
 import cz.gopay.sdk.model.CardTokenResponse
+import cz.gopay.sdk.model.ChargePaymentRequest
+import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.model.PaymentCreateRequest
 import cz.gopay.sdk.model.PaymentCreateResponse
@@ -95,7 +97,46 @@ interface GopayApiService {
         @Body request: PaymentCreateRequest
     ): Response<PaymentCreateResponse>
 
-    // Additional API methods will be added here later
+    /**
+     * Retrieves the status of an existing payment.
+     * Requires payment:read scope.
+     * Maps to GET /payments/{payment_id} in Payments.yaml.
+     */
+    @GET("payments/{payment_id}")
+    @Headers(
+        "Accept: application/json"
+    )
+    suspend fun getPaymentStatus(
+        @Path("payment_id") paymentId: String
+    ): Response<PaymentCreateResponse>
+
+    /**
+     * Charges a payment using the specified payment instrument.
+     * Requires payment:create scope.
+     * Maps to POST /payments/{payment_id}/charge in Payments.yaml.
+     */
+    @POST("payments/{payment_id}/charge")
+    @Headers(
+        "Content-Type: application/json",
+        "Accept: application/json"
+    )
+    suspend fun chargePayment(
+        @Path("payment_id") paymentId: String,
+        @Body request: ChargePaymentRequest
+    ): Response<ChargePaymentResponse>
+
+    /**
+     * Gets the current state of a payment charge.
+     * Requires payment:read scope.
+     * Maps to GET /payments/{payment_id}/charge in Payments.yaml.
+     */
+    @GET("payments/{payment_id}/charge")
+    @Headers(
+        "Accept: application/json"
+    )
+    suspend fun getChargeState(
+        @Path("payment_id") paymentId: String
+    ): Response<ChargePaymentResponse>
 }
 
 /**

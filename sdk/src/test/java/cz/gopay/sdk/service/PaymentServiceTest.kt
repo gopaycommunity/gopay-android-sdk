@@ -1,10 +1,21 @@
 package cz.gopay.sdk.service
 
+import cz.gopay.sdk.model.ChargeAction
+import cz.gopay.sdk.model.ChargeActionType
+import cz.gopay.sdk.model.ChargePaymentRequest
+import cz.gopay.sdk.model.ChargePaymentResponse
+import cz.gopay.sdk.model.ChargeState
+import cz.gopay.sdk.model.ChallengePreference
 import cz.gopay.sdk.model.Currency
+import cz.gopay.sdk.model.Emv3dsState
+import cz.gopay.sdk.model.InstrumentDetails
 import cz.gopay.sdk.model.PaymentCallback
+import cz.gopay.sdk.model.PaymentChargeRef
 import cz.gopay.sdk.model.PaymentCreateRequest
 import cz.gopay.sdk.model.PaymentCreateResponse
 import cz.gopay.sdk.model.PaymentCustomer
+import cz.gopay.sdk.model.PaymentInstrumentData
+import cz.gopay.sdk.model.PaymentInstrumentInput
 import cz.gopay.sdk.model.PaymentState
 import cz.gopay.sdk.modules.network.GopayApiService
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -118,6 +129,184 @@ class PaymentServiceTest {
             runTest {
                 paymentService.createPayment("123456", request)
             }
+        }
+    }
+
+    // --- getPaymentStatus ---
+
+    @Test
+    fun getPaymentStatus_success_returnsResponse() = runTest {
+        val expectedResponse = PaymentCreateResponse(
+            id = "300000001",
+            orderNumber = "2025010199",
+            state = PaymentState.CREATED,
+            amount = 10000,
+            currency = Currency.CZK,
+            customer = PaymentCustomer(email = "john.doe@example.com"),
+            gwUrl = "https://gw.sandbox.gopay.com/gw/pay/300000001",
+            charge = PaymentChargeRef(
+                id = "9123456789",
+                state = ChargeState.REQUESTED,
+                href = "https://api.gopay.com/api/4.0/payments/9123456789/charge"
+            )
+        )
+
+        whenever(apiService.getPaymentStatus("300000001"))
+            .thenReturn(Response.success(expectedResponse))
+
+        val result = paymentService.getPaymentStatus("300000001")
+
+        assertEquals(expectedResponse, result)
+    }
+
+    @Test
+    fun getPaymentStatus_httpError_throwsException() = runTest {
+        val errorBody = ResponseBody.create(
+            "application/json".toMediaTypeOrNull(),
+            """{"code":404,"message":"Not Found"}"""
+        )
+
+        whenever(apiService.getPaymentStatus("999"))
+            .thenReturn(Response.error(404, errorBody))
+
+        assertThrows(Exception::class.java) {
+            runTest { paymentService.getPaymentStatus("999") }
+        }
+    }
+
+    @Test
+    fun getPaymentStatus_nullBody_throwsException() = runTest {
+        whenever(apiService.getPaymentStatus("300000001"))
+            .thenReturn(Response.success(null))
+
+        assertThrows(Exception::class.java) {
+            runTest { paymentService.getPaymentStatus("300000001") }
+        }
+    }
+
+    // --- chargePayment ---
+
+    @Test
+    fun chargePayment_success_returnsResponse() = runTest {
+        val request = ChargePaymentRequest(
+            paymentInstrument = PaymentInstrumentInput.cardToken(
+                cardToken = "J7HjFNwzyBOHS+jwIMMktubTwoIRy6qB",
+                challengePreference = ChallengePreference.AUTO
+            ),
+            returnUrl = "https://example.com/return"
+        )
+
+        val expectedResponse = ChargePaymentResponse(
+            id = "9123456789",
+            state = ChargeState.REQUESTED,
+            paymentInstrument = PaymentInstrumentData(
+                paymentInstrument = "PAYMENT_CARD",
+                details = InstrumentDetails(
+                    inputType = "CARD_TOKEN",
+                    maskedPan = "406821******1234",
+                    expirationMonth = "01",
+                    expirationYear = "30"
+                )
+            ),
+            returnUrl = "https://example.com/return",
+            action = ChargeAction(
+                actionType = ChargeActionType.EMV3DS,
+                state = Emv3dsState.CREATED,
+                redirectUrl = "https://gate.gopay.com/redirect"
+            )
+        )
+
+        whenever(apiService.chargePayment("300000001", request))
+            .thenReturn(Response.success(201, expectedResponse))
+
+        val result = paymentService.chargePayment("300000001", request)
+
+        assertEquals(expectedResponse, result)
+    }
+
+    @Test
+    fun chargePayment_httpError_throwsException() = runTest {
+        val request = ChargePaymentRequest(
+            paymentInstrument = PaymentInstrumentInput.cardToken("token"),
+            returnUrl = "https://example.com/return"
+        )
+        val errorBody = ResponseBody.create(
+            "application/json".toMediaTypeOrNull(),
+            """{"code":400,"message":"Bad Request"}"""
+        )
+
+        whenever(apiService.chargePayment("300000001", request))
+            .thenReturn(Response.error(400, errorBody))
+
+        assertThrows(Exception::class.java) {
+            runTest { paymentService.chargePayment("300000001", request) }
+        }
+    }
+
+    @Test
+    fun chargePayment_nullBody_throwsException() = runTest {
+        val request = ChargePaymentRequest(
+            paymentInstrument = PaymentInstrumentInput.cardToken("token"),
+            returnUrl = "https://example.com/return"
+        )
+
+        whenever(apiService.chargePayment("300000001", request))
+            .thenReturn(Response.success(null))
+
+        assertThrows(Exception::class.java) {
+            runTest { paymentService.chargePayment("300000001", request) }
+        }
+    }
+
+    // --- getChargeState ---
+
+    @Test
+    fun getChargeState_success_returnsResponse() = runTest {
+        val expectedResponse = ChargePaymentResponse(
+            id = "9123456789",
+            state = ChargeState.PROCESSING,
+            paymentInstrument = PaymentInstrumentData(
+                paymentInstrument = "PAYMENT_CARD",
+                details = InstrumentDetails(
+                    inputType = "CARD_TOKEN",
+                    maskedPan = "406821******1234",
+                    expirationMonth = "01",
+                    expirationYear = "30"
+                )
+            ),
+            returnUrl = "https://example.com/return"
+        )
+
+        whenever(apiService.getChargeState("300000001"))
+            .thenReturn(Response.success(expectedResponse))
+
+        val result = paymentService.getChargeState("300000001")
+
+        assertEquals(expectedResponse, result)
+    }
+
+    @Test
+    fun getChargeState_httpError_throwsException() = runTest {
+        val errorBody = ResponseBody.create(
+            "application/json".toMediaTypeOrNull(),
+            """{"code":404,"message":"Not Found"}"""
+        )
+
+        whenever(apiService.getChargeState("999"))
+            .thenReturn(Response.error(404, errorBody))
+
+        assertThrows(Exception::class.java) {
+            runTest { paymentService.getChargeState("999") }
+        }
+    }
+
+    @Test
+    fun getChargeState_nullBody_throwsException() = runTest {
+        whenever(apiService.getChargeState("300000001"))
+            .thenReturn(Response.success(null))
+
+        assertThrows(Exception::class.java) {
+            runTest { paymentService.getChargeState("300000001") }
         }
     }
 }

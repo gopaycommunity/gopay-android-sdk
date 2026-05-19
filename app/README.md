@@ -22,10 +22,11 @@ A comprehensive testing interface that includes:
 - **Method Information**: Display payment method details (ID, name, etc.)
 
 #### Payment Processing
-- **Amount Input**: Enter payment amounts with validation
-- **Method Selection**: Choose payment method by ID
-- **Process Payments**: Execute payment transactions
-- **Result Display**: Show success/failure with detailed information
+- **Create Payment**: Create a payment for an eshop (requires GOID)
+- **Get Payment Status**: Fetch full payment details including optional charge reference (requires `payment:read` scope)
+- **Charge a Payment**: Initiate a charge using a card token or bank instrument (requires `payment:create` scope)
+- **Charge with 3DS Verification**: Managed charge flow — SDK opens a WebView for 3DS authentication automatically, no `return_url` required (requires `payment:create` + `payment:read` scopes)
+- **Get Charge State**: Poll the current state of an in-progress or completed charge (requires `payment:read` scope)
 
 #### Token Management
 - **Token Status**: Check current token availability and content
@@ -114,6 +115,59 @@ val isAuthenticated = sdk.isAuthenticated()
 // Access token storage
 val tokenStorage = sdk.getTokenStorage()
 val accessToken = tokenStorage.getAccessToken()
+```
+
+### Payment Lifecycle
+```kotlin
+// 1. Create a payment
+val payment = sdk.createPayment(goid = "123456", request = PaymentCreateRequest(...))
+
+// 2. Get payment status (includes optional charge reference once charged)
+val status = sdk.getPaymentStatus(payment.id)
+println("State: ${status.state}, Charge: ${status.charge?.id}")
+
+// 3. Charge the payment with a card token
+val chargeRequest = ChargePaymentRequest(
+    paymentInstrument = PaymentInstrumentInput.cardToken(
+        cardToken = "your-card-token",
+        challengePreference = ChallengePreference.AUTO
+    ),
+    returnUrl = "https://yourapp.com/return",
+    browserData = BrowserData(
+        language = "en-US", timezone = 0,
+        screenWidth = 1080, screenHeight = 1920, colorDepth = 24
+    )
+)
+val charge = sdk.chargePayment(payment.id, chargeRequest)
+
+// 4. Handle 3DS redirect if required (manual approach)
+charge.action?.redirectUrl?.let { url ->
+    // Open url in WebView or browser for 3DS authentication
+}
+
+// 5. Poll charge state
+val chargeState = sdk.getChargeState(payment.id)
+println("Charge state: ${chargeState.state}")
+```
+
+### Managed 3DS Verification (Recommended)
+```kotlin
+// chargePaymentWithVerification handles the WebView automatically:
+// - Injects an SDK-managed return URL
+// - Opens a WebView when 3DS is required
+// - Suspends until the user completes or cancels authentication
+// - Returns the final charge state
+
+val finalCharge = sdk.chargePaymentWithVerification(
+    activity = this,           // current Activity
+    paymentId = payment.id,
+    paymentInstrument = PaymentInstrumentInput.cardToken(
+        cardToken = "your-card-token",
+        challengePreference = ChallengePreference.AUTO
+    )
+    // browserData is auto-collected from the device if not provided
+)
+println("Final charge state: ${finalCharge.state}")
 ```
 
 ### Error Handling

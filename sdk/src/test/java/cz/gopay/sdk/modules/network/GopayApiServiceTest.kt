@@ -2,12 +2,17 @@ package cz.gopay.sdk.modules.network
 
 import cz.gopay.sdk.model.CardTokenRequest
 import cz.gopay.sdk.model.CardTokenResponse
+import cz.gopay.sdk.model.ChargePaymentRequest
+import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.Currency
+import cz.gopay.sdk.model.InstrumentDetails
+import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.model.PaymentCallback
 import cz.gopay.sdk.model.PaymentCreateRequest
 import cz.gopay.sdk.model.PaymentCreateResponse
 import cz.gopay.sdk.model.PaymentCustomer
+import cz.gopay.sdk.model.PaymentInstrumentData
 import cz.gopay.sdk.model.PaymentState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
@@ -258,6 +263,39 @@ class GopayApiServiceTest {
             request: PaymentCreateRequest
         ): Response<PaymentCreateResponse> {
             return delegate.returningResponse(paymentCreateResponse).createPayment(goid, request)
+        }
+
+        override suspend fun getPaymentStatus(paymentId: String): Response<PaymentCreateResponse> {
+            return delegate.returningResponse(paymentCreateResponse).getPaymentStatus(paymentId)
+        }
+
+        override suspend fun chargePayment(
+            paymentId: String,
+            request: ChargePaymentRequest
+        ): Response<ChargePaymentResponse> {
+            val defaultChargeResponse = ChargePaymentResponse(
+                id = "9123456789",
+                state = ChargeState.REQUESTED,
+                paymentInstrument = PaymentInstrumentData(
+                    paymentInstrument = "PAYMENT_CARD",
+                    details = InstrumentDetails(inputType = "CARD_TOKEN")
+                ),
+                returnUrl = "https://example.com/return"
+            )
+            return delegate.returningResponse(defaultChargeResponse).chargePayment(paymentId, request)
+        }
+
+        override suspend fun getChargeState(paymentId: String): Response<ChargePaymentResponse> {
+            val defaultChargeResponse = ChargePaymentResponse(
+                id = "9123456789",
+                state = ChargeState.REQUESTED,
+                paymentInstrument = PaymentInstrumentData(
+                    paymentInstrument = "PAYMENT_CARD",
+                    details = InstrumentDetails(inputType = "CARD_TOKEN")
+                ),
+                returnUrl = "https://example.com/return"
+            )
+            return delegate.returningResponse(defaultChargeResponse).getChargeState(paymentId)
         }
     }
 } 

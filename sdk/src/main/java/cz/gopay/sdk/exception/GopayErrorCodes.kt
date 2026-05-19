@@ -109,6 +109,9 @@ object GopayErrorCodes {
     /** Payment timeout */
     const val PAYMENT_TIMEOUT = "PAYMENT_007"
 
+    /** A 3DS verification is already in progress; only one can run at a time */
+    const val PAYMENT_VERIFICATION_IN_PROGRESS = "PAYMENT_008"
+
     // ========================================
     // CARD ERRORS (CARD_XXX)
     // ========================================

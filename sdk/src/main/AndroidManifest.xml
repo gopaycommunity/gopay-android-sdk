@@ -17,6 +17,12 @@
             android:exported="false"
             android:initOrder="100"
             />
+
+        <activity
+            android:name="cz.gopay.sdk.ui.PaymentVerificationActivity"
+            android:exported="false"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:windowSoftInputMode="adjustResize" />
     </application>
     
 </manifest>

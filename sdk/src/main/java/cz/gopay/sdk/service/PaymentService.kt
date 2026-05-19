@@ -1,5 +1,7 @@
 package cz.gopay.sdk.service
 
+import cz.gopay.sdk.model.ChargePaymentRequest
+import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.PaymentCreateRequest
 import cz.gopay.sdk.model.PaymentCreateResponse
 import cz.gopay.sdk.modules.network.GopayApiService
@@ -32,6 +34,64 @@ class PaymentService(
 
         return response.body()
             ?: throw Exception("Empty response body from payment creation")
+    }
+
+    /**
+     * Retrieves the current status of a payment.
+     *
+     * @param paymentId Payment identifier
+     * @return PaymentCreateResponse with payment details including optional charge reference
+     * @throws Exception for HTTP errors or empty response body
+     */
+    suspend fun getPaymentStatus(paymentId: String): PaymentCreateResponse {
+        val response = apiService.getPaymentStatus(paymentId)
+
+        if (!response.isSuccessful) {
+            throw Exception("Get payment status failed: ${response.code()} ${response.message()}")
+        }
+
+        return response.body()
+            ?: throw Exception("Empty response body from get payment status")
+    }
+
+    /**
+     * Charges a payment using the specified instrument.
+     *
+     * @param paymentId Payment identifier
+     * @param request Charge request with instrument and return URL
+     * @return ChargePaymentResponse with charge details and optional action
+     * @throws Exception for HTTP errors or empty response body
+     */
+    suspend fun chargePayment(
+        paymentId: String,
+        request: ChargePaymentRequest
+    ): ChargePaymentResponse {
+        val response = apiService.chargePayment(paymentId, request)
+
+        if (!response.isSuccessful) {
+            throw Exception("Charge payment failed: ${response.code()} ${response.message()}")
+        }
+
+        return response.body()
+            ?: throw Exception("Empty response body from charge payment")
+    }
+
+    /**
+     * Gets the current state of a payment charge.
+     *
+     * @param paymentId Payment identifier
+     * @return ChargePaymentResponse with current charge state
+     * @throws Exception for HTTP errors or empty response body
+     */
+    suspend fun getChargeState(paymentId: String): ChargePaymentResponse {
+        val response = apiService.getChargeState(paymentId)
+
+        if (!response.isSuccessful) {
+            throw Exception("Get charge state failed: ${response.code()} ${response.message()}")
+        }
+
+        return response.body()
+            ?: throw Exception("Empty response body from get charge state")
     }
 }
 

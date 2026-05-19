@@ -1,17 +1,26 @@
 package cz.gopay.sdk
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.webkit.WebSettings
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.internal.GopayContextProvider
 import cz.gopay.sdk.model.AuthenticationResponse
+import cz.gopay.sdk.model.BrowserData
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.CardTokenResponse
+import cz.gopay.sdk.model.ChargePaymentRequest
+import cz.gopay.sdk.model.ChargePaymentResponse
+import cz.gopay.sdk.model.PaymentInstrumentInput
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.modules.network.GopayApiService
 import cz.gopay.sdk.modules.network.NetworkManager
+import cz.gopay.sdk.ui.PaymentVerificationActivity
+import cz.gopay.sdk.ui.PaymentVerificationBridge
 import cz.gopay.sdk.service.CardTokenizationService
 import cz.gopay.sdk.service.EncryptionService
 import cz.gopay.sdk.service.PaymentService
@@ -19,7 +28,12 @@ import cz.gopay.sdk.service.PublicKeyService
 import cz.gopay.sdk.storage.TokenStorage
 import cz.gopay.sdk.util.Base64Utils
 import cz.gopay.sdk.util.JwtUtils
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.CertificatePinner
+import java.util.Locale
+import java.util.TimeZone
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509TrustManager
 
@@ -308,10 +322,122 @@ class GopaySDK private constructor(
         return paymentService.createPayment(goid, request)
     }
 
+    /**
+     * Retrieves the current status of an existing payment.
+     * Requires a valid access token with the "payment:read" scope.
+     *
+     * @param paymentId The payment identifier returned from createPayment
+     * @return PaymentCreateResponse with full payment details and optional charge reference
+     * @throws Exception for network or API errors
+     */
+    suspend fun getPaymentStatus(paymentId: String): cz.gopay.sdk.model.PaymentCreateResponse {
+        return paymentService.getPaymentStatus(paymentId)
+    }
+
+    /**
+     * Charges a payment using a card token or bank account instrument.
+     * Requires a valid access token with the "payment:create" scope.
+     *
+     * @param paymentId The payment identifier to charge
+     * @param request Charge request specifying the instrument, return URL, and optional browser data
+     * @return ChargePaymentResponse with charge ID, state, instrument details, and optional redirect action
+     * @throws Exception for network or API errors
+     */
+    suspend fun chargePayment(
+        paymentId: String,
+        request: ChargePaymentRequest
+    ): ChargePaymentResponse {
+        return paymentService.chargePayment(paymentId, request)
+    }
+
+    /**
+     * Gets the current state of a payment charge.
+     * Requires a valid access token with the "payment:read" scope.
+     *
+     * @param paymentId The payment identifier whose charge state to retrieve
+     * @return ChargePaymentResponse with current charge state and optional action details
+     * @throws Exception for network or API errors
+     */
+    suspend fun getChargeState(paymentId: String): ChargePaymentResponse {
+        return paymentService.getChargeState(paymentId)
+    }
+
+    /**
+     * Charges a payment and handles 3DS verification automatically when required.
+     *
+     * When the charge response contains a 3DS redirect action, this method opens a managed
+     * WebView, waits for the user to complete authentication, then returns the final charge state.
+     * The `return_url` is managed internally by the SDK — callers do not provide it.
+     *
+     * If no 3DS action is required (frictionless flow), the charge response is returned immediately.
+     *
+     * Requires a valid access token with the "payment:create" and "payment:read" scopes.
+     *
+     * @param activity The current Activity, used to launch the 3DS WebView
+     * @param paymentId The payment identifier to charge
+     * @param paymentInstrument The payment instrument (use [PaymentInstrumentInput] factory methods)
+     * @param browserData Device browser data for 3DS risk scoring; collected automatically if null
+     * @return ChargePaymentResponse with the final charge state after verification completes
+     * @throws GopaySDKException if a verification is already in progress or API errors occur
+     * @throws kotlinx.coroutines.CancellationException if the user cancels the 3DS WebView
+     */
+    suspend fun chargePaymentWithVerification(
+        activity: Activity,
+        paymentId: String,
+        paymentInstrument: PaymentInstrumentInput,
+        browserData: BrowserData? = null
+    ): ChargePaymentResponse {
+        val bd = browserData ?: collectBrowserData(activity)
+        val request = ChargePaymentRequest(
+            paymentInstrument = paymentInstrument,
+            returnUrl = GOPAY_3DS_RETURN_URL,
+            browserData = bd
+        )
+        val chargeResponse = paymentService.chargePayment(paymentId, request)
+
+        val redirectUrl = chargeResponse.action?.redirectUrl
+            ?: return chargeResponse
+
+        val deferred = CompletableDeferred<Boolean>()
+        if (!PaymentVerificationBridge.register(deferred)) {
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS,
+                message = "A payment verification is already in progress"
+            )
+        }
+        try {
+            withContext(Dispatchers.Main) {
+                activity.startActivity(
+                    Intent(activity, PaymentVerificationActivity::class.java)
+                        .putExtra(PaymentVerificationActivity.EXTRA_REDIRECT_URL, redirectUrl)
+                )
+            }
+            deferred.await()
+        } finally {
+            PaymentVerificationBridge.clear()
+        }
+        return paymentService.getChargeState(paymentId)
+    }
+
+    private fun collectBrowserData(context: Context): BrowserData {
+        val dm = context.resources.displayMetrics
+        return BrowserData(
+            language = Locale.getDefault().language,
+            timezone = TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000,
+            screenWidth = dm.widthPixels,
+            screenHeight = dm.heightPixels,
+            colorDepth = 24,
+            userAgent = WebSettings.getDefaultUserAgent(context),
+            javascriptEnabled = true
+        )
+    }
+
     companion object {
         // Singleton instance
         @Volatile
         private var instance: GopaySDK? = null
+
+        private const val GOPAY_3DS_RETURN_URL = "cz.gopay.sdk://3ds-complete"
 
         /**
          * Initialize the SDK with the given configuration.

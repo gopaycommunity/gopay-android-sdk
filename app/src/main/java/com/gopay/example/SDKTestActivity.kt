@@ -34,6 +34,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -41,11 +42,15 @@ import androidx.compose.ui.unit.dp
 import com.gopay.example.ui.theme.ExampleAppTheme
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.model.BrowserData
 import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.ChallengePreference
+import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.Currency
 import cz.gopay.sdk.model.PaymentCallback
 import cz.gopay.sdk.model.PaymentCreateRequest
 import cz.gopay.sdk.model.PaymentCustomer
+import cz.gopay.sdk.model.PaymentInstrumentInput
 import cz.gopay.sdk.ui.InputFieldConfig
 import cz.gopay.sdk.ui.PaymentCardForm
 import cz.gopay.sdk.ui.PaymentCardFormTheme
@@ -71,15 +76,23 @@ class SDKTestActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SDKTestScreen() {
-    var username by remember { mutableStateOf("sdk") }
-    var password by remember { mutableStateOf("JcsUVzQw") }
-    var goid by remember { mutableStateOf("123456") }
+    var username by remember { mutableStateOf("SDK") }
+    var password by remember { mutableStateOf("uKmnhCnb") }
+    var goid by remember { mutableStateOf("8761908826") }
     var isAuthenticated by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var resultText by remember { mutableStateOf("Ready to test SDK methods") }
+    var paymentStatusId by remember { mutableStateOf("300000001") }
+    var chargePaymentId by remember { mutableStateOf("300000001") }
+    var cardTokenForCharge by remember { mutableStateOf("") }
+    var chargeReturnUrl by remember { mutableStateOf("https://example.com/return") }
+    var chargeStatePaymentId by remember { mutableStateOf("300000001") }
+    var verificationChargePaymentId by remember { mutableStateOf("300000001") }
+    var verificationCardToken by remember { mutableStateOf("") }
     
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
+    val context = LocalContext.current
     
     Column(
         modifier = Modifier
@@ -458,10 +471,256 @@ fun SDKTestScreen() {
                     ) {
                         Text("Create Test Payment")
                     }
+
+                    HorizontalDivider()
+
+                    // Get Payment Status Section
+                    Text(
+                        text = "Get Payment Status (payments/{payment_id})",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    OutlinedTextField(
+                        value = paymentStatusId,
+                        onValueChange = { paymentStatusId = it },
+                        label = { Text("Payment ID") },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading
+                    )
+
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isLoading = true
+                                try {
+                                    val response = withContext(Dispatchers.IO) {
+                                        GopaySDK.getInstance().getPaymentStatus(paymentStatusId.trim())
+                                    }
+                                    val chargeInfo = response.charge?.let { charge ->
+                                        "Charge ID: ${charge.id}\nCharge State: ${charge.state}\nCharge href: ${charge.href}"
+                                    } ?: "Charge: none"
+                                    resultText = "✅ Payment status retrieved!\n" +
+                                            "ID: ${response.id}\n" +
+                                            "Order: ${response.orderNumber}\n" +
+                                            "State: ${response.state}\n" +
+                                            "Amount: ${response.amount} ${response.currency}\n" +
+                                            chargeInfo
+                                } catch (e: GopaySDKException) {
+                                    resultText = "Payment status failed:\n${formatError(e)}"
+                                } catch (e: Exception) {
+                                    resultText = "Unexpected error: ${e.message}"
+                                }
+                                isLoading = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading && paymentStatusId.isNotBlank()
+                    ) {
+                        Text("Get Payment Status")
+                    }
+
+                    HorizontalDivider()
+
+                    // Charge Payment Section
+                    Text(
+                        text = "Charge Payment (payments/{payment_id}/charge)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    OutlinedTextField(
+                        value = chargePaymentId,
+                        onValueChange = { chargePaymentId = it },
+                        label = { Text("Payment ID") },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading
+                    )
+
+                    OutlinedTextField(
+                        value = cardTokenForCharge,
+                        onValueChange = { cardTokenForCharge = it },
+                        label = { Text("Card Token") },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading
+                    )
+
+                    OutlinedTextField(
+                        value = chargeReturnUrl,
+                        onValueChange = { chargeReturnUrl = it },
+                        label = { Text("Return URL") },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading
+                    )
+
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isLoading = true
+                                try {
+                                    val request = ChargePaymentRequest(
+                                        paymentInstrument = PaymentInstrumentInput.cardToken(
+                                            cardToken = cardTokenForCharge.trim(),
+                                            challengePreference = ChallengePreference.AUTO
+                                        ),
+                                        returnUrl = chargeReturnUrl.trim(),
+                                        browserData = BrowserData(
+                                            language = "en-US",
+                                            timezone = 0,
+                                            screenWidth = 1080,
+                                            screenHeight = 1920,
+                                            colorDepth = 24,
+                                            javascriptEnabled = true
+                                        )
+                                    )
+                                    val response = withContext(Dispatchers.IO) {
+                                        GopaySDK.getInstance().chargePayment(
+                                            paymentId = chargePaymentId.trim(),
+                                            request = request
+                                        )
+                                    }
+                                    val actionInfo = response.action?.let { action ->
+                                        "Action: ${action.actionType} (${action.state})\nRedirect: ${action.redirectUrl ?: "N/A"}"
+                                    } ?: "Action: none"
+                                    resultText = "✅ Payment charged!\n" +
+                                            "Charge ID: ${response.id}\n" +
+                                            "State: ${response.state}\n" +
+                                            "Instrument: ${response.paymentInstrument.paymentInstrument}\n" +
+                                            actionInfo
+                                } catch (e: GopaySDKException) {
+                                    resultText = "Charge failed:\n${formatError(e)}"
+                                } catch (e: Exception) {
+                                    resultText = "Unexpected error: ${e.message}"
+                                }
+                                isLoading = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading && chargePaymentId.isNotBlank() && cardTokenForCharge.isNotBlank()
+                    ) {
+                        Text("Charge Payment (Card Token)")
+                    }
+
+                    HorizontalDivider()
+
+                    // Charge with 3DS Verification Section
+                    Text(
+                        text = "Charge with 3DS Verification (managed flow)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    Text(
+                        text = "SDK opens a WebView for 3DS authentication automatically. No return URL needed.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = verificationChargePaymentId,
+                        onValueChange = { verificationChargePaymentId = it },
+                        label = { Text("Payment ID") },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading
+                    )
+
+                    OutlinedTextField(
+                        value = verificationCardToken,
+                        onValueChange = { verificationCardToken = it },
+                        label = { Text("Card Token") },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading
+                    )
+
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isLoading = true
+                                try {
+                                    val activity = context as android.app.Activity
+                                    val response = GopaySDK.getInstance().chargePaymentWithVerification(
+                                        activity = activity,
+                                        paymentId = verificationChargePaymentId.trim(),
+                                        paymentInstrument = PaymentInstrumentInput.cardToken(
+                                            cardToken = verificationCardToken.trim(),
+                                            challengePreference = ChallengePreference.AUTO
+                                        )
+                                    )
+                                    val actionInfo = response.action?.let { action ->
+                                        "Action: ${action.actionType} (${action.state})\nRedirect: ${action.redirectUrl ?: "N/A"}"
+                                    } ?: "Action: none"
+                                    resultText = "✅ Charge with verification complete!\n" +
+                                            "Charge ID: ${response.id}\n" +
+                                            "State: ${response.state}\n" +
+                                            "Instrument: ${response.paymentInstrument.paymentInstrument}\n" +
+                                            actionInfo
+                                } catch (e: GopaySDKException) {
+                                    resultText = "Charge with verification failed:\n${formatError(e)}"
+                                } catch (e: kotlinx.coroutines.CancellationException) {
+                                    resultText = "3DS verification was cancelled by user"
+                                } catch (e: Exception) {
+                                    resultText = "Unexpected error: ${e.message}"
+                                }
+                                isLoading = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading && verificationChargePaymentId.isNotBlank() && verificationCardToken.isNotBlank()
+                    ) {
+                        Text("Charge with 3DS Verification")
+                    }
+
+                    HorizontalDivider()
+
+                    // Get Charge State Section
+                    Text(
+                        text = "Get Charge State (payments/{payment_id}/charge)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    OutlinedTextField(
+                        value = chargeStatePaymentId,
+                        onValueChange = { chargeStatePaymentId = it },
+                        label = { Text("Payment ID") },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading
+                    )
+
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isLoading = true
+                                try {
+                                    val response = withContext(Dispatchers.IO) {
+                                        GopaySDK.getInstance().getChargeState(chargeStatePaymentId.trim())
+                                    }
+                                    val actionInfo = response.action?.let { action ->
+                                        "Action: ${action.actionType} (${action.state})\nRedirect: ${action.redirectUrl ?: "N/A"}"
+                                    } ?: "Action: none"
+                                    resultText = "✅ Charge state retrieved!\n" +
+                                            "Charge ID: ${response.id}\n" +
+                                            "State: ${response.state}\n" +
+                                            "Instrument: ${response.paymentInstrument.paymentInstrument}\n" +
+                                            "Return URL: ${response.returnUrl}\n" +
+                                            actionInfo
+                                } catch (e: GopaySDKException) {
+                                    resultText = "Get charge state failed:\n${formatError(e)}"
+                                } catch (e: Exception) {
+                                    resultText = "Unexpected error: ${e.message}"
+                                }
+                                isLoading = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isLoading && chargeStatePaymentId.isNotBlank()
+                    ) {
+                        Text("Get Charge State")
+                    }
                 }
             }
         }
-        
+
         // PaymentCardForm Demo Section
         if (isAuthenticated) {
             Card(
@@ -742,7 +1001,7 @@ private suspend fun authenticateUser(
         val authResponse = GopaySDK.getInstance().authenticate(
             clientId = username,
             clientSecret = password,
-            scope = "payment:create payment:read card:read"
+            scope = "payment:create payment:read card:read card:save"
         )
         
         withContext(Dispatchers.Main) {
