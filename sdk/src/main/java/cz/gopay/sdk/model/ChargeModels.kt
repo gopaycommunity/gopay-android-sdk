@@ -46,7 +46,7 @@ enum class Emv3dsState {
 
 /**
  * Flat input details for a payment instrument. Nullable fields cover all charge variants
- * (CARD_TOKEN, SWIFT, IBAN, ACCOUNT_TOKEN) without requiring a custom Moshi adapter.
+ * (CARD_TOKEN, SWIFT, IBAN, ACCOUNT_TOKEN, GOOGLE_PAY) without requiring a custom Moshi adapter.
  *
  * Note: `challenge_preferrence` is an intentional typo preserved from the API spec wire format.
  */
@@ -58,7 +58,11 @@ data class InstrumentInputDetails(
     val swift: BankSwift? = null,
     @Json(name = "account_holder_name") val accountHolderName: String? = null,
     @Json(name = "bank_payment_type") val bankPaymentType: BankPaymentType? = null,
-    @Json(name = "account_token") val accountToken: String? = null
+    @Json(name = "account_token") val accountToken: String? = null,
+    val protocolVersion: String? = null,
+    val signature: String? = null,
+    @Json(name = "intermediateSigningKey") val intermediateSigningKey: IntermediateSigningKey? = null,
+    @Json(name = "signedMessage") val signedMessage: String? = null
 )
 
 /**
@@ -105,6 +109,22 @@ data class PaymentInstrumentInput(
                 iban = iban,
                 swift = swift,
                 accountHolderName = accountHolderName
+            )
+        )
+
+        fun googlePay(
+            protocolVersion: String,
+            signature: String,
+            intermediateSigningKey: IntermediateSigningKey,
+            signedMessage: String
+        ): PaymentInstrumentInput = PaymentInstrumentInput(
+            paymentInstrument = "PAYMENT_CARD",
+            input = InstrumentInputDetails(
+                inputType = "GOOGLE_PAY",
+                protocolVersion = protocolVersion,
+                signature = signature,
+                intermediateSigningKey = intermediateSigningKey,
+                signedMessage = signedMessage
             )
         )
     }

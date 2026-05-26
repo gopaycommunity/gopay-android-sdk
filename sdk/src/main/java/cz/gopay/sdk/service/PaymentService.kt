@@ -4,6 +4,7 @@ import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.PaymentCreateRequest
 import cz.gopay.sdk.model.PaymentCreateResponse
+import cz.gopay.sdk.model.GooglePayInfoResponse
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.modules.network.GopayApiService
@@ -113,6 +114,24 @@ class PaymentService(
 
         return response.body()
             ?: throw Exception("Empty response body from get QR payment info")
+    }
+
+    /**
+     * Retrieves the Google Pay payment configuration for a payment.
+     *
+     * @param paymentId Payment identifier
+     * @return GooglePayInfoResponse with environment and PaymentDataRequest config
+     * @throws Exception for HTTP errors or empty response body
+     */
+    suspend fun getGooglePayInfo(paymentId: String): GooglePayInfoResponse {
+        val response = apiService.getGooglePayInfo(paymentId)
+
+        if (!response.isSuccessful) {
+            throw Exception("Get Google Pay info failed: ${response.code()} ${response.message()}")
+        }
+
+        return response.body()
+            ?: throw Exception("Empty response body from get Google Pay info")
     }
 }
 

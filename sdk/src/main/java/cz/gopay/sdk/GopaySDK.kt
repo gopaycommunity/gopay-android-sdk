@@ -13,6 +13,7 @@ import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.CardTokenResponse
 import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargePaymentResponse
+import cz.gopay.sdk.model.GooglePayInfoResponse
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.model.QrPaymentDetails
@@ -383,6 +384,20 @@ class GopaySDK private constructor(
         format: QrCodeFormat? = null
     ): QrPaymentDetails {
         return paymentService.getQrPaymentInfo(paymentId, format)
+    }
+
+    /**
+     * Retrieves the Google Pay payment configuration for a payment.
+     * Use the returned [GooglePayInfoResponse.paymentDataRequest] to initialize the Google Pay button.
+     *
+     * Requires a valid access token with the "payment:read" scope.
+     *
+     * @param paymentId The payment identifier
+     * @return GooglePayInfoResponse with environment flag and PaymentDataRequest config
+     * @throws Exception for network or API errors
+     */
+    suspend fun getGooglePayInfo(paymentId: String): GooglePayInfoResponse {
+        return paymentService.getGooglePayInfo(paymentId)
     }
 
     /**

@@ -3,6 +3,14 @@ package cz.gopay.sdk.service
 import cz.gopay.sdk.model.BankAccountLocalDetails
 import cz.gopay.sdk.model.BankTransferRecipient
 import cz.gopay.sdk.model.ChargeAction
+import cz.gopay.sdk.model.GooglePayAllowedMethod
+import cz.gopay.sdk.model.GooglePayDataRequest
+import cz.gopay.sdk.model.GooglePayGatewayParameters
+import cz.gopay.sdk.model.GooglePayInfoResponse
+import cz.gopay.sdk.model.GooglePayMerchantInfo
+import cz.gopay.sdk.model.GooglePayMethodParameters
+import cz.gopay.sdk.model.GooglePayTokenizationSpec
+import cz.gopay.sdk.model.GooglePayTransactionInfo
 import cz.gopay.sdk.model.ChargeActionType
 import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargePaymentResponse
@@ -386,5 +394,79 @@ class PaymentServiceTest {
         }
     }
 
-}
+    // --- getGooglePayInfo ---
 
+    private fun buildGooglePayInfoResponse() = GooglePayInfoResponse(
+        environment = "TEST",
+        paymentDataRequest = GooglePayDataRequest(
+            apiVersion = 2,
+            apiVersionMinor = 0,
+            allowedPaymentMethods = listOf(
+                GooglePayAllowedMethod(
+                    type = "CARD",
+                    parameters = GooglePayMethodParameters(
+                        allowedAuthMethods = listOf("PAN_ONLY", "CRYPTOGRAM_3DS"),
+                        allowedCardNetworks = listOf("VISA", "MASTERCARD")
+                    ),
+                    tokenizationSpecification = GooglePayTokenizationSpec(
+                        type = "PAYMENT_GATEWAY",
+                        parameters = GooglePayGatewayParameters(
+                            gateway = "gopay",
+                            gatewayMerchantId = "26046768005768011132"
+                        )
+                    )
+                )
+            ),
+            transactionInfo = GooglePayTransactionInfo(
+                currencyCode = "CZK",
+                countryCode = "CZ",
+                totalPriceStatus = "FINAL",
+                totalPrice = "5.00"
+            ),
+            merchantInfo = GooglePayMerchantInfo(
+                merchantName = "GoPay Czech",
+                merchantId = "14846034534970557458"
+            ),
+            emailRequired = true
+        )
+    )
+
+    @Test
+    fun getGooglePayInfo_success_returnsResponse() = runTest {
+        val expected = buildGooglePayInfoResponse()
+
+        whenever(apiService.getGooglePayInfo("300000001"))
+            .thenReturn(Response.success(expected))
+
+        val result = paymentService.getGooglePayInfo("300000001")
+
+        assertEquals(expected, result)
+        assertEquals("TEST", result.environment)
+        assertEquals("GoPay Czech", result.paymentDataRequest.merchantInfo.merchantName)
+    }
+
+    @Test
+    fun getGooglePayInfo_httpError_throwsException() = runTest {
+        val errorBody = ResponseBody.create(
+            "application/json".toMediaTypeOrNull(),
+            """{"code":404,"message":"Not Found"}"""
+        )
+
+        whenever(apiService.getGooglePayInfo("999"))
+            .thenReturn(Response.error(404, errorBody))
+
+        assertThrows(Exception::class.java) {
+            runTest { paymentService.getGooglePayInfo("999") }
+        }
+    }
+
+    @Test
+    fun getGooglePayInfo_nullBody_throwsException() = runTest {
+        whenever(apiService.getGooglePayInfo("300000001"))
+            .thenReturn(Response.success(null))
+
+        assertThrows(Exception::class.java) {
+            runTest { paymentService.getGooglePayInfo("300000001") }
+        }
+    }
+}

@@ -7,6 +7,7 @@ import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.model.PaymentCreateRequest
 import cz.gopay.sdk.model.PaymentCreateResponse
+import cz.gopay.sdk.model.GooglePayInfoResponse
 import cz.gopay.sdk.model.QrPaymentDetails
 import retrofit2.Response
 import retrofit2.http.Body
@@ -154,6 +155,17 @@ interface GopayApiService {
         @Path("payment_id") paymentId: String,
         @Query("format") format: String? = null
     ): Response<QrPaymentDetails>
+
+    /**
+     * Retrieves the Google Pay payment configuration for a payment.
+     * Requires payment:read scope.
+     * Maps to GET /payments/{payment_id}/google-pay/info in Payments.yaml.
+     */
+    @GET("payments/{payment_id}/google-pay/info")
+    @Headers("Accept: application/json")
+    suspend fun getGooglePayInfo(
+        @Path("payment_id") paymentId: String
+    ): Response<GooglePayInfoResponse>
 
 }
 

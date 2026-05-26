@@ -7,6 +7,10 @@ import cz.gopay.sdk.model.CardTokenResponse
 import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.Currency
+import cz.gopay.sdk.model.GooglePayDataRequest
+import cz.gopay.sdk.model.GooglePayInfoResponse
+import cz.gopay.sdk.model.GooglePayMerchantInfo
+import cz.gopay.sdk.model.GooglePayTransactionInfo
 import cz.gopay.sdk.model.InstrumentDetails
 import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.model.Jwk
@@ -243,6 +247,29 @@ class GopayApiServiceTest {
             paymentCreateResponse = response
         }
 
+        private var googlePayInfoResponse: GooglePayInfoResponse = GooglePayInfoResponse(
+            environment = "TEST",
+            paymentDataRequest = GooglePayDataRequest(
+                apiVersion = 2,
+                apiVersionMinor = 0,
+                allowedPaymentMethods = emptyList(),
+                transactionInfo = GooglePayTransactionInfo(
+                    currencyCode = "CZK",
+                    countryCode = "CZ",
+                    totalPriceStatus = "FINAL",
+                    totalPrice = "100.00"
+                ),
+                merchantInfo = GooglePayMerchantInfo(
+                    merchantName = "Test Merchant",
+                    merchantId = "123456"
+                )
+            )
+        )
+
+        fun setGooglePayInfoResponse(response: GooglePayInfoResponse) {
+            googlePayInfoResponse = response
+        }
+
         override suspend fun authenticate(
             authorization: String?,
             grantType: String,
@@ -326,5 +353,42 @@ class GopayApiServiceTest {
             return delegate.returningResponse(defaultQrDetails).getQrPaymentInfo(paymentId, format)
         }
 
+        override suspend fun getGooglePayInfo(paymentId: String): Response<GooglePayInfoResponse> {
+            return delegate.returningResponse(googlePayInfoResponse).getGooglePayInfo(paymentId)
+        }
+    }
+
+    @Test
+    fun testGetGooglePayInfo() = runTest {
+        // Given a mock response for getGooglePayInfo
+        val mockResponse = GooglePayInfoResponse(
+            environment = "PRODUCTION",
+            paymentDataRequest = GooglePayDataRequest(
+                apiVersion = 2,
+                apiVersionMinor = 0,
+                allowedPaymentMethods = emptyList(),
+                transactionInfo = GooglePayTransactionInfo(
+                    currencyCode = "CZK",
+                    countryCode = "CZ",
+                    totalPriceStatus = "FINAL",
+                    totalPrice = "5.00"
+                ),
+                merchantInfo = GooglePayMerchantInfo(
+                    merchantName = "GoPay Czech",
+                    merchantId = "14846034534970557458"
+                ),
+                emailRequired = true
+            )
+        )
+        mockApiService.setGooglePayInfoResponse(mockResponse)
+
+        // When calling getGooglePayInfo
+        val result = mockApiService.getGooglePayInfo("300000001")
+
+        // Then the result should be successful and contain the expected response
+        assertEquals(true, result.isSuccessful)
+        assertEquals(mockResponse, result.body())
+        assertEquals("PRODUCTION", result.body()?.environment)
+        assertEquals("GoPay Czech", result.body()?.paymentDataRequest?.merchantInfo?.merchantName)
     }
 }

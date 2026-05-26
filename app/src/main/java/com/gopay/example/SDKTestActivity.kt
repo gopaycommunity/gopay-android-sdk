@@ -55,6 +55,7 @@ import cz.gopay.sdk.model.PaymentCreateRequest
 import cz.gopay.sdk.model.PaymentCustomer
 import cz.gopay.sdk.model.PaymentInstrumentInput
 import cz.gopay.sdk.model.QrCodeFormat
+import cz.gopay.sdk.service.GooglePayHelper
 import cz.gopay.sdk.ui.InputFieldConfig
 import cz.gopay.sdk.ui.PaymentCardForm
 import cz.gopay.sdk.ui.PaymentCardFormTheme
@@ -94,6 +95,8 @@ fun SDKTestScreen() {
     var chargeStatePaymentId by remember { mutableStateOf("") }
     var threeDsRedirectUrl by remember { mutableStateOf("") }
     var qrPaymentId by remember { mutableStateOf("") }
+    var googlePayPaymentId by remember { mutableStateOf("") }
+    var googlePayTokenJson by remember { mutableStateOf("") }
 
     // Per-section results
     var tokenMgmtResult by remember { mutableStateOf("") }
@@ -105,6 +108,8 @@ fun SDKTestScreen() {
     var threeDsResult by remember { mutableStateOf("") }
     var chargeStateResult by remember { mutableStateOf("") }
     var qrResult by remember { mutableStateOf("") }
+    var googlePayInfoResult by remember { mutableStateOf("") }
+    var googlePayChargeResult by remember { mutableStateOf("") }
     var qrBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
 
     val scope = rememberCoroutineScope()
@@ -333,6 +338,7 @@ fun SDKTestScreen() {
                                 chargePaymentId = resp.id
                                 chargeStatePaymentId = resp.id
                                 qrPaymentId = resp.id
+                                googlePayPaymentId = resp.id
                                 createPaymentResult = "✅ Created!\nID: ${resp.id}\nOrder: ${resp.orderNumber}\nState: ${resp.state}\nAmount: ${resp.amount} ${resp.currency}\nGW URL: ${resp.gwUrl}"
                             } catch (e: GopaySDKException) {
                                 createPaymentResult = "❌ ${formatError(e)}"
@@ -478,6 +484,104 @@ fun SDKTestScreen() {
                         modifier = Modifier.size(200.dp)
                     )
                 }
+            }
+
+            // === GOOGLE PAY INFO ===
+            SectionCard(title = "Google Pay Info") {
+                Text(
+                    "Auto-populated from Create Payment. Requires payment:read scope.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = googlePayPaymentId, onValueChange = { googlePayPaymentId = it },
+                    label = { Text("Payment ID") },
+                    modifier = Modifier.fillMaxWidth(), enabled = !isLoading
+                )
+                Button(
+                    onClick = {
+                        scope.launch {
+                            isLoading = true
+                            try {
+                                val resp = withContext(Dispatchers.IO) {
+                                    GopaySDK.getInstance().getGooglePayInfo(googlePayPaymentId.trim())
+                                }
+                                googlePayInfoResult = buildString {
+                                    appendLine("✅ Google Pay Info retrieved!")
+                                    appendLine("Environment: ${resp.environment}")
+                                    appendLine("Merchant: ${resp.paymentDataRequest.merchantInfo.merchantName}")
+                                    appendLine("Merchant ID: ${resp.paymentDataRequest.merchantInfo.merchantId ?: "N/A"}")
+                                    appendLine("Currency: ${resp.paymentDataRequest.transactionInfo.currencyCode}")
+                                    appendLine("Amount: ${resp.paymentDataRequest.transactionInfo.totalPrice}")
+                                    val methods = resp.paymentDataRequest.allowedPaymentMethods.joinToString(", ") { it.type }
+                                    append("Payment methods: $methods")
+                                }
+                            } catch (e: GopaySDKException) {
+                                googlePayInfoResult = "❌ ${formatError(e)}"
+                            } catch (e: Exception) {
+                                googlePayInfoResult = "❌ ${e.message}"
+                            }
+                            isLoading = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isLoading && googlePayPaymentId.isNotBlank()
+                ) { Text("Get Google Pay Info") }
+                ResultBox(googlePayInfoResult)
+            }
+
+            // === GOOGLE PAY CHARGE ===
+            SectionCard(title = "Google Pay Charge") {
+                Text(
+                    "In production, use the Google Pay SDK button to obtain a PaymentData token. " +
+                    "Paste the PaymentData JSON here for sandbox testing.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = googlePayPaymentId, onValueChange = { googlePayPaymentId = it },
+                    label = { Text("Payment ID") },
+                    modifier = Modifier.fillMaxWidth(), enabled = !isLoading
+                )
+                OutlinedTextField(
+                    value = googlePayTokenJson, onValueChange = { googlePayTokenJson = it },
+                    label = { Text("PaymentData JSON (from Google Pay SDK)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isLoading,
+                    minLines = 3
+                )
+                Button(
+                    onClick = {
+                        scope.launch {
+                            isLoading = true
+                            try {
+                                val instrument = GooglePayHelper.parseGooglePayToken(googlePayTokenJson.trim())
+                                val resp = withContext(Dispatchers.IO) {
+                                    GopaySDK.getInstance().chargePayment(
+                                        paymentId = googlePayPaymentId.trim(),
+                                        request = ChargePaymentRequest(paymentInstrument = instrument)
+                                    )
+                                }
+                                resp.action?.redirectUrl?.let { threeDsRedirectUrl = it }
+                                chargeStatePaymentId = googlePayPaymentId.trim()
+                                val actionInfo = resp.action?.let {
+                                    "Action: ${it.actionType} (${it.state})\nRedirect: ${it.redirectUrl ?: "N/A"}"
+                                } ?: "Action: none"
+                                googlePayChargeResult = "✅ Google Pay charge submitted!\nCharge ID: ${resp.id}\nState: ${resp.state}\n$actionInfo"
+                            } catch (e: IllegalArgumentException) {
+                                googlePayChargeResult = "❌ Invalid token JSON: ${e.message}"
+                            } catch (e: GopaySDKException) {
+                                googlePayChargeResult = "❌ ${formatError(e)}"
+                            } catch (e: Exception) {
+                                googlePayChargeResult = "❌ ${e.message}"
+                            }
+                            isLoading = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isLoading && googlePayPaymentId.isNotBlank() && googlePayTokenJson.isNotBlank()
+                ) { Text("Charge with Google Pay Token") }
+                ResultBox(googlePayChargeResult)
             }
 
             // === CHARGE PAYMENT ===

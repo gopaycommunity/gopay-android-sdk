@@ -10,6 +10,7 @@ A modern Android SDK for GoPay payment processing with automatic context initial
 - ✅ **Multiple Environments** - Support for Development, Staging, Sandbox, and Production
 - ✅ **Type-Safe Configuration** - Kotlin-first API design
 - ✅ **Comprehensive Testing** - Full unit test coverage
+- ✅ **Google Pay** - Fetch payment config and charge with Google Pay tokens
 
 ## Quick Start
 
