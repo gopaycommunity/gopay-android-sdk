@@ -162,6 +162,116 @@ val response = sdk.createPayment(goid = "123456", request = request)
 println("Created payment with ID: ${response.id}, gwUrl: ${response.gwUrl}")
 ```
 
+### QR Payment Info
+
+For bank transfer payments, you can retrieve QR code images and recipient bank account details using the `payment:read` scope. The endpoint returns base64-encoded QR codes in regional formats (SPAYD for Czech Republic, PayBySquare for Slovakia, SEPA for EUR payments, MNB for Hungary).
+
+```kotlin
+val sdk = GopaySDK.getInstance()
+
+// Fetch QR payment info (PNG format by default)
+val qrDetails = sdk.getQrPaymentInfo(paymentId = "300000001")
+
+println("Amount: ${qrDetails.amount} ${qrDetails.currency}")
+println("Recipient: ${qrDetails.recipient.name}")
+
+// Decode and display the SPAYD QR code (Czech Republic)
+val spaydBase64 = qrDetails.qrCode.spayd
+
+// Request SVG format instead of the default PNG
+val qrDetailsSvg = sdk.getQrPaymentInfo(paymentId = "300000001", format = QrCodeFormat.SVG)
+```
+
+Response fields:
+- `amount` — payment amount in cents
+- `currency` — payment currency (`Currency` enum)
+- `recipient.name` — recipient name
+- `recipient.bankAccount.local` — local bank account details (account number, bank code, variable symbol)
+- `recipient.bankAccount.international` — IBAN/BIC details
+- `qrCode.spayd` — base64 SPAYD QR image (CZ)
+- `qrCode.paybysquare` — base64 Pay by Square QR image (SK)
+- `qrCode.sepa` — base64 SEPA QR image (EUR)
+- `qrCode.mnbQr` — base64 MNB QR image (HU)
+
+### Google Pay
+
+Google Pay integration requires two steps: fetching the payment config from the GoPay API, then passing the Google Pay token to the charge endpoint.
+
+#### 1. Fetch Google Pay Info
+
+After creating a payment, fetch the `PaymentDataRequest` configuration from the GoPay API:
+
+```kotlin
+val sdk = GopaySDK.getInstance()
+
+// Requires payment:read scope
+val info = sdk.getGooglePayInfo(paymentId = response.id)
+// info.environment — "TEST" or "PRODUCTION"
+// info.paymentDataRequest — config for the Google Pay button
+```
+
+#### 2. Initialize Google Pay with the config
+
+Use `GooglePayHelper` to convert the API response to the JSON string expected by the Google Pay Android SDK. Add the dependency to your app's `build.gradle`:
+
+```kotlin
+implementation("com.google.android.gms:play-services-wallet:19.4.0")
+```
+
+Then initialize the `PaymentsClient` and launch the Google Pay sheet:
+
+```kotlin
+import cz.gopay.sdk.service.GooglePayHelper
+import com.google.android.gms.wallet.Wallet
+import com.google.android.gms.wallet.WalletConstants
+import com.google.android.gms.wallet.PaymentDataRequest
+import com.google.android.gms.wallet.AutoResolveHelper
+
+val environment = if (info.environment == "PRODUCTION")
+    WalletConstants.ENVIRONMENT_PRODUCTION
+else
+    WalletConstants.ENVIRONMENT_TEST
+
+val paymentsClient = Wallet.getPaymentsClient(
+    activity,
+    Wallet.WalletOptions.Builder().setEnvironment(environment).build()
+)
+
+val paymentDataRequest = PaymentDataRequest.fromJson(
+    GooglePayHelper.buildPaymentDataRequestJson(info)
+)
+
+AutoResolveHelper.resolveTask(
+    paymentsClient.loadPaymentData(paymentDataRequest),
+    activity,
+    GOOGLE_PAY_REQUEST_CODE
+)
+```
+
+#### 3. Charge with Google Pay token
+
+In `onActivityResult`, parse the result and charge the payment:
+
+```kotlin
+override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    super.onActivityResult(requestCode, resultCode, data)
+    if (requestCode == GOOGLE_PAY_REQUEST_CODE && resultCode == RESULT_OK) {
+        val paymentData = PaymentData.getFromIntent(data!!) ?: return
+        val instrument = GooglePayHelper.parseGooglePayToken(paymentData.toJson())
+
+        lifecycleScope.launch {
+            val chargeResponse = sdk.chargePayment(
+                paymentId = paymentId,
+                request = ChargePaymentRequest(paymentInstrument = instrument)
+            )
+            // Check chargeResponse.state — SUCCEEDED, FAILED, ACTION_REQUIRED, etc.
+        }
+    }
+}
+```
+
+`GooglePayHelper.parseGooglePayToken()` extracts the `protocolVersion`, `signature`, `intermediateSigningKey`, and `signedMessage` from the Google Pay token and wraps them in a `PaymentInstrumentInput` with `inputType = "GOOGLE_PAY"`.
+
 ### Token Storage Access
 
 You can access the underlying token storage for advanced use cases:
@@ -443,12 +553,8 @@ Not yet determined. Not in production.
 
 ## Upcoming Features
 
-### Google Pay Integration
+### Apple Pay Integration
 
-A future release will add a Google Pay button and integration, allowing users to pay with their saved Google Pay cards directly in the PaymentCardForm UI.
-
-### Charging a Payment Method
-
-After obtaining a card token (via `PaymentCardForm`), you will be able to use a new SDK method to charge the payment method securely. This will allow you to complete the payment flow end-to-end using only the token, without handling sensitive card data yourself.
+A future release will add Apple Pay support via `GET /payments/{payment_id}/apple-pay/app-info`.
 
 Stay tuned for updates in the SDK changelog!

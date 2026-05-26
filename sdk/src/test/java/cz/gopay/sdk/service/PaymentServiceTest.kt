@@ -1,5 +1,7 @@
 package cz.gopay.sdk.service
 
+import cz.gopay.sdk.model.BankAccountLocalDetails
+import cz.gopay.sdk.model.BankTransferRecipient
 import cz.gopay.sdk.model.ChargeAction
 import cz.gopay.sdk.model.ChargeActionType
 import cz.gopay.sdk.model.ChargePaymentRequest
@@ -17,6 +19,10 @@ import cz.gopay.sdk.model.PaymentCustomer
 import cz.gopay.sdk.model.PaymentInstrumentData
 import cz.gopay.sdk.model.PaymentInstrumentInput
 import cz.gopay.sdk.model.PaymentState
+import cz.gopay.sdk.model.QrCodeFormat
+import cz.gopay.sdk.model.QrCodeList
+import cz.gopay.sdk.model.QrPaymentDetails
+import cz.gopay.sdk.model.RecipientBankAccount
 import cz.gopay.sdk.modules.network.GopayApiService
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
@@ -309,5 +315,76 @@ class PaymentServiceTest {
             runTest { paymentService.getChargeState("300000001") }
         }
     }
+
+    // --- getQrPaymentInfo ---
+
+    private fun buildQrPaymentDetails() = QrPaymentDetails(
+        amount = 10000,
+        currency = Currency.CZK,
+        recipient = BankTransferRecipient(
+            name = "GoPay Czech",
+            bankAccount = RecipientBankAccount(
+                local = BankAccountLocalDetails(
+                    prefix = "000000",
+                    accountNumber = "9878039",
+                    bankCode = "2010",
+                    variableSymbol = "3123456789"
+                )
+            )
+        ),
+        qrCode = QrCodeList(
+            spayd = "base64encodedSpaydImage=="
+        )
+    )
+
+    @Test
+    fun getQrPaymentInfo_success_returnsResponse() = runTest {
+        val expected = buildQrPaymentDetails()
+
+        whenever(apiService.getQrPaymentInfo("300000001", null))
+            .thenReturn(Response.success(expected))
+
+        val result = paymentService.getQrPaymentInfo("300000001")
+
+        assertEquals(expected, result)
+    }
+
+    @Test
+    fun getQrPaymentInfo_withFormatParam_passesFormatString() = runTest {
+        val expected = buildQrPaymentDetails()
+
+        whenever(apiService.getQrPaymentInfo("300000001", "svg"))
+            .thenReturn(Response.success(expected))
+
+        val result = paymentService.getQrPaymentInfo("300000001", QrCodeFormat.SVG)
+
+        assertEquals(expected, result)
+    }
+
+    @Test
+    fun getQrPaymentInfo_httpError_throwsException() = runTest {
+        val errorBody = ResponseBody.create(
+            "application/json".toMediaTypeOrNull(),
+            """{"code":404,"message":"Not Found"}"""
+        )
+
+        whenever(apiService.getQrPaymentInfo("999", null))
+            .thenReturn(Response.error(404, errorBody))
+
+        assertThrows(Exception::class.java) {
+            runTest { paymentService.getQrPaymentInfo("999") }
+        }
+    }
+
+    @Test
+    fun getQrPaymentInfo_nullBody_throwsException() = runTest {
+        whenever(apiService.getQrPaymentInfo("300000001", null))
+            .thenReturn(Response.success(null))
+
+        assertThrows(Exception::class.java) {
+            runTest { paymentService.getQrPaymentInfo("300000001") }
+        }
+    }
+
 }
 

@@ -1,5 +1,7 @@
 package cz.gopay.sdk.modules.network
 
+import cz.gopay.sdk.model.BankAccountLocalDetails
+import cz.gopay.sdk.model.BankTransferRecipient
 import cz.gopay.sdk.model.CardTokenRequest
 import cz.gopay.sdk.model.CardTokenResponse
 import cz.gopay.sdk.model.ChargePaymentRequest
@@ -14,6 +16,9 @@ import cz.gopay.sdk.model.PaymentCreateResponse
 import cz.gopay.sdk.model.PaymentCustomer
 import cz.gopay.sdk.model.PaymentInstrumentData
 import cz.gopay.sdk.model.PaymentState
+import cz.gopay.sdk.model.QrCodeList
+import cz.gopay.sdk.model.QrPaymentDetails
+import cz.gopay.sdk.model.RecipientBankAccount
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
@@ -237,7 +242,7 @@ class GopayApiServiceTest {
         fun setPaymentCreateResponse(response: PaymentCreateResponse) {
             paymentCreateResponse = response
         }
-        
+
         override suspend fun authenticate(
             authorization: String?,
             grantType: String,
@@ -297,5 +302,29 @@ class GopayApiServiceTest {
             )
             return delegate.returningResponse(defaultChargeResponse).getChargeState(paymentId)
         }
+
+        override suspend fun getQrPaymentInfo(
+            paymentId: String,
+            format: String?
+        ): Response<QrPaymentDetails> {
+            val defaultQrDetails = QrPaymentDetails(
+                amount = 10000,
+                currency = Currency.CZK,
+                recipient = BankTransferRecipient(
+                    name = "GoPay Czech",
+                    bankAccount = RecipientBankAccount(
+                        local = BankAccountLocalDetails(
+                            prefix = "000000",
+                            accountNumber = "9878039",
+                            bankCode = "2010",
+                            variableSymbol = "3123456789"
+                        )
+                    )
+                ),
+                qrCode = QrCodeList(spayd = "base64encodedSpaydImage==")
+            )
+            return delegate.returningResponse(defaultQrDetails).getQrPaymentInfo(paymentId, format)
+        }
+
     }
-} 
+}

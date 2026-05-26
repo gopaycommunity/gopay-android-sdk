@@ -4,6 +4,8 @@ import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.PaymentCreateRequest
 import cz.gopay.sdk.model.PaymentCreateResponse
+import cz.gopay.sdk.model.QrCodeFormat
+import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.modules.network.GopayApiService
 
 /**
@@ -92,6 +94,25 @@ class PaymentService(
 
         return response.body()
             ?: throw Exception("Empty response body from get charge state")
+    }
+
+    /**
+     * Retrieves QR code payment info for a bank transfer payment.
+     *
+     * @param paymentId Payment identifier
+     * @param format QR code image format (PNG or SVG, defaults to PNG)
+     * @return QrPaymentDetails with recipient info and base64-encoded QR code images
+     * @throws Exception for HTTP errors or empty response body
+     */
+    suspend fun getQrPaymentInfo(paymentId: String, format: QrCodeFormat? = null): QrPaymentDetails {
+        val response = apiService.getQrPaymentInfo(paymentId, format?.name?.lowercase())
+
+        if (!response.isSuccessful) {
+            throw Exception("Get QR payment info failed: ${response.code()} ${response.message()}")
+        }
+
+        return response.body()
+            ?: throw Exception("Empty response body from get QR payment info")
     }
 }
 

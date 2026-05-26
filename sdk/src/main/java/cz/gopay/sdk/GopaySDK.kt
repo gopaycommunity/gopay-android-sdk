@@ -14,6 +14,8 @@ import cz.gopay.sdk.model.CardTokenResponse
 import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.Jwk
+import cz.gopay.sdk.model.QrCodeFormat
+import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.modules.network.GopayApiService
 import cz.gopay.sdk.modules.network.NetworkManager
 import cz.gopay.sdk.ui.PaymentVerificationActivity
@@ -365,6 +367,22 @@ class GopaySDK private constructor(
      */
     suspend fun getChargeState(paymentId: String): ChargePaymentResponse {
         return paymentService.getChargeState(paymentId)
+    }
+
+    /**
+     * Retrieves QR code payment info for a bank transfer payment.
+     * Requires a valid access token with the "payment:read" scope.
+     *
+     * @param paymentId The payment identifier
+     * @param format QR code image format — PNG or SVG (defaults to PNG)
+     * @return QrPaymentDetails with bank transfer recipient info and base64-encoded QR code images
+     * @throws Exception for network or API errors
+     */
+    suspend fun getQrPaymentInfo(
+        paymentId: String,
+        format: QrCodeFormat? = null
+    ): QrPaymentDetails {
+        return paymentService.getQrPaymentInfo(paymentId, format)
     }
 
     /**

@@ -7,6 +7,7 @@ import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.model.PaymentCreateRequest
 import cz.gopay.sdk.model.PaymentCreateResponse
+import cz.gopay.sdk.model.QrPaymentDetails
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.Field
@@ -16,6 +17,7 @@ import retrofit2.http.Header
 import retrofit2.http.Headers
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /**
  * Retrofit interface for Gopay API calls
@@ -137,6 +139,22 @@ interface GopayApiService {
     suspend fun getChargeState(
         @Path("payment_id") paymentId: String
     ): Response<ChargePaymentResponse>
+
+    /**
+     * Retrieves QR code payment info for a bank transfer payment.
+     * Requires payment:read scope.
+     * Maps to GET /payments/{payment_id}/qr-payment/info in Payments.yaml.
+     *
+     * @param paymentId Payment identifier
+     * @param format Image format for QR codes — "png" or "svg" (default: "png")
+     */
+    @GET("payments/{payment_id}/qr-payment/info")
+    @Headers("Accept: application/json")
+    suspend fun getQrPaymentInfo(
+        @Path("payment_id") paymentId: String,
+        @Query("format") format: String? = null
+    ): Response<QrPaymentDetails>
+
 }
 
 /**

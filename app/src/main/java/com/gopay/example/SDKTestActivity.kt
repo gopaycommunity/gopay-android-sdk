@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,6 +41,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.gopay.example.ui.theme.ExampleAppTheme
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.BrowserData
@@ -51,6 +54,7 @@ import cz.gopay.sdk.model.PaymentCallback
 import cz.gopay.sdk.model.PaymentCreateRequest
 import cz.gopay.sdk.model.PaymentCustomer
 import cz.gopay.sdk.model.PaymentInstrumentInput
+import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.ui.InputFieldConfig
 import cz.gopay.sdk.ui.PaymentCardForm
 import cz.gopay.sdk.ui.PaymentCardFormTheme
@@ -89,6 +93,7 @@ fun SDKTestScreen() {
     var cardTokenForCharge by remember { mutableStateOf("") }
     var chargeStatePaymentId by remember { mutableStateOf("") }
     var threeDsRedirectUrl by remember { mutableStateOf("") }
+    var qrPaymentId by remember { mutableStateOf("") }
 
     // Per-section results
     var tokenMgmtResult by remember { mutableStateOf("") }
@@ -99,6 +104,8 @@ fun SDKTestScreen() {
     var chargeResult by remember { mutableStateOf("") }
     var threeDsResult by remember { mutableStateOf("") }
     var chargeStateResult by remember { mutableStateOf("") }
+    var qrResult by remember { mutableStateOf("") }
+    var qrBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
 
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
@@ -325,6 +332,7 @@ fun SDKTestScreen() {
                                 paymentStatusId = resp.id
                                 chargePaymentId = resp.id
                                 chargeStatePaymentId = resp.id
+                                qrPaymentId = resp.id
                                 createPaymentResult = "✅ Created!\nID: ${resp.id}\nOrder: ${resp.orderNumber}\nState: ${resp.state}\nAmount: ${resp.amount} ${resp.currency}\nGW URL: ${resp.gwUrl}"
                             } catch (e: GopaySDKException) {
                                 createPaymentResult = "❌ ${formatError(e)}"
@@ -371,6 +379,105 @@ fun SDKTestScreen() {
                     enabled = !isLoading && paymentStatusId.isNotBlank()
                 ) { Text("Get Payment Status") }
                 ResultBox(paymentStatusResult)
+            }
+
+            // === QR PAYMENT INFO ===
+            SectionCard(title = "QR Payment Info") {
+                Text(
+                    "Auto-populated from Create Payment. Requires payment:read scope.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = qrPaymentId, onValueChange = { qrPaymentId = it },
+                    label = { Text("Payment ID") },
+                    modifier = Modifier.fillMaxWidth(), enabled = !isLoading
+                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isLoading = true
+                                qrBitmap = null
+                                try {
+                                    val resp = withContext(Dispatchers.IO) {
+                                        GopaySDK.getInstance().getQrPaymentInfo(qrPaymentId.trim())
+                                    }
+                                    val localAccount = resp.recipient.bankAccount?.local
+                                    val intlAccount = resp.recipient.bankAccount?.international
+                                    qrResult = buildString {
+                                        appendLine("✅ QR Info retrieved!")
+                                        appendLine("Amount: ${resp.amount} ${resp.currency}")
+                                        appendLine("Recipient: ${resp.recipient.name ?: "N/A"}")
+                                        localAccount?.let {
+                                            appendLine("Account: ${it.accountNumber}/${it.bankCode}")
+                                            appendLine("Variable symbol: ${it.variableSymbol}")
+                                        }
+                                        intlAccount?.let {
+                                            appendLine("IBAN: ${it.iban ?: "N/A"}")
+                                            appendLine("BIC: ${it.bic ?: "N/A"}")
+                                        }
+                                        val available = listOfNotNull(
+                                            resp.qrCode.spayd?.let { "SPAYD" },
+                                            resp.qrCode.paybysquare?.let { "PayBySquare" },
+                                            resp.qrCode.sepa?.let { "SEPA" },
+                                            resp.qrCode.mnbQr?.let { "MNB" }
+                                        )
+                                        append("QR formats: ${available.joinToString(", ").ifEmpty { "none" }}")
+                                    }
+                                    val base64 = resp.qrCode.spayd
+                                        ?: resp.qrCode.sepa
+                                        ?: resp.qrCode.paybysquare
+                                        ?: resp.qrCode.mnbQr
+                                    base64?.let { b64 ->
+                                        runCatching {
+                                            val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+                                            qrBitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                        }
+                                    }
+                                } catch (e: GopaySDKException) {
+                                    qrResult = "❌ ${formatError(e)}"
+                                } catch (e: Exception) {
+                                    qrResult = "❌ ${e.message}"
+                                }
+                                isLoading = false
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = !isLoading && qrPaymentId.isNotBlank()
+                    ) { Text("Get QR (PNG)") }
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                isLoading = true
+                                qrBitmap = null
+                                try {
+                                    val resp = withContext(Dispatchers.IO) {
+                                        GopaySDK.getInstance().getQrPaymentInfo(qrPaymentId.trim(), QrCodeFormat.SVG)
+                                    }
+                                    qrResult = "✅ SVG QR Info retrieved!\nAmount: ${resp.amount} ${resp.currency}\nRecipient: ${resp.recipient.name ?: "N/A"}"
+                                } catch (e: GopaySDKException) {
+                                    qrResult = "❌ ${formatError(e)}"
+                                } catch (e: Exception) {
+                                    qrResult = "❌ ${e.message}"
+                                }
+                                isLoading = false
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = !isLoading && qrPaymentId.isNotBlank()
+                    ) { Text("Get QR (SVG)") }
+                }
+                ResultBox(qrResult)
+                qrBitmap?.let { bitmap ->
+                    Text("QR Code Preview:", style = MaterialTheme.typography.labelMedium)
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "QR Code",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(200.dp)
+                    )
+                }
             }
 
             // === CHARGE PAYMENT ===

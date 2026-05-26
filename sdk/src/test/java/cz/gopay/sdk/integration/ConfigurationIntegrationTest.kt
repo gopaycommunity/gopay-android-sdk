@@ -5,6 +5,7 @@ import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.config.Environment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.internal.GopayContextProvider
+import cz.gopay.sdk.modules.network.GopayApiService
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -95,4 +96,25 @@ class ConfigurationIntegrationTest {
         assertEquals(Environment.PRODUCTION, sdk.config.environment)
         assertEquals("https://api.gopay.com/v1/", sdk.config.apiBaseUrl)
     }
-} 
+
+    @Test
+    fun testQrPaymentInfoEndpointIsWiredUp() {
+        val mockContext = mock<Context>()
+        whenever(mockContext.applicationContext).thenReturn(mockContext)
+        GopayContextProvider.setApplicationContext(mockContext)
+
+        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX))
+        val apiService = GopaySDK.getInstance().getApiService()
+
+        assertNotNull(apiService)
+
+        // Verify the interface declares getQrPaymentInfo with the expected parameters
+        val method = GopayApiService::class.java.methods.find { it.name == "getQrPaymentInfo" }
+        assertNotNull("getQrPaymentInfo method must be declared in GopayApiService", method)
+        assertEquals(
+            "getQrPaymentInfo must accept paymentId and format parameters",
+            2,
+            method!!.parameterCount - 1 // subtract the coroutine Continuation parameter
+        )
+    }
+}
