@@ -1,6 +1,6 @@
 {
     "name": "gp-gw-android-sdk",
-    "version": "1.8.1",
+    "version": "1.8.2",
     "private": true,
     "repository": {
         "url": "git@bitbucket.org:gp-gopay/gp-gw-android-sdk.git"

@@ -1,3 +1,10 @@
+## [1.8.2](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.8.1...1.8.2) (2026-06-05)
+
+
+### Bug Fixes
+
+* increase docker memory for sonar GPOMA-2292 ([ad99604](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/ad99604c647155e0a9823d7777b23ffb5396fdf8))
+
 ## [1.8.1](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.8.0...1.8.1) (2025-12-09)
 
 
