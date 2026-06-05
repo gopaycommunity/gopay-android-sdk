@@ -1,6 +1,9 @@
 image: node:22
 
 definitions:
+    services:
+        docker:
+            memory: 7168  # give most of the 2x step's 8 GB to Docker (Sonar pipe runs inside it)
     caches:
         cache: ~/.cache
         gradle: ~/.gradle
@@ -25,6 +28,9 @@ definitions:
                   - sdk/build/jacoco/**
         - step: &sonarcloud-analysis
               name: sonar
+              size: 2x
+              services:
+                  - docker
               caches:
                   - node
               clone:
