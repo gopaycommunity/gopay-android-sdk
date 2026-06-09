@@ -4,25 +4,17 @@
     <application
         android:usesCleartextTraffic="false"
         >
-        <!-- 
-        ContentProvider that automatically initializes GopaySDK with Application context.
-        This runs before any Activities are created, ensuring context is always available.
-        
-        The authority uses ${applicationId} to ensure uniqueness across different apps.
-        initOrder="100" ensures this runs early in the app startup process.
-        -->
-        <provider
-            android:name="cz.gopay.sdk.internal.GopayInitProvider"
-            android:authorities="${applicationId}.gopay-init"
-            android:exported="false"
-            android:initOrder="100"
-            />
-
         <activity
             android:name="cz.gopay.sdk.ui.PaymentVerificationActivity"
             android:exported="false"
             android:configChanges="orientation|keyboardHidden|screenSize"
             android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name="cz.gopay.sdk.ui.GooglePayLauncherActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true" />
     </application>
-    
+
 </manifest>

@@ -5,7 +5,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import cz.gopay.sdk.model.CardTokenResponse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -15,35 +14,23 @@ import org.junit.Test
 class PaymentCardFormTest {
 
     @Test
-    fun tokenizationResult_success_containsCorrectData() {
-        val tokenResponse = CardTokenResponse(
-            maskedPan = "4444************",
-            expirationMonth = "01",
-            expirationYear = "27",
-            brand = "visa",
-            token = "test-token-12345",
-            fingerprint = "test-fingerprint",
-            expiresIn = "3600",
-            cardArtUrl = null,
-            maskedVirtualPan = null
-        )
-        
-        val result = TokenizationResult.Success(tokenResponse)
-        
-        assertTrue("Result should be Success", result is TokenizationResult.Success)
-        assertEquals("Token should match", "test-token-12345", result.tokenResponse.token)
-        assertEquals("Brand should match", "visa", result.tokenResponse.brand)
-        assertEquals("Masked PAN should match", "4444************", result.tokenResponse.maskedPan)
+    fun cardEncryptionResult_success_carriesJwe() {
+        val jwe = "header.encryptedKey.iv.ciphertext.tag"
+
+        val result = CardEncryptionResult.Success(jwe)
+
+        assertTrue("Result should be Success", result is CardEncryptionResult.Success)
+        assertEquals("JWE should match", jwe, result.jwe)
     }
 
     @Test
-    fun tokenizationResult_error_containsCorrectMessage() {
-        val errorMessage = "Network error occurred"
+    fun cardEncryptionResult_error_carriesMessageAndCause() {
+        val errorMessage = "Public key fetch failed"
         val exception = RuntimeException("Network failure")
-        
-        val result = TokenizationResult.Error(errorMessage, exception)
-        
-        assertTrue("Result should be Error", result is TokenizationResult.Error)
+
+        val result = CardEncryptionResult.Error(errorMessage, exception)
+
+        assertTrue("Result should be Error", result is CardEncryptionResult.Error)
         assertEquals("Error message should match", errorMessage, result.message)
         assertEquals("Exception should match", exception, result.exception)
     }

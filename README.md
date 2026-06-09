@@ -1,561 +1,259 @@
 # GoPay Android SDK
 
-A modern Android SDK for GoPay payment processing with automatic context initialization.
+Android SDK for charging GoPay payments from a mobile app. Maps to the Payments 4.0 API
+(`Payments.yaml`).
+
+## Auth model — what the SDK does and doesn't do
+
+The SDK runs on the **device**, so it never holds merchant credentials. There are two auth
+schemes the SDK is allowed to use:
+
+- **`payment_credentials`** — issued per payment. Your merchant backend creates the payment via
+  `POST /eshops/{goid}/payments` (with merchant credentials) and returns `payment_id` +
+  `payment_secret` to the app. The SDK exchanges those at `POST /oauth2/token` with
+  `grant_type=payment_credentials` to obtain a payment-scoped JWT. Every charge/status/Google
+  Pay/QR/3DS call goes through this JWT.
+- **`shareable_key`** — long-lived `client_id:shareable_key` basic auth for the two public
+  resource endpoints: `GET /cards/public-key` (used for JWE card encryption) and
+  `GET /cards/card-form-url`. Safe to embed in the app — it can't charge anything on its own.
+
+Card tokenization (`POST /cards/tokens`) requires merchant credentials and **runs on your
+backend**, not on the device. The SDK encrypts card data into a JWE and gives it to you to
+forward; the backend submits the JWE and gets back the card token.
+
+```
+┌────────┐  payment_id + payment_secret  ┌────────┐  payment_credentials JWT  ┌────────┐
+│ Mobile │ ◄──────────────────────────── │ Merch. │ ◄──────────────────────── │ GoPay  │
+│  app   │                               │ backend│                           │  API   │
+└────────┘ ────────────────────────────► └────────┘ ────────────────────────► └────────┘
+   │      charge / status / GP / 3DS via payment_credentials JWT (direct)         ▲
+   └──────────────────────────────────────────────────────────────────────────────┘
+```
 
 ## Features
 
-- ✅ **Auto-Context Initialization** - No need to manually pass Android Context
-- ✅ **Secure Token Storage** - Automatic JWT token management with SharedPreferences
-- ✅ **Automatic Token Refresh** - Handles expired tokens transparently
-- ✅ **Multiple Environments** - Support for Development, Staging, Sandbox, and Production
-- ✅ **Type-Safe Configuration** - Kotlin-first API design
-- ✅ **Comprehensive Testing** - Full unit test coverage
-- ✅ **Google Pay** - Fetch payment config and charge with Google Pay tokens
+- Per-payment `PaymentSession` with eager auth, single-flight Mutex re-auth on 401, and one
+  bounded retry. Multiple sessions can run concurrently — credentials never leak between them.
+- In-memory only — no `SharedPreferences`, no encrypted token storage, no `ContentProvider`
+  auto-init. `payment_secret` and JWT live for the lifetime of the session and are wiped on
+  `close()`.
+- Managed Google Pay and 3DS flows directly on the session.
+- JWE card encryption using the merchant public key (cached in-memory).
+- Compose `PaymentCardForm` composable that emits a JWE.
 
-## Quick Start
+## Quick start
 
-### 1. Add Dependency
-
-Add the SDK to your app's `build.gradle`:
+### 1. Dependency
 
 ```kotlin
 dependencies {
-    implementation project(':sdk')
+    implementation(project(":sdk"))
 }
 ```
 
-### 2. Initialize the SDK
-
-The SDK automatically obtains Application context - no manual context passing required!
+### 2. Initialize
 
 ```kotlin
 class MyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-
-        // Simple initialization - context is handled automatically
-        val config = GopayConfig(
-            environment = Environment.SANDBOX, // or PRODUCTION
-            debug = true
-        )
-
-        GopaySDK.initialize(config)
-    }
-}
-```
-
-### 3. Set Authentication
-
-```kotlin
-class MainActivity : AppCompatActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        val sdk = GopaySDK.getInstance()
-
-        // Get authentication response from your server
-        val authResponse = getAuthFromServer()
-
-        // Set authentication - tokens are automatically stored
-        sdk.setAuthenticationResponse(authResponse)
-
-        // Check if authenticated
-        val isAuthenticated = sdk.isAuthenticated()
-    }
-}
-```
-
-## GopaySDK API Overview
-
-The `GopaySDK` class is the main entry point for all SDK operations. Below are the most important public methods and their usage:
-
-### Configuration
-
-Allows to select environment, other properties are optional
-
-```kotlin
-val config = GopayConfig(
-    environment = Environment.SANDBOX,
-    debugLoggingEnabled = true,
-    requestTimeoutMs = 30000
-)
-```
-
-### Initialization
-
-```kotlin
-// Automatic context (recommended)
-GopaySDK.initialize(config)
-
-// Manual context (for special cases)
-GopaySDK.initialize(config, context)
-```
-
-### Authentication
-
-Authenticate with your GoPay credentials (client credentials flow):
-
-```kotlin
-val sdk = GopaySDK.getInstance()
-
-// This should be called from a coroutine context (e.g., inside a suspend function or coroutine scope)
-val authResponse = sdk.authenticate(clientId, clientSecret, scope = null)
-// Tokens are automatically stored and managed by the SDK
-```
-
-#### Setting Authentication Response
-
-If you obtain tokens from your backend, you can set them directly:
-
-```kotlin
-sdk.setAuthenticationResponse(authResponse)
-```
-
-#### Checking Authentication
-
-```kotlin
-val isAuthenticated = sdk.isAuthenticated()
-```
-
-#### Logging Out
-
-```kotlin
-sdk.logout()
-```
-
-### Automatic Token Refresh
-
-The SDK automatically handles token expiration and refresh. When you make API calls (such as tokenizing a card), if the access token is expired, the SDK will transparently use the stored refresh token to obtain a new access token. If the refresh token is missing or invalid, an authentication error will be thrown.
-
-You can also manually trigger a token refresh if needed:
-
-```kotlin
-val newAuthResponse = sdk.refreshToken()
-```
-
-### Creating Payments
-
-Once authenticated with a token that includes at least the `payment:create` scope, you can create a payment session for a specific e-shop (`goid`):
-
-```kotlin
-val sdk = GopaySDK.getInstance()
-
-val request = PaymentCreateRequest(
-    amount = 10000, // in cents
-    currency = Currency.CZK,
-    orderNumber = "2025010199",
-    orderDescription = "Test order",
-    customer = PaymentCustomer(
-        email = "john.doe@example.com",
-        firstName = "John",
-        lastName = "Doe"
-    ),
-    callback = PaymentCallback(
-        notificationUrl = "https://example.com/notify",
-        returnUrl = "https://example.com/return"
-    )
-)
-
-// This should be called from a coroutine context:
-val response = sdk.createPayment(goid = "123456", request = request)
-
-// Use response.gwUrl to redirect the customer to the GoPay payment gateway
-println("Created payment with ID: ${response.id}, gwUrl: ${response.gwUrl}")
-```
-
-### QR Payment Info
-
-For bank transfer payments, you can retrieve QR code images and recipient bank account details using the `payment:read` scope. The endpoint returns base64-encoded QR codes in regional formats (SPAYD for Czech Republic, PayBySquare for Slovakia, SEPA for EUR payments, MNB for Hungary).
-
-```kotlin
-val sdk = GopaySDK.getInstance()
-
-// Fetch QR payment info (PNG format by default)
-val qrDetails = sdk.getQrPaymentInfo(paymentId = "300000001")
-
-println("Amount: ${qrDetails.amount} ${qrDetails.currency}")
-println("Recipient: ${qrDetails.recipient.name}")
-
-// Decode and display the SPAYD QR code (Czech Republic)
-val spaydBase64 = qrDetails.qrCode.spayd
-
-// Request SVG format instead of the default PNG
-val qrDetailsSvg = sdk.getQrPaymentInfo(paymentId = "300000001", format = QrCodeFormat.SVG)
-```
-
-Response fields:
-- `amount` — payment amount in cents
-- `currency` — payment currency (`Currency` enum)
-- `recipient.name` — recipient name
-- `recipient.bankAccount.local` — local bank account details (account number, bank code, variable symbol)
-- `recipient.bankAccount.international` — IBAN/BIC details
-- `qrCode.spayd` — base64 SPAYD QR image (CZ)
-- `qrCode.paybysquare` — base64 Pay by Square QR image (SK)
-- `qrCode.sepa` — base64 SEPA QR image (EUR)
-- `qrCode.mnbQr` — base64 MNB QR image (HU)
-
-### Google Pay
-
-Google Pay integration requires two steps: fetching the payment config from the GoPay API, then passing the Google Pay token to the charge endpoint.
-
-#### 1. Fetch Google Pay Info
-
-After creating a payment, fetch the `PaymentDataRequest` configuration from the GoPay API:
-
-```kotlin
-val sdk = GopaySDK.getInstance()
-
-// Requires payment:read scope
-val info = sdk.getGooglePayInfo(paymentId = response.id)
-// info.environment — "TEST" or "PRODUCTION"
-// info.paymentDataRequest — config for the Google Pay button
-```
-
-#### 2. Initialize Google Pay with the config
-
-Use `GooglePayHelper` to convert the API response to the JSON string expected by the Google Pay Android SDK. Add the dependency to your app's `build.gradle`:
-
-```kotlin
-implementation("com.google.android.gms:play-services-wallet:19.4.0")
-```
-
-Then initialize the `PaymentsClient` and launch the Google Pay sheet:
-
-```kotlin
-import cz.gopay.sdk.service.GooglePayHelper
-import com.google.android.gms.wallet.Wallet
-import com.google.android.gms.wallet.WalletConstants
-import com.google.android.gms.wallet.PaymentDataRequest
-import com.google.android.gms.wallet.AutoResolveHelper
-
-val environment = if (info.environment == "PRODUCTION")
-    WalletConstants.ENVIRONMENT_PRODUCTION
-else
-    WalletConstants.ENVIRONMENT_TEST
-
-val paymentsClient = Wallet.getPaymentsClient(
-    activity,
-    Wallet.WalletOptions.Builder().setEnvironment(environment).build()
-)
-
-val paymentDataRequest = PaymentDataRequest.fromJson(
-    GooglePayHelper.buildPaymentDataRequestJson(info)
-)
-
-AutoResolveHelper.resolveTask(
-    paymentsClient.loadPaymentData(paymentDataRequest),
-    activity,
-    GOOGLE_PAY_REQUEST_CODE
-)
-```
-
-#### 3. Charge with Google Pay token
-
-In `onActivityResult`, parse the result and charge the payment:
-
-```kotlin
-override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-    super.onActivityResult(requestCode, resultCode, data)
-    if (requestCode == GOOGLE_PAY_REQUEST_CODE && resultCode == RESULT_OK) {
-        val paymentData = PaymentData.getFromIntent(data!!) ?: return
-        val instrument = GooglePayHelper.parseGooglePayToken(paymentData.toJson())
-
-        lifecycleScope.launch {
-            val chargeResponse = sdk.chargePayment(
-                paymentId = paymentId,
-                request = ChargePaymentRequest(paymentInstrument = instrument)
+        GopaySDK.initialize(
+            GopayConfig(
+                environment = Environment.SANDBOX,        // or PRODUCTION / DEVELOPMENT
+                clientId = BuildConfig.GOPAY_CLIENT_ID,   // for shareable-key endpoints
+                shareableKey = BuildConfig.GOPAY_SHAREABLE_KEY,
+                debug = BuildConfig.DEBUG
             )
-            // Check chargeResponse.state — SUCCEEDED, FAILED, ACTION_REQUIRED, etc.
-        }
+        )
     }
 }
 ```
 
-`GooglePayHelper.parseGooglePayToken()` extracts the `protocolVersion`, `signature`, `intermediateSigningKey`, and `signedMessage` from the Google Pay token and wraps them in a `PaymentInstrumentInput` with `inputType = "GOOGLE_PAY"`.
+`clientId` and `shareableKey` are optional — only required if you call
+`getPublicEncryptionKey()`, `encryptCardData()`, or use `PaymentCardForm`.
 
-### Token Storage Access
-
-You can access the underlying token storage for advanced use cases:
+### 3. Start a session and charge
 
 ```kotlin
-val tokenStorage = sdk.getTokenStorage()
-val accessToken = tokenStorage.getAccessToken()
-val refreshToken = tokenStorage.getRefreshToken()
+// payment_id + payment_secret come from YOUR backend after it creates the payment.
+val session = GopaySDK.getInstance().startPaymentSession(
+    paymentId = paymentId,
+    paymentSecret = paymentSecret
+    // scope defaults to PaymentSession.DEFAULT_SCOPE ("payment:charge payment:read"),
+    // override only if you need a wider scope.
+)
+
+try {
+    val charge = session.charge(
+        ChargePaymentRequest(
+            paymentInstrument = PaymentInstrumentInput.cardToken(cardToken),
+            browserData = BrowserData(...)
+        )
+    )
+    charge.action?.redirectUrl?.let { session.handle3dsVerification(activity, it) }
+    val finalState = session.getChargeState()
+} finally {
+    session.close()  // wipes the secret + JWT from memory
+}
 ```
 
----
+## `GopaySDK` API
 
-## PaymentCardForm UI Component
+| Method | Purpose |
+| --- | --- |
+| `initialize(GopayConfig)` | Sets up the SDK singleton. Call once on app start. |
+| `getInstance()` | Returns the singleton; throws if not initialized. |
+| `isInitialized()` | Quick check before calling `getInstance()`. |
+| `isDebugEnabled()` | Reflects `GopayConfig.debug`. |
+| `startPaymentSession(paymentId, paymentSecret, scope?)` | Eagerly authenticates and returns a [`PaymentSession`](sdk/src/main/java/cz/gopay/sdk/session/PaymentSession.kt). Throws `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` if one is already live for the same `paymentId`. |
+| `getPaymentSession(paymentId)` | Looks up a live session by id; `null` if absent. |
+| `closeAllPaymentSessions()` | Closes every session — wipes secrets and tokens. |
+| `getPublicEncryptionKey(forceRefresh = false)` | Fetches the merchant JWK via shareable-key auth. In-memory cache. |
+| `encryptCardData(CardData)` | Validates the card, fetches the JWK if needed, returns a JWE string. |
+| `isGooglePayAvailable(activity, info)` | Checks Google Pay readiness on the device using the methods from a `GooglePayInfoResponse`. |
 
-The SDK provides a secure, ready-to-use Jetpack Compose UI component for collecting and tokenizing card data:
+## `PaymentSession` API
 
-### Usage Example
+A `PaymentSession` is the per-payment auth context. Construct it via `startPaymentSession`;
+**never** instantiate directly. All methods are `suspend` and propagate `GopaySDKException` on
+auth or HTTP errors.
+
+| Method | Maps to |
+| --- | --- |
+| `getStatus()` | `GET /payments/{payment_id}` |
+| `charge(ChargePaymentRequest)` | `POST /payments/{payment_id}/charge` |
+| `getChargeState()` | `GET /payments/{payment_id}/charge` |
+| `getQrPaymentInfo(format?)` | `GET /payments/{payment_id}/qr-payment/info` |
+| `getGooglePayInfo()` | `GET /payments/{payment_id}/google-pay/info` |
+| `chargeWithGooglePay(activity)` | Managed flow: GP info → Google Pay sheet → `charge(...)` |
+| `handle3dsVerification(activity, redirectUrl)` | Managed WebView; suspends until done or cancelled |
+| `close()` | Wipes `payment_secret`, JWT; unregisters from the SDK |
+
+Concurrent calls on the same session re-use the cached JWT. On a 401 the session invalidates
+the token and re-acquires once from the cached `payment_secret`; a second 401 surfaces as
+`AUTH_PAYMENT_TOKEN_EXPIRED` so the caller can fetch fresh credentials from its backend.
+
+### Concurrent payments
+
+Multiple `PaymentSession` instances may live in parallel. They have isolated tokens and
+secrets — keyed in the SDK by `paymentId`. Google Pay and 3DS use a process-wide bridge so
+only one sheet/WebView can be visible at a time; collisions surface as
+`PAYMENT_GOOGLE_PAY_IN_PROGRESS` / `PAYMENT_VERIFICATION_IN_PROGRESS`.
+
+## Card collection (JWE flow)
+
+The SDK collects card data and encrypts it into a JWE. The merchant backend then submits the
+JWE to `POST /cards/tokens` and receives a card token, which the app can pass to
+`session.charge(...)`.
+
+### Programmatic
 
 ```kotlin
+val jwe: String = GopaySDK.getInstance().encryptCardData(
+    CardData(cardPan = "4444…", expMonth = "06", expYear = "27", cvv = "123")
+)
+// POST `jwe` to your backend; backend returns a card_token.
+```
+
+### `PaymentCardForm` composable
+
+```kotlin
+import cz.gopay.sdk.ui.CardEncryptionResult
 import cz.gopay.sdk.ui.PaymentCardForm
-import cz.gopay.sdk.ui.TokenizationResult
 
 @Composable
-fun MyPaymentScreen() {
+fun MyCardSheet(onJwe: (String) -> Unit) {
     PaymentCardForm(
-        onTokenizationComplete = { result ->
+        onEncryptionComplete = { result ->
             when (result) {
-                is TokenizationResult.Success -> {
-                    val token = result.tokenResponse.token
-                    // Use the token for payment/charging
-                }
-                is TokenizationResult.Error -> {
-                    // Show error to user
-                }
+                is CardEncryptionResult.Success -> onJwe(result.jwe)
+                is CardEncryptionResult.Error -> showError(result.message)
             }
         }
     )
 }
 ```
 
-- The form handles all validation and never exposes raw card data to your app.
-- On successful tokenization, you receive a `CardTokenResponse` containing the secure token.
-- You can customize field labels, error handling, and theme.
+The form validates input, sets `FLAG_SECURE` on non-debug builds, and never exposes raw card
+data to the host. Theming is controlled by `PaymentCardFormTheme`; the form callback contract
+also offers `onFormReady { submitFn -> … }` for external submit triggers and
+`onValidationError { … }` for inline error display.
 
-#### Advanced: Manual Submission
-
-You can obtain a submit function for external triggering (e.g., from a button):
+## Google Pay flow
 
 ```kotlin
-var submitCardForm: (suspend () -> TokenizationResult)? by remember { mutableStateOf(null) }
-
-PaymentCardForm(
-    onTokenizationComplete = { /* ... */ },
-    onFormReady = { submit -> submitCardForm = submit }
-)
-
-// Later, trigger submission:
-LaunchedEffect(submitCardForm) {
-    val result = submitCardForm?.invoke()
-    // Handle result
+val info = session.getGooglePayInfo()
+if (GopaySDK.getInstance().isGooglePayAvailable(activity, info)) {
+    val charge = session.chargeWithGooglePay(activity)
+    charge.action?.redirectUrl?.let { session.handle3dsVerification(activity, it) }
+    val finalState = session.getChargeState()
 }
 ```
 
-### Theming and Customization
+`chargeWithGooglePay` launches the Google Pay sheet inside an SDK-managed activity, parses the
+returned token, and posts the charge in one step. User dismissal surfaces as
+`kotlinx.coroutines.CancellationException`.
 
-The appearance of `PaymentCardForm` can be fully customized using the `PaymentCardFormTheme` parameter. This allows you to adjust colors, text styles, shapes, and spacing to match your app's design system.
-
-#### Example: Custom Theme
+Add the Google Pay dependency to your app:
 
 ```kotlin
-import cz.gopay.sdk.ui.PaymentCardForm
-import cz.gopay.sdk.ui.PaymentCardFormTheme
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.shape.RoundedCornerShape
-
-val customTheme = PaymentCardFormTheme(
-    labelTextStyle = TextStyle(color = Color(0xFF333333), fontSize = 16.sp),
-    inputTextStyle = TextStyle(fontSize = 18.sp),
-    helperTextStyle = TextStyle(color = Color(0xFF888888), fontSize = 12.sp),
-    errorTextStyle = TextStyle(color = Color(0xFFD32F2F), fontSize = 12.sp),
-    loadingTextStyle = TextStyle(color = Color(0xFF333333), fontSize = 14.sp),
-    inputBorderColor = Color(0xFFCCCCCC),
-    inputErrorBorderColor = Color(0xFFD32F2F),
-    inputBackgroundColor = Color(0xFFF5F5F5),
-    inputBorderWidth = 2.dp,
-    inputShape = RoundedCornerShape(8.dp),
-    inputPadding = PaddingValues(16.dp),
-    fieldSpacing = 8.dp,
-    groupSpacing = 24.dp
-)
-
-PaymentCardForm(
-    onTokenizationComplete = { /* ... */ },
-    theme = customTheme
-)
+implementation("com.google.android.gms:play-services-wallet:19.4.0")
 ```
-
-You can override any or all properties of `PaymentCardFormTheme` to achieve the desired look and feel. See the `PaymentCardFormTheme` data class in the SDK for all available options.
 
 ## Environments
 
-| Environment   | Description                                  | API Base URL                                       |
-| ------------- | -------------------------------------------- | -------------------------------------------------- |
-| `DEVELOPMENT` | Local development, local network access only | `"https://gw.alpha8.dev.gopay.com/gp-gw/api/4.0/"` |
-| `STAGING`     | Pre-production testing                       | `not yet configured`                               |
-| `SANDBOX`     | Sandbox testing                              | `not yet configured`                               |
-| `PRODUCTION`  | Live production                              | `not yet configured`                               |
+| Environment | Base URL |
+| --- | --- |
+| `Environment.DEVELOPMENT.create(url)` | Custom — must start with `http://` or `https://` |
+| `Environment.SANDBOX` | `https://api.sandbox.gopay.com/v1/` |
+| `Environment.PRODUCTION` | `https://api.gopay.com/v1/` |
 
-## Error Handling
+## Error handling
 
-The SDK uses a unified exception system with structured error codes for better error handling and analytics integration.
+Every API call may throw `GopaySDKException` with a structured error code (`AUTH_*`,
+`NETWORK_*`, `PAYMENT_*`, `CONFIG_*`, …). Codes most likely to surface in the per-payment flow:
 
-### Basic Error Handling
-
-```kotlin
-try {
-    sdk.setAuthenticationResponse(authResponse)
-} catch (e: GopaySDKException) {
-    when {
-        e.isAuthenticationError() -> handleAuthError(e)
-        e.isNetworkError() -> handleNetworkError(e)
-        e.isConfigurationError() -> handleConfigError(e)
-        else -> handleGenericError(e)
-    }
-}
-```
-
-### Error Code-Based Handling
+| Code | When |
+| --- | --- |
+| `AUTH_PAYMENT_CREDENTIALS_INVALID` | `payment_id`/`payment_secret` rejected by `/oauth2/token` |
+| `AUTH_PAYMENT_TOKEN_EXPIRED` | JWT still rejected after a single re-auth retry — fetch fresh creds from backend |
+| `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` | `startPaymentSession` called for a `paymentId` that already has a live session |
+| `AUTH_PAYMENT_SESSION_CLOSED` | API call on a session after `close()` |
+| `AUTH_SHAREABLE_KEY_MISSING` | `encryptCardData` / `getPublicEncryptionKey` called without `clientId`+`shareableKey` |
+| `PAYMENT_GOOGLE_PAY_IN_PROGRESS` | A second Google Pay sheet attempted while one is visible |
+| `PAYMENT_VERIFICATION_IN_PROGRESS` | A second 3DS WebView attempted while one is open |
 
 ```kotlin
 try {
-    sdk.authenticate(clientId, clientSecret)
+    session.charge(request)
 } catch (e: GopaySDKException) {
     when (e.errorCode) {
-        GopayErrorCodes.AUTH_ACCESS_TOKEN_EXPIRED -> refreshToken()
-        GopayErrorCodes.NETWORK_TIMEOUT -> retryWithBackoff()
-        GopayErrorCodes.AUTH_INVALID_CREDENTIALS -> showLoginError()
-        else -> showGenericError(e.message)
+        GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED -> refreshCredsFromBackend()
+        GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS -> showAlreadyInProgress()
+        else -> showGenericError(e)
     }
 }
 ```
 
-### Error Reporting Integration
+Plug an analytics callback via `GopayConfig.errorCallback` to receive every exception the SDK
+throws.
 
-```kotlin
-val config = GopayConfig(
-    environment = Environment.PRODUCTION,
-    errorCallback = { error ->
-        // Integrate with your analytics system
-        analytics.trackError(error.errorCode, mapOf(
-            "message" to error.message,
-            "httpStatus" to error.getHttpStatusCode()?.toString()
-        ))
-    }
-)
-```
+## Security notes
 
-### HTTP Error Context
-
-```kotlin
-catch (e: GopaySDKException) {
-    e.httpContext?.let { httpContext ->
-        when (httpContext.statusCode) {
-            401 -> handleUnauthorized()
-            429 -> handleRateLimit()
-            500 -> handleServerError()
-        }
-    }
-}
-```
-
-For a complete list of error codes and handling recommendations, see [ERROR_CODES.md](ERROR_CODES.md).
-
-## Security Considerations
-
-### App Backup Settings
-
-The GoPay SDK stores authentication tokens securely using Android Keystore encryption. However, as an app developer, you should consider your backup policy:
-
-#### Recommended: Disable Backup for Sensitive Data
-
-```xml
-<!-- In your app's AndroidManifest.xml -->
-<application
-    android:allowBackup="false"
-    ... >
-```
-
-#### Alternative: Selective Backup Rules
-
-If you need backup functionality, exclude sensitive data:
-
-**res/xml/backup_rules.xml:**
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<full-backup-content>
-    <exclude domain="sharedpref" path="gopay_sdk_secure_prefs.xml"/>
-    <!-- Exclude other sensitive preferences -->
-</full-backup-content>
-```
-
-**AndroidManifest.xml:**
-
-```xml
-<application
-    android:allowBackup="true"
-    android:fullBackupContent="@xml/backup_rules"
-    ... >
-```
-
-#### Why This Matters
-
-- **Backup exposure**: `android:allowBackup="true"` backs up app data to Google Drive
-- **Token security**: Even encrypted tokens shouldn't be unnecessarily exposed
-- **Compliance**: Some regulations require preventing data backup
-
-### SDK Security Features
-
-The GoPay SDK implements multiple security layers:
-
-1. **Android Keystore Encryption**: Tokens are encrypted using hardware-backed keys when available
-2. **Secure Storage**: Uses Android's secure SharedPreferences mechanisms
-3. **Token Validation**: Automatic JWT validation and refresh
-4. **Network Security**: HTTPS-only communication with certificate pinning support
+- Neither the `payment_secret` nor the JWT is ever written to disk. Both live in memory inside
+  `PaymentSession` and are wiped on `close()`. The SDK no longer reads or writes
+  `SharedPreferences`.
+- The merchant public key is cached only in memory; clears on process death.
+- `PaymentCardForm` enables `FLAG_SECURE` on the host window in non-debug builds to block
+  screenshots of card data.
+- Network: HTTPS only. Optional certificate pinning is forwarded from `GopayConfig`.
 
 ## Testing
 
-The SDK includes comprehensive unit tests:
-
 ```bash
-./gradlew :sdk:test
+./gradlew :sdk:testDebugUnitTest
 ```
-
-## Auto-Context Implementation
-
-The SDK uses a modern approach similar to Firebase and Glide:
-
-### How It Works
-
-1. **ContentProvider Auto-Initialization**: A `GopayInitProvider` runs automatically when your app starts
-2. **Application Context Capture**: The provider captures the Application context before any Activities
-3. **Fallback Mechanisms**: If the provider fails, reflection-based fallbacks are attempted
-4. **Thread-Safe Storage**: Context is stored safely for use throughout the SDK
-
-### Benefits
-
-- **Better Developer Experience**: No need to remember to pass Context
-- **Fewer Errors**: Can't pass wrong Context type (Activity vs Application)
-- **Memory Leak Prevention**: Always uses Application context
-- **Industry Standard**: Same pattern used by Firebase, Glide, and other major SDKs
-
-## Migration from Manual Context
-
-If you were previously using manual context initialization:
-
-### Before (Manual Context)
-
-```kotlin
-GopaySDK.initialize(config, this) // Had to remember to pass context
-```
-
-### After (Auto Context)
-
-```kotlin
-GopaySDK.initialize(config) // Context handled automatically
-```
-
-The manual context method is still available for special use cases, but the auto-context approach is recommended for most applications.
 
 ## License
 
 Not yet determined. Not in production.
-
----
-
-## Upcoming Features
-
-### Apple Pay Integration
-
-A future release will add Apple Pay support via `GET /payments/{payment_id}/apple-pay/app-info`.
-
-Stay tuned for updates in the SDK changelog!

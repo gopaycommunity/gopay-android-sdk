@@ -34,6 +34,21 @@ object GopayErrorCodes {
     /** Authentication failed with invalid credentials */
     const val AUTH_INVALID_CREDENTIALS = "AUTH_008"
 
+    /** Payment-scoped JWT expired and could not be re-acquired from cached payment credentials */
+    const val AUTH_PAYMENT_TOKEN_EXPIRED = "AUTH_009"
+
+    /** payment_id / payment_secret pair was rejected by /oauth2/token */
+    const val AUTH_PAYMENT_CREDENTIALS_INVALID = "AUTH_010"
+
+    /** clientId / shareableKey missing from GopayConfig but required by the requested operation */
+    const val AUTH_SHAREABLE_KEY_MISSING = "AUTH_011"
+
+    /** A PaymentSession for the given payment_id already exists — close it before starting another */
+    const val AUTH_PAYMENT_SESSION_ALREADY_EXISTS = "AUTH_012"
+
+    /** Operation invoked on a PaymentSession that has been closed */
+    const val AUTH_PAYMENT_SESSION_CLOSED = "AUTH_013"
+
     // ========================================
     // NETWORK ERRORS (NETWORK_XXX)
     // ========================================
@@ -111,6 +126,9 @@ object GopayErrorCodes {
 
     /** A 3DS verification is already in progress; only one can run at a time */
     const val PAYMENT_VERIFICATION_IN_PROGRESS = "PAYMENT_008"
+
+    /** A Google Pay sheet is already in progress; only one can run at a time */
+    const val PAYMENT_GOOGLE_PAY_IN_PROGRESS = "PAYMENT_009"
 
     // ========================================
     // CARD ERRORS (CARD_XXX)

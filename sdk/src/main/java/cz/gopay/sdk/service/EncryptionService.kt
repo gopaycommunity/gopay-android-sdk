@@ -3,7 +3,6 @@ package cz.gopay.sdk.service
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.JweHeader
 import cz.gopay.sdk.model.Jwk
-import cz.gopay.sdk.storage.TokenStorage
 import cz.gopay.sdk.util.Base64Utils
 import cz.gopay.sdk.util.JsonUtils
 import java.math.BigInteger
@@ -22,11 +21,12 @@ import javax.crypto.spec.PSource
 /**
  * Service for creating JWE (JSON Web Encryption) payloads for GoPay card tokenization
  * Implements RFC 7516 JWE standard with RSA-OAEP-256 key encryption and A256GCM content encryption
- * Compatible with Nimbus JOSE+JWT library used by GoPay servers
+ * Compatible with Nimbus JOSE+JWT library used by GoPay servers.
+ *
+ * The JWK is supplied at call time — fetched in-memory from `GET /cards/public-key` by
+ * [cz.gopay.sdk.service.PublicKeyCache] — and never persisted by the SDK.
  */
-class EncryptionService(
-    private val tokenStorage: TokenStorage
-) {
+class EncryptionService {
 
     companion object {
         // Use explicit OAEP parameters for RSA-OAEP-256 compatibility with Nimbus JOSE+JWT
@@ -38,57 +38,29 @@ class EncryptionService(
     }
 
     /**
-     * Creates a JWE encrypted payload for card data that can be used with GoPay's card tokenization API
-     * 
-     * @param cardData The card information to encrypt
-     * @return JWE string in compact serialization format (5 base64url-encoded parts separated by dots)
-     * @throws IllegalStateException if no public key is available in storage
-     * @throws Exception for encryption or encoding errors
+     * Creates a JWE encrypted payload using the provided JWK. The merchant backend submits the
+     * returned JWE to `POST /cards/tokens` with merchant credentials.
      */
-    fun createJweEncryptedPayload(cardData: CardData): String {
-        // 1. Get the public key from storage
-        val publicKeyJson = tokenStorage.getPublicKey() 
-            ?: throw IllegalStateException("No public key available. Please fetch the public key first.")
-        
-        // 2. Parse the JWK
-        val jwk = parseJwk(publicKeyJson)
-        
-        // 3. Convert JWK to PublicKey
+    fun createJweEncryptedPayload(cardData: CardData, jwk: Jwk): String {
         val publicKey = jwkToPublicKey(jwk)
-        
-        // 4. Create JWE header
+
         val jweHeader = JweHeader(kid = jwk.kid)
-        
-        // 5. Serialize header to JSON and encode (needed for AAD)
         val headerJson = JsonUtils.toJson(jweHeader)
             ?: throw IllegalStateException("Failed to serialize JWE header")
         val encodedHeader = base64UrlEncode(headerJson.toByteArray(Charsets.UTF_8))
-        
-        // 6. Generate CEK (Content Encryption Key)
-        val cek = generateContentEncryptionKey()
-        
-        // 7. Encrypt the CEK with RSA-OAEP-256
-        val encryptedKey = encryptContentEncryptionKey(cek, publicKey)
-        
-        // 8. Generate IV for AES-GCM
-        val iv = generateInitializationVector()
-        
-        // 9. Prepare the card data payload
-        val cardDataJson = cardDataToJson(cardData)
-        
-        // 10. Encrypt the card data with AES-GCM using encoded header as AAD
-        val (ciphertext, authTag) = encryptCardDataWithAAD(cardDataJson, cek, iv, encodedHeader.toByteArray(Charsets.UTF_8))
-        
-        // 11. Create the JWE compact serialization
-        return createJweCompactSerialization(encodedHeader, encryptedKey, iv, ciphertext, authTag)
-    }
 
-    /**
-     * Parses JWK JSON string into Jwk object
-     */
-    private fun parseJwk(publicKeyJson: String): Jwk {
-        return JsonUtils.fromJson<Jwk>(publicKeyJson)
-            ?: throw IllegalArgumentException("Invalid JWK format")
+        val cek = generateContentEncryptionKey()
+        val encryptedKey = encryptContentEncryptionKey(cek, publicKey)
+        val iv = generateInitializationVector()
+        val cardDataJson = JsonUtils.toJson(cardData)
+            ?: throw IllegalStateException("Failed to serialize card data")
+        val (ciphertext, authTag) = encryptCardDataWithAAD(
+            cardDataJson,
+            cek,
+            iv,
+            encodedHeader.toByteArray(Charsets.UTF_8)
+        )
+        return createJweCompactSerialization(encodedHeader, encryptedKey, iv, ciphertext, authTag)
     }
 
     /**
@@ -144,13 +116,6 @@ class EncryptionService(
         val iv = ByteArray(GCM_IV_SIZE_BYTES)
         SecureRandom().nextBytes(iv)
         return iv
-    }
-
-    /**
-     * Converts card data to JSON string
-     */
-    private fun cardDataToJson(cardData: CardData): String {
-         return "{\"card_pan\":\"${cardData.cardPan}\",\"exp_month\":\"${cardData.expMonth}\",\"exp_year\":\"${cardData.expYear}\",\"cvv\":\"${cardData.cvv}\"}"
     }
 
     /**

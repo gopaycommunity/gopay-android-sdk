@@ -16,21 +16,6 @@ enum class ChallengePreference {
     @Json(name = "AUTO") AUTO
 }
 
-enum class BankSwift {
-    @Json(name = "GIBACZPX") GIBACZPX,
-    @Json(name = "KOMBCZPP") KOMBCZPP,
-    @Json(name = "SUBASKBX") SUBASKBX,
-    @Json(name = "GIBASKBX") GIBASKBX,
-    @Json(name = "OTHERS") OTHERS
-}
-
-enum class BankPaymentType {
-    @Json(name = "PSD2") PSD2,
-    @Json(name = "ONLINE") ONLINE,
-    @Json(name = "QRPAYMENT") QRPAYMENT,
-    @Json(name = "OFFLINE") OFFLINE
-}
-
 enum class ChargeActionType {
     @Json(name = "EMV3DS") EMV3DS
 }
@@ -45,94 +30,8 @@ enum class Emv3dsState {
 }
 
 /**
- * Flat input details for a payment instrument. Nullable fields cover all charge variants
- * (CARD_TOKEN, SWIFT, IBAN, ACCOUNT_TOKEN, GOOGLE_PAY) without requiring a custom Moshi adapter.
- *
- * Note: `challenge_preferrence` is an intentional typo preserved from the API spec wire format.
- */
-data class InstrumentInputDetails(
-    @Json(name = "input_type") val inputType: String,
-    @Json(name = "card_token") val cardToken: String? = null,
-    @Json(name = "challenge_preferrence") val challengePreference: ChallengePreference? = null,
-    val iban: String? = null,
-    val swift: BankSwift? = null,
-    @Json(name = "account_holder_name") val accountHolderName: String? = null,
-    @Json(name = "bank_payment_type") val bankPaymentType: BankPaymentType? = null,
-    @Json(name = "account_token") val accountToken: String? = null,
-    val protocolVersion: String? = null,
-    val signature: String? = null,
-    @Json(name = "intermediateSigningKey") val intermediateSigningKey: IntermediateSigningKey? = null,
-    @Json(name = "signedMessage") val signedMessage: String? = null
-)
-
-/**
- * Payment instrument wrapper for charge requests.
- * Use the factory methods to construct the correct instrument type.
- */
-data class PaymentInstrumentInput(
-    @Json(name = "payment_instrument") val paymentInstrument: String,
-    val input: InstrumentInputDetails
-) {
-    companion object {
-        fun cardToken(
-            cardToken: String,
-            challengePreference: ChallengePreference? = ChallengePreference.AUTO
-        ): PaymentInstrumentInput = PaymentInstrumentInput(
-            paymentInstrument = "PAYMENT_CARD",
-            input = InstrumentInputDetails(
-                inputType = "CARD_TOKEN",
-                cardToken = cardToken,
-                challengePreference = challengePreference
-            )
-        )
-
-        fun bankSwift(
-            swift: BankSwift,
-            bankPaymentType: BankPaymentType? = null
-        ): PaymentInstrumentInput = PaymentInstrumentInput(
-            paymentInstrument = "BANK_ACCOUNT",
-            input = InstrumentInputDetails(
-                inputType = "SWIFT",
-                swift = swift,
-                bankPaymentType = bankPaymentType
-            )
-        )
-
-        fun bankIban(
-            iban: String,
-            swift: BankSwift? = null,
-            accountHolderName: String? = null
-        ): PaymentInstrumentInput = PaymentInstrumentInput(
-            paymentInstrument = "BANK_ACCOUNT",
-            input = InstrumentInputDetails(
-                inputType = "IBAN",
-                iban = iban,
-                swift = swift,
-                accountHolderName = accountHolderName
-            )
-        )
-
-        fun googlePay(
-            protocolVersion: String,
-            signature: String,
-            intermediateSigningKey: IntermediateSigningKey,
-            signedMessage: String
-        ): PaymentInstrumentInput = PaymentInstrumentInput(
-            paymentInstrument = "PAYMENT_CARD",
-            input = InstrumentInputDetails(
-                inputType = "GOOGLE_PAY",
-                protocolVersion = protocolVersion,
-                signature = signature,
-                intermediateSigningKey = intermediateSigningKey,
-                signedMessage = signedMessage
-            )
-        )
-    }
-}
-
-/**
- * Browser data for 3DS authentication. Required for card payments.
- * Collected from the customer's device environment.
+ * Browser data collected for 3DS authentication. Required on every card charge regardless of
+ * the input type. Maps to `Browser-Data` in Payments.yaml.
  */
 data class BrowserData(
     val language: String,
@@ -146,18 +45,133 @@ data class BrowserData(
 )
 
 /**
- * Request body for POST /payments/{payment_id}/charge.
- * Maps to Payment-Charge-Input in Payments.yaml.
+ * Header fields embedded in an Apple Pay payment token. Maps to the nested `header` object on
+ * `Apple-Pay-Input` in Payments.yaml.
  */
-data class ChargePaymentRequest(
-    @Json(name = "payment_instrument") val paymentInstrument: PaymentInstrumentInput,
-    @Json(name = "return_url") val returnUrl: String = "cz.gopay.sdk://3ds-complete",
-    @Json(name = "browser_data") val browserData: BrowserData? = null
+data class ApplePayHeader(
+    val ephemeralPublicKey: String,
+    val publicKeyHash: String,
+    val transactionId: String
 )
 
 /**
- * Flat details for a charge response instrument. Nullable fields cover both PAYMENT_CARD
- * and BANK_ACCOUNT variants without requiring a custom Moshi adapter.
+ * Card-payment input. Discriminated `oneOf` over `input_type`. Maps to `Payment-Card-Input`
+ * (`CARD_TOKEN | GOOGLE_PAY | APPLE_PAY | ENCRYPTED_CARD`).
+ *
+ * Use the [Companion] factories; the constructor is open so the SDK can add new variants
+ * without breaking callers.
+ */
+data class PaymentCardInput(
+    @Json(name = "input_type") val inputType: String,
+    // CARD_TOKEN
+    @Json(name = "card_token") val cardToken: String? = null,
+    // GOOGLE_PAY — note camelCase keys mirror what the Google Pay token carries
+    val protocolVersion: String? = null,
+    val signature: String? = null,
+    val intermediateSigningKey: IntermediateSigningKey? = null,
+    val signedMessage: String? = null,
+    // APPLE_PAY
+    val data: String? = null,
+    val version: String? = null,
+    val header: ApplePayHeader? = null
+) {
+    companion object {
+        fun cardToken(cardToken: String): PaymentCardInput =
+            PaymentCardInput(inputType = "CARD_TOKEN", cardToken = cardToken)
+
+        fun googlePay(
+            protocolVersion: String,
+            signature: String,
+            intermediateSigningKey: IntermediateSigningKey?,
+            signedMessage: String
+        ): PaymentCardInput = PaymentCardInput(
+            inputType = "GOOGLE_PAY",
+            protocolVersion = protocolVersion,
+            signature = signature,
+            intermediateSigningKey = intermediateSigningKey,
+            signedMessage = signedMessage
+        )
+
+        fun applePay(
+            data: String,
+            signature: String,
+            version: String,
+            header: ApplePayHeader
+        ): PaymentCardInput = PaymentCardInput(
+            inputType = "APPLE_PAY",
+            data = data,
+            signature = signature,
+            version = version,
+            header = header
+        )
+    }
+}
+
+/**
+ * Card-instrument variant of the `Payment-Charge-Data` union. Carries the input together with
+ * the required browser data and an optional 3DS challenge preference. Maps to
+ * `Payment-Card-Charge-Data`.
+ *
+ * The current Payments 4.0 schema only defines `PAYMENT_CARD` for [paymentInstrument]; non-card
+ * instruments are not chargeable through this endpoint.
+ */
+data class PaymentChargeInstrument(
+    @Json(name = "payment_instrument") val paymentInstrument: String = "PAYMENT_CARD",
+    val input: PaymentCardInput,
+    @Json(name = "browser_data") val browserData: BrowserData,
+    @Json(name = "challenge_preference") val challengePreference: ChallengePreference? = null
+)
+
+/**
+ * Request body for `POST /payments/{payment_id}/charge`. Maps to `Payment-Charge-Input`.
+ *
+ * Use the [Companion] factories for the common card-token and Google Pay flows.
+ */
+data class ChargePaymentRequest(
+    @Json(name = "payment_instrument") val paymentInstrument: PaymentChargeInstrument,
+    @Json(name = "return_url") val returnUrl: String? = null
+) {
+    companion object {
+        fun cardToken(
+            cardToken: String,
+            browserData: BrowserData,
+            challengePreference: ChallengePreference? = null,
+            returnUrl: String? = null
+        ): ChargePaymentRequest = ChargePaymentRequest(
+            paymentInstrument = PaymentChargeInstrument(
+                input = PaymentCardInput.cardToken(cardToken),
+                browserData = browserData,
+                challengePreference = challengePreference
+            ),
+            returnUrl = returnUrl
+        )
+
+        fun googlePay(
+            protocolVersion: String,
+            signature: String,
+            intermediateSigningKey: IntermediateSigningKey?,
+            signedMessage: String,
+            browserData: BrowserData,
+            challengePreference: ChallengePreference? = null,
+            returnUrl: String? = null
+        ): ChargePaymentRequest = ChargePaymentRequest(
+            paymentInstrument = PaymentChargeInstrument(
+                input = PaymentCardInput.googlePay(
+                    protocolVersion = protocolVersion,
+                    signature = signature,
+                    intermediateSigningKey = intermediateSigningKey,
+                    signedMessage = signedMessage
+                ),
+                browserData = browserData,
+                challengePreference = challengePreference
+            ),
+            returnUrl = returnUrl
+        )
+    }
+}
+
+/**
+ * Output card details returned in a charge response. Maps to `Payment-Card-Charge-Details`.
  */
 data class InstrumentDetails(
     @Json(name = "input_type") val inputType: String,
@@ -165,15 +179,12 @@ data class InstrumentDetails(
     @Json(name = "expiration_month") val expirationMonth: String? = null,
     @Json(name = "expiration_year") val expirationYear: String? = null,
     val scheme: CardScheme? = null,
-    val fingerprint: String? = null,
-    val iban: String? = null,
-    val swift: BankSwift? = null,
-    @Json(name = "account_holder_name") val accountHolderName: String? = null
+    val fingerprint: String? = null
 )
 
 /**
- * Payment instrument data returned in charge responses.
- * The `paymentInstrument` field is "PAYMENT_CARD" or "BANK_ACCOUNT".
+ * Payment instrument block in a charge response. `paymentInstrument` is always `PAYMENT_CARD`
+ * for the current Payments 4.0 schema.
  */
 data class PaymentInstrumentData(
     @Json(name = "payment_instrument") val paymentInstrument: String,
@@ -181,8 +192,8 @@ data class PaymentInstrumentData(
 )
 
 /**
- * Follow-up action required to complete a charge (e.g. 3DS redirect).
- * Maps to Payment-Charge-Action in Payments.yaml.
+ * Follow-up action required to complete a charge (e.g. 3DS redirect). Maps to
+ * `Payment-Charge-Action`.
  */
 data class ChargeAction(
     @Json(name = "action_type") val actionType: ChargeActionType,
@@ -191,13 +202,17 @@ data class ChargeAction(
 )
 
 /**
- * Response for POST /payments/{payment_id}/charge and GET /payments/{payment_id}/charge.
- * Maps to Payment-Charge-Response-Data in Payments.yaml.
+ * Response for POST/GET `/payments/{payment_id}/charge`, and the value of
+ * `Payment-Details.charge` returned by `GET /payments/{payment_id}`. Maps to
+ * `Payment-Charge-Status-Response` in Payments.yaml. Per the spec only `id`, `state`, and
+ * `return_url` are required; instrument details and follow-up action are absent in early
+ * states, and `fail_reason` is only present when `state == FAILED`.
  */
 data class ChargePaymentResponse(
     val id: String,
     val state: ChargeState,
-    @Json(name = "payment_instrument") val paymentInstrument: PaymentInstrumentData,
     @Json(name = "return_url") val returnUrl: String,
-    val action: ChargeAction? = null
+    @Json(name = "payment_instrument") val paymentInstrument: PaymentInstrumentData? = null,
+    val action: ChargeAction? = null,
+    @Json(name = "fail_reason") val failReason: String? = null
 )

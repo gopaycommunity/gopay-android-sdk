@@ -54,33 +54,23 @@ internal object NetworkModule {
     }
 
     /**
-     * Creates a Moshi instance with Kotlin support
-     * 
-     * @return configured Moshi instance
+     * Shared, thread-safe Moshi instance. Reused across every Retrofit client built by the SDK so
+     * the Kotlin reflection adapters get registered (and cached) only once per process.
      */
-    internal fun createMoshi(): Moshi {
-        return Moshi.Builder()
-            .add(KotlinJsonAdapterFactory())
-            .build()
-    }
+    internal val moshi: Moshi = Moshi.Builder()
+        .add(KotlinJsonAdapterFactory())
+        .build()
 
     /**
-     * Creates a Retrofit instance with the provided OkHttpClient and baseUrl
-     * 
-     * @param client the OkHttpClient to use
-     * @param baseUrl the base URL for API calls
-     * @return configured Retrofit instance
+     * Creates a Retrofit instance with the provided OkHttpClient and baseUrl, reusing the shared
+     * [moshi] converter.
      */
     internal fun createRetrofit(client: OkHttpClient, baseUrl: String): Retrofit {
-        val moshi = createMoshi()
-        
-        // Ensure the baseUrl ends with a slash as required by Retrofit
         val normalizedBaseUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
-        
         return Retrofit.Builder()
             .baseUrl(normalizedBaseUrl)
             .client(client)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
     }
-} 
+}

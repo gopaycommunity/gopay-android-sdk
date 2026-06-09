@@ -7,25 +7,34 @@ object JwtUtils {
     
     /**
      * Checks if a JWT token is expired
-     * 
+     *
      * @param token The JWT token to check
      * @return true if the token is expired, false otherwise
-     * @throws IllegalArgumentException if the token is malformed
      */
     fun isTokenExpired(token: String): Boolean {
-        try {
-            val payloadJson = decodePayload(token)
-            val exp = extractLongFromJson(payloadJson, "exp") ?: 0L
-            
-            // If no expiration time is set, consider it as not expired
-            if (exp == 0L) return false
-            
-            // Compare with current time (exp is in seconds, System.currentTimeMillis() is in milliseconds)
-            val currentTimeSeconds = System.currentTimeMillis() / 1000
-            return currentTimeSeconds >= exp
+        val exp = try {
+            extractLongFromJson(decodePayload(token), "exp")
         } catch (e: Exception) {
-            // If we can't decode the token, consider it expired
+            // Token can't be decoded — treat as expired (safe default).
             return true
+        }
+        // No `exp` claim means the token doesn't declare an expiry.
+        if (exp == null) return false
+        return (System.currentTimeMillis() / 1000) >= exp
+    }
+
+    /**
+     * Extracts the `exp` claim (Unix seconds) from a JWT payload. Returns `0L` when the claim is
+     * absent or the token can't be decoded — callers should treat 0 as "no known expiry".
+     *
+     * Use this to capture the expiry once at token-issue time and avoid re-parsing the JWT on
+     * every authenticated request.
+     */
+    fun expirationSecondsOrZero(token: String): Long {
+        return try {
+            extractLongFromJson(decodePayload(token), "exp") ?: 0L
+        } catch (e: Exception) {
+            0L
         }
     }
     

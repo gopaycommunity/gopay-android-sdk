@@ -164,6 +164,9 @@ dependencies {
     // Coroutines dependency
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // Google Pay
+    implementation("com.google.android.gms:play-services-wallet:19.4.0")
     
     implementation(libs.androidx.foundation.android)
 

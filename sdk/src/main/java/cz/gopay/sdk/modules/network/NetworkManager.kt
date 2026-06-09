@@ -1,54 +1,36 @@
 package cz.gopay.sdk.modules.network
 
-import android.content.Context
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.config.NetworkConfig
-import cz.gopay.sdk.storage.SharedPrefsTokenStorage
-import cz.gopay.sdk.storage.TokenStorage
+import cz.gopay.sdk.exception.GopayErrorCodes
+import cz.gopay.sdk.exception.GopaySDKException
 import okhttp3.CertificatePinner
 import okhttp3.OkHttpClient
-import retrofit2.Retrofit
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509TrustManager
 
 /**
- * Manages HTTP client and API service instances for the Gopay SDK
+ * Builds and holds the auth-separated API clients for the Gopay SDK.
+ *
+ * All clients share the same base [OkHttpClient] (connection pool, timeouts, SSL config,
+ * UserAgent, logging) and only differ in their auth interceptor:
+ * - [authApi] — no auth (used to obtain payment_credentials tokens)
+ * - [buildPaymentApi] — per-session Bearer via [SessionAuthInterceptor]
+ * - [publicApi] — Basic `client_id:shareable_key` via [ShareableKeyInterceptor]
  */
 internal class NetworkManager(
-    gopayConfig: GopayConfig,
-    context: Context,
+    private val gopayConfig: GopayConfig,
     private val sslSocketFactory: SSLSocketFactory? = null,
     private val trustManager: X509TrustManager? = null,
     private val certificatePinner: CertificatePinner? = null
 ) {
-    
-    /**
-     * OkHttpClient instance configured according to the provided settings
-     */
-    private val okHttpClient: OkHttpClient
-    
-    /**
-     * Retrofit instance for making API calls
-     */
-    private val retrofit: Retrofit
-    
-    /**
-     * Token storage for authentication
-     */
-    // Initialize token storage with provided context
-    private val _tokenStorage: TokenStorage = SharedPrefsTokenStorage(context)
 
-    /**
-     * The API service interface implementation
-     */
-    val apiService: GopayApiService
-    
-    init {
+    private val baseUrl: String = gopayConfig.apiBaseUrl.let { if (it.endsWith("/")) it else "$it/" }
 
-        // Create authentication interceptor with token storage
-        // Create a temporary API service for the interceptor to use for token refresh
-        val tempNetworkConfig = NetworkConfig(
-            baseUrl = gopayConfig.apiBaseUrl,
+    /** OkHttp client with no auth interceptors — every API client clones from this. */
+    private val baseClient: OkHttpClient = NetworkModule.createOkHttpClient(
+        NetworkConfig(
+            baseUrl = baseUrl,
             readTimeoutSeconds = gopayConfig.requestTimeoutMs / 1000,
             connectTimeoutSeconds = gopayConfig.requestTimeoutMs / 2000,
             enableLogging = gopayConfig.debug,
@@ -56,35 +38,45 @@ internal class NetworkManager(
             trustManager = trustManager,
             certificatePinner = certificatePinner
         )
-        val tempClient = NetworkModule.createOkHttpClient(tempNetworkConfig)
-        val tempRetrofit = NetworkModule.createRetrofit(tempClient, tempNetworkConfig.baseUrl)
-        val tempApiService = tempRetrofit.create(GopayApiService::class.java)
-        
-        val authInterceptor = AuthenticationInterceptor(_tokenStorage, tempApiService)
-        
-        // Convert GopayConfig to NetworkConfig with authentication interceptor
-        val networkConfig = NetworkConfig(
-            baseUrl = gopayConfig.apiBaseUrl,
-            readTimeoutSeconds = gopayConfig.requestTimeoutMs / 1000,
-            connectTimeoutSeconds = gopayConfig.requestTimeoutMs / 2000, // Half the read timeout
-            enableLogging = gopayConfig.debug,
-            interceptors = listOf(authInterceptor),
-            sslSocketFactory = sslSocketFactory,
-            trustManager = trustManager,
-            certificatePinner = certificatePinner
-        )
-        
-        // Create the HTTP client and Retrofit instance
-        okHttpClient = NetworkModule.createOkHttpClient(networkConfig)
-        retrofit = NetworkModule.createRetrofit(okHttpClient, networkConfig.baseUrl)
-        
-        // Create the API service
-        apiService = retrofit.create(GopayApiService::class.java)
-    }
-    
+    )
+
     /**
-     * Gets the token storage instance
+     * Unauthenticated [AuthApi] used by PaymentSession to exchange `payment_id`/`payment_secret`
+     * for a payment-scoped JWT.
      */
-    val tokenStorage: TokenStorage
-        get() = _tokenStorage
-} 
+    val authApi: AuthApi = NetworkModule.createRetrofit(baseClient, baseUrl)
+        .create(AuthApi::class.java)
+
+    /**
+     * Builds a [PaymentApi] backed by an OkHttp client that attaches the JWT held by [provider].
+     * One instance per PaymentSession.
+     */
+    fun buildPaymentApi(provider: SessionTokenProvider): PaymentApi {
+        val client = baseClient.newBuilder()
+            .addInterceptor(SessionAuthInterceptor(provider))
+            .build()
+        return NetworkModule.createRetrofit(client, baseUrl)
+            .create(PaymentApi::class.java)
+    }
+
+    /**
+     * Returns a [PublicApi] for shareable-key endpoints. Requires both `clientId` and
+     * `shareableKey` to be set on [GopayConfig]; otherwise throws
+     * [GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING].
+     */
+    val publicApi: PublicApi by lazy {
+        val clientId = gopayConfig.clientId
+        val shareableKey = gopayConfig.shareableKey
+        if (clientId.isNullOrBlank() || shareableKey.isNullOrBlank()) {
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING,
+                message = "clientId and shareableKey must be set on GopayConfig to use public endpoints"
+            )
+        }
+        val client = baseClient.newBuilder()
+            .addInterceptor(ShareableKeyInterceptor(clientId, shareableKey))
+            .build()
+        NetworkModule.createRetrofit(client, baseUrl)
+            .create(PublicApi::class.java)
+    }
+}

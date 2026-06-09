@@ -1,251 +1,52 @@
 # Gopay SDK Test App
 
-This is a comprehensive test application for the Gopay Android SDK that demonstrates all available features and provides a testing interface for developers.
+Demo app that exercises every public surface of the GoPay Android SDK from a real device.
 
-## Features
+## What it covers
 
-### 🏠 Main Menu
-- Navigation hub for accessing different demo screens
-- Overview of available SDK capabilities
+- Starting a `PaymentSession` from a `payment_id` + `payment_secret` pair (paste them in from
+  your merchant backend's response — the app does not create payments itself).
+- Reading payment status, charge state, and QR payment info through the session.
+- Fetching the merchant public key with `shareable_key` basic auth.
+- Encrypting card data into a JWE via `PaymentCardForm` — the resulting JWE is shown on
+  screen so you can paste it into a backend `POST /cards/tokens` call.
+- Submitting a card-token charge through the session, including 3DS handling.
+- Managed Google Pay flow (`session.chargeWithGooglePay(activity)`).
 
-### 🔧 SDK Test Suite
-A comprehensive testing interface that includes:
+The app intentionally has no merchant-credentials path. Payment creation, refunds, and
+`POST /cards/tokens` all belong on the merchant backend.
 
-#### Authentication Testing
-- **Username/Password Input**: Enter any credentials (demo accepts any non-empty values)
-- **Mock Authentication**: Simulates a real authentication flow with JWT token generation
-- **Token Management**: View, check, and clear stored authentication tokens
-- **Error Handling**: Demonstrates the unified exception system with detailed error reporting
+## Running
 
-#### Payment Methods
-- **Get Payment Methods**: Retrieve available payment options
-- **Method Information**: Display payment method details (ID, name, etc.)
-
-#### Payment Processing
-- **Create Payment**: Create a payment for an eshop (requires GOID)
-- **Get Payment Status**: Fetch full payment details including optional charge reference (requires `payment:read` scope)
-- **Charge a Payment**: Initiate a charge using a card token or bank instrument (requires `payment:create` scope)
-- **Charge with 3DS Verification**: Managed charge flow — SDK opens a WebView for 3DS authentication automatically, no `return_url` required (requires `payment:create` + `payment:read` scopes)
-- **Get Charge State**: Poll the current state of an in-progress or completed charge (requires `payment:read` scope)
-
-#### Token Management
-- **Token Status**: Check current token availability and content
-- **Token Clearing**: Clear stored tokens and reset authentication state
-- **Token Validation**: Automatic JWT validation and expiration checking
-
-### 🛒 Checkout Demo
-- Realistic checkout flow demonstration
-- Payment method selection interface
-- Integration example for production apps
-
-## SDK Features Demonstrated
-
-### ✅ Unified Exception System
-- **Structured Error Codes**: All errors use standardized codes (AUTH_001, NETWORK_002, etc.)
-- **HTTP Context**: Detailed HTTP error information including status codes, URLs, and response bodies
-- **Error Categorization**: Helper methods to check error types (authentication, network, payment, etc.)
-- **Error Reporting**: Callback-based analytics integration
-
-### ✅ Automatic Context Management
-- **Auto-Initialization**: SDK automatically obtains Android Application context
-- **No Manual Context**: Developers don't need to pass context manually
-- **Memory Leak Prevention**: Always uses Application context, never Activity context
-
-### ✅ Secure Token Storage
-- **SharedPreferences**: Secure local storage for JWT tokens
-- **Automatic Refresh**: Transparent token refresh when access tokens expire
-- **Token Validation**: JWT parsing and expiration checking
-
-### ✅ Network Management
-- **HTTP Client**: Pre-configured OkHttp client with authentication
-- **Request Interceptors**: Automatic token attachment to API requests
-- **Error Handling**: Network error detection and reporting
-
-## How to Use
-
-### 1. Launch the App
 ```bash
 ./gradlew :app:installDebug
 adb shell am start -n com.gopay.example/.MainActivity
 ```
 
-### 2. Choose SDK Test Suite
-- Tap "Open SDK Test Suite" from the main menu
-- This opens the comprehensive testing interface
+`ExampleApplication` initializes the SDK with the dev gateway and the hardcoded sandbox
+`clientId` / `shareableKey` baked into source. Change those to your own values when pointing
+at sandbox or production.
 
-### 3. Test Authentication
-1. Enter any username and password (demo mode accepts any values)
-2. Tap "Authenticate"
-3. Observe the authentication flow and token generation
-4. Check the results section for detailed feedback
+## Typical flow in the test screen
 
-### 4. Test SDK Methods
-After authentication, you can:
-- **Get Payment Methods**: Test the payment method retrieval
-- **Process Payments**: Try different payment amounts and methods
-- **Manage Tokens**: Check token status and clear tokens
+1. Tap **SDK Test Suite**.
+2. Have your backend create a payment and return its `payment_id` + `payment_secret`.
+3. Paste them into the **Payment Session** card and tap **Start Payment Session**.
+4. With the session live:
+   - Tap **Get Payment Status** to confirm.
+   - Either:
+     - Use the **Card Form** below to encrypt a card → send the printed JWE to your backend →
+       paste the returned card token into **Charge with Card Token** → tap charge.
+     - Or use **Charge with Google Pay** on a real device with GP configured.
+   - If a 3DS redirect URL comes back on the charge response it auto-populates the
+     **Handle 3DS Verification** field — tap the button to open the managed WebView.
+   - Tap **Get Charge State** to see the final state.
+5. Tap **Close** on the Payment Session card when done — the secret and JWT are wiped.
 
-### 5. Monitor Error Reporting
-- All SDK errors are displayed in the results section
-- Error codes, messages, and HTTP context are shown
-- Global error reporting is logged to console
+## Code references
 
-## Error Testing
+- App entry: [`ExampleApplication.kt`](src/main/java/com/gopay/example/ExampleApplication.kt)
+- Test screen: [`SDKTestActivity.kt`](src/main/java/com/gopay/example/SDKTestActivity.kt)
+- Checkout demo (existing UI sample): [`CheckoutDemoActivity.kt`](src/main/java/com/gopay/example/CheckoutDemoActivity.kt)
 
-To test the unified exception system, try:
-
-1. **Invalid Authentication**: Use expired tokens or invalid credentials
-2. **Network Errors**: Simulate network issues (airplane mode)
-3. **Payment Errors**: Use invalid payment amounts (negative, zero)
-4. **Configuration Errors**: Try to use SDK before initialization
-
-## Code Examples
-
-### Basic SDK Usage
-```kotlin
-// SDK is automatically initialized in ExampleApplication
-val sdk = GopaySDK.getInstance()
-
-// Authenticate with tokens
-sdk.setAuthenticationResponse(authResponse)
-
-// Check authentication status
-val isAuthenticated = sdk.isAuthenticated()
-
-// Access token storage
-val tokenStorage = sdk.getTokenStorage()
-val accessToken = tokenStorage.getAccessToken()
-```
-
-### Payment Lifecycle
-```kotlin
-// 1. Create a payment
-val payment = sdk.createPayment(goid = "123456", request = PaymentCreateRequest(...))
-
-// 2. Get payment status (includes optional charge reference once charged)
-val status = sdk.getPaymentStatus(payment.id)
-println("State: ${status.state}, Charge: ${status.charge?.id}")
-
-// 3. Charge the payment with a card token
-val chargeRequest = ChargePaymentRequest(
-    paymentInstrument = PaymentInstrumentInput.cardToken(
-        cardToken = "your-card-token",
-        challengePreference = ChallengePreference.AUTO
-    ),
-    returnUrl = "https://yourapp.com/return",
-    browserData = BrowserData(
-        language = "en-US", timezone = 0,
-        screenWidth = 1080, screenHeight = 1920, colorDepth = 24
-    )
-)
-val charge = sdk.chargePayment(payment.id, chargeRequest)
-
-// 4. Handle 3DS redirect if required (manual approach)
-charge.action?.redirectUrl?.let { url ->
-    // Open url in WebView or browser for 3DS authentication
-}
-
-// 5. Poll charge state
-val chargeState = sdk.getChargeState(payment.id)
-println("Charge state: ${chargeState.state}")
-```
-
-### Managed 3DS Verification (Recommended)
-```kotlin
-// chargePaymentWithVerification handles the WebView automatically:
-// - Injects an SDK-managed return URL
-// - Opens a WebView when 3DS is required
-// - Suspends until the user completes or cancels authentication
-// - Returns the final charge state
-
-val finalCharge = sdk.chargePaymentWithVerification(
-    activity = this,           // current Activity
-    paymentId = payment.id,
-    paymentInstrument = PaymentInstrumentInput.cardToken(
-        cardToken = "your-card-token",
-        challengePreference = ChallengePreference.AUTO
-    )
-    // browserData is auto-collected from the device if not provided
-)
-println("Final charge state: ${finalCharge.state}")
-```
-
-### Error Handling
-```kotlin
-try {
-    sdk.processPayment("card", 100.0)
-} catch (e: GopaySDKException) {
-    when {
-        e.isAuthenticationError() -> handleAuthError(e)
-        e.isNetworkError() -> handleNetworkError(e)
-        e.isPaymentError() -> handlePaymentError(e)
-        else -> handleGenericError(e)
-    }
-}
-```
-
-### Error Reporting
-```kotlin
-val config = GopayConfig(
-    environment = Environment.SANDBOX,
-    errorCallback = { error ->
-        analytics.trackError(error.errorCode, mapOf(
-            "message" to error.message,
-            "httpStatus" to error.getHttpStatusCode()?.toString()
-        ))
-    }
-)
-```
-
-## Environment Configuration
-
-The app is configured for testing:
-- **Environment**: Sandbox
-- **Debug Logging**: Enabled
-- **Request Timeout**: 30 seconds
-- **Error Reporting**: Console logging + callback demonstration
-
-## Security Notes
-
-- This is a **demo/test app** - not for production use
-- Authentication uses mock tokens for testing
-- Real implementations should use proper backend authentication
-- Always validate inputs and handle errors appropriately
-
-## Next Steps
-
-After testing the SDK features:
-1. Review the error codes in [ERROR_CODES.md](../ERROR_CODES.md)
-2. Check the SDK documentation in [README.md](../README.md)
-3. Implement the SDK in your production app
-4. Set up proper error reporting and analytics integration
-
-## Troubleshooting
-
-### Common Issues
-
-**SDK Not Initialized Error**
-- Ensure ExampleApplication is properly configured in AndroidManifest.xml
-- Check that the app has proper Application context access
-
-**Authentication Failures**
-- Verify token format and expiration
-- Check network connectivity
-- Review error codes and messages
-
-**Payment Processing Issues**
-- Validate payment amounts (must be positive)
-- Ensure authentication is completed first
-- Check payment method IDs
-
-### Debug Information
-
-Enable detailed logging:
-```kotlin
-val config = GopayConfig(
-    environment = Environment.SANDBOX,
-    debugLoggingEnabled = true
-)
-```
-
-All errors are automatically reported to the console with full context information. 
+For SDK API details see the top-level [README.md](../README.md).

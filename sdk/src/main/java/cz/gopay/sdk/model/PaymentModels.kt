@@ -105,19 +105,10 @@ enum class PaymentState {
 }
 
 /**
- * Reference to a charge associated with a payment.
- * Based on components.schemas.Payment-Charge-Ref in Payments.yaml.
- */
-data class PaymentChargeRef(
-    val id: String,
-    val state: ChargeState,
-    val href: String
-)
-
-/**
  * Response body for payment creation and payment status.
  * Both POST /eshops/{goid}/payments and GET /payments/{payment_id} return
- * the Payment-Details schema, which includes an optional charge reference.
+ * the Payment-Details schema. `charge` is populated once the payment has been charged and
+ * mirrors `Payment-Charge-Status-Response`.
  */
 data class PaymentCreateResponse(
     val id: String,
@@ -129,6 +120,8 @@ data class PaymentCreateResponse(
     val customer: PaymentCustomer,
     @Json(name = "gw_url")
     val gwUrl: String,
-    val charge: PaymentChargeRef? = null
+    val charge: ChargePaymentResponse? = null,
+    @Json(name = "payment_secret")
+    val paymentSecret: String? = null
 )
 

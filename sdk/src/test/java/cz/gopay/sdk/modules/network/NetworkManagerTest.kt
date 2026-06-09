@@ -1,78 +1,76 @@
 package cz.gopay.sdk.modules.network
 
-import android.content.Context
 import cz.gopay.sdk.config.Environment
 import cz.gopay.sdk.config.GopayConfig
+import cz.gopay.sdk.exception.GopayErrorCodes
+import cz.gopay.sdk.exception.GopaySDKException
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertTrue
-import org.junit.Before
+import org.junit.Assert.assertThrows
 import org.junit.Test
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 
 class NetworkManagerTest {
 
-    private lateinit var defaultGopayConfig: GopayConfig
-    private lateinit var mockContext: Context
-    
-    @Before
-    fun setup() {
-        defaultGopayConfig = GopayConfig(
-            environment = Environment.SANDBOX,
-            debug = true
-        )
-        
-        // Setup mock context
-        mockContext = mock()
-        whenever(mockContext.applicationContext).thenReturn(mockContext)
-    }
-    
     @Test
-    fun testNetworkManagerInitialization() {
-        // When creating a NetworkManager
-        val networkManager = NetworkManager(defaultGopayConfig, mockContext)
-        
-        // Then the API service should be initialized
-        assertNotNull("API service should be initialized", networkManager.apiService)
-    }
-    
-    @Suppress("USELESS_IS_CHECK")
-    @Test
-    fun testApiServiceInstantiation() {
-        // Given a NetworkManager
-        val networkManager = NetworkManager(defaultGopayConfig, mockContext)
-        
-        // When getting the API service
-        val apiService = networkManager.apiService
-        
-        // Then it should be a GopayApiService instance
-        assertTrue("API service should be a GopayApiService instance", 
-            apiService is GopayApiService)
+    fun authApiIsBuiltOnInit() {
+        val manager = NetworkManager(GopayConfig(environment = Environment.SANDBOX))
+        assertNotNull("AuthApi should be available without any extra config", manager.authApi)
     }
 
     @Test
-    fun testConfigMapping() {
-        // Given various GopayConfig values
-        val configs = listOf(
+    fun buildPaymentApiReturnsDistinctInstancePerProvider() {
+        val manager = NetworkManager(GopayConfig(environment = Environment.SANDBOX))
+
+        val a = manager.buildPaymentApi(noopProvider())
+        val b = manager.buildPaymentApi(noopProvider())
+
+        // Distinct Retrofit-generated proxies are expected per provider.
+        assert(a !== b)
+    }
+
+    @Test
+    fun publicApiThrowsWhenShareableKeyMissing() {
+        val manager = NetworkManager(GopayConfig(environment = Environment.SANDBOX))
+
+        val ex = assertThrows(GopaySDKException::class.java) {
+            manager.publicApi  // lazy — triggers the check
+        }
+        assertEquals(GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING, ex.errorCode)
+    }
+
+    @Test
+    fun publicApiBuildsWhenShareableKeyPresent() {
+        val manager = NetworkManager(
+            GopayConfig(
+                environment = Environment.SANDBOX,
+                clientId = "cid",
+                shareableKey = "sk"
+            )
+        )
+        assertNotNull(manager.publicApi)
+    }
+
+    @Test
+    fun configMappingAcceptsVariedEnvironments() {
+        listOf(
             GopayConfig(
                 environment = Environment.DEVELOPMENT.create("https://localhost:8080"),
-                requestTimeoutMs = 10000,
+                requestTimeoutMs = 10_000,
                 debug = true
             ),
             GopayConfig(
                 environment = Environment.PRODUCTION,
-                requestTimeoutMs = 20000,
-                debug = false
+                requestTimeoutMs = 20_000
             )
-        )
-        
-        // When creating NetworkManagers with these configs
-        for (config in configs) {
-            val networkManager = NetworkManager(config, mockContext)
-            
-            // Then the network manager should be properly initialized
-            assertNotNull("API service should be initialized for all config values", 
-                networkManager.apiService)
+        ).forEach { cfg ->
+            val manager = NetworkManager(cfg)
+            assertNotNull(manager.authApi)
         }
     }
-} 
+
+    private fun noopProvider() = object : SessionTokenProvider {
+        override fun currentToken(): String? = "fake.jwt.token"
+        override suspend fun reauthenticate(): String = "fake.jwt.token"
+        override fun invalidateToken() {}
+    }
+}

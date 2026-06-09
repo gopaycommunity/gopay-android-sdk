@@ -66,4 +66,35 @@ object Base64Utils {
         // If both fail, throw the original exception
         throw RuntimeException("Base64 encoding failed in both Android and Java environments", e)
     }
+
+    /**
+     * Builds a full `Authorization: Basic …` header value from a user/password pair, using the
+     * standard-alphabet base64 encoding required by RFC 7617.
+     */
+    fun basicAuthHeader(user: String, secret: String): String =
+        "Basic " + encodeBasicAuth("$user:$secret")
+
+    /**
+     * Encodes a string to standard Base64 with padding — the encoding required by HTTP Basic
+     * authentication (RFC 7617). Use this for `Authorization: Basic …` headers; do not use the
+     * URL-safe variant, which substitutes `-`/`_` for `+`/`/` and may be rejected by servers.
+     */
+    fun encodeBasicAuth(input: String): String {
+        val bytes = input.toByteArray(Charsets.UTF_8)
+        return try {
+            android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+        } catch (e: Throwable) {
+            encodeStandardUsingJavaBase64(bytes, e)
+        }
+    }
+
+    private fun encodeStandardUsingJavaBase64(input: ByteArray, e: Throwable): String = try {
+        val base64Class = Class.forName("java.util.Base64")
+        val getEncoderMethod = base64Class.getMethod("getEncoder")
+        val encoder = getEncoderMethod.invoke(null)
+        val encodeToStringMethod = encoder.javaClass.getMethod("encodeToString", ByteArray::class.java)
+        encodeToStringMethod.invoke(encoder, input) as String
+    } catch (reflectionException: Throwable) {
+        throw RuntimeException("Standard Base64 encoding failed in both Android and Java environments", e)
+    }
 } 

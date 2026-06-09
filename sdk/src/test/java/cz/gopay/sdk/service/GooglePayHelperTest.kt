@@ -9,6 +9,7 @@ import cz.gopay.sdk.model.GooglePayMethodParameters
 import cz.gopay.sdk.model.GooglePayTokenizationSpec
 import cz.gopay.sdk.model.GooglePayTransactionInfo
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -56,23 +57,22 @@ class GooglePayHelperTest {
     // --- parseGooglePayToken ---
 
     @Test
-    fun `parseGooglePayToken returns correct PaymentInstrumentInput for valid JSON`() {
+    fun `parseGooglePayToken returns correct PaymentCardInput for valid JSON`() {
         val paymentDataJson = buildValidPaymentDataJson()
-        val instrument = GooglePayHelper.parseGooglePayToken(paymentDataJson)
+        val input = GooglePayHelper.parseGooglePayToken(paymentDataJson)
 
-        assertEquals("PAYMENT_CARD", instrument.paymentInstrument)
-        assertEquals("GOOGLE_PAY", instrument.input.inputType)
-        assertEquals("ECv2", instrument.input.protocolVersion)
-        assertEquals("test_signature", instrument.input.signature)
-        assertEquals("test_signed_message", instrument.input.signedMessage)
+        assertEquals("GOOGLE_PAY", input.inputType)
+        assertEquals("ECv2", input.protocolVersion)
+        assertEquals("test_signature", input.signature)
+        assertEquals("test_signed_message", input.signedMessage)
     }
 
     @Test
     fun `parseGooglePayToken parses intermediateSigningKey correctly`() {
         val paymentDataJson = buildValidPaymentDataJson()
-        val instrument = GooglePayHelper.parseGooglePayToken(paymentDataJson)
+        val input = GooglePayHelper.parseGooglePayToken(paymentDataJson)
 
-        val key = instrument.input.intermediateSigningKey
+        val key = input.intermediateSigningKey
         assertEquals("{\"keyExpiration\":\"1542323393147\",\"keyValue\":\"MFkw...\"}", key?.signedKey)
         assertEquals(1, key?.signatures?.size)
         assertEquals("MEYCIQCO2EIi48s8VTH+ilMEpoXLFfkxAw==", key?.signatures?.get(0))
@@ -112,6 +112,35 @@ class GooglePayHelperTest {
         val tokenJson = """{"protocolVersion":"ECv2","signedMessage":"msg"}"""
         val json = buildPaymentDataJsonWithToken(tokenJson)
         GooglePayHelper.parseGooglePayToken(json)
+    }
+
+    // --- buildIsReadyToPayRequestJson ---
+
+    @Test
+    fun `buildIsReadyToPayRequestJson includes apiVersion and allowedPaymentMethods`() {
+        val info = buildTestInfo()
+        val json = GooglePayHelper.buildIsReadyToPayRequestJson(
+            info.paymentDataRequest.allowedPaymentMethods
+        )
+
+        assertTrue(json.contains("\"apiVersion\":2"))
+        assertTrue(json.contains("\"apiVersionMinor\":0"))
+        assertTrue(json.contains("allowedPaymentMethods"))
+        assertTrue(json.contains("CARD"))
+        assertTrue(json.contains("PAN_ONLY"))
+        assertTrue(json.contains("VISA"))
+    }
+
+    @Test
+    fun `buildIsReadyToPayRequestJson does not include gateway parameters`() {
+        val info = buildTestInfo()
+        val json = GooglePayHelper.buildIsReadyToPayRequestJson(
+            info.paymentDataRequest.allowedPaymentMethods
+        )
+
+        assertFalse("Should not include gateway", json.contains("gateway"))
+        assertFalse("Should not include gatewayMerchantId", json.contains("gatewayMerchantId"))
+        assertFalse("Should not include tokenizationSpecification", json.contains("tokenizationSpecification"))
     }
 
     // Helpers

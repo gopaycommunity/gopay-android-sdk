@@ -7,6 +7,7 @@ import okhttp3.Response
 import okhttp3.logging.HttpLoggingInterceptor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -121,14 +122,15 @@ class NetworkModuleTest {
     }
     
     @Test
-    fun testCreateMoshi() {
-        // When creating a Moshi instance
-        val moshi = NetworkModule.createMoshi()
-        
-        // Then it should not be null
-        assertNotNull("Moshi instance should not be null", moshi)
+    fun testSharedMoshiInstance() {
+        // The shared Moshi instance should be available and the same on every read.
+        val a = NetworkModule.moshi
+        val b = NetworkModule.moshi
+        assertNotNull("Moshi instance should not be null", a)
+        assertSame("Moshi should be a singleton across calls", a, b)
     }
-    
+
+
     @Test
     fun testCreateRetrofit() {
         // Given a client and base URL

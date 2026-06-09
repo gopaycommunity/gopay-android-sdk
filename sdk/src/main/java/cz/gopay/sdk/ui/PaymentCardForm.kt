@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.model.CardData
-import cz.gopay.sdk.model.CardTokenResponse
 import cz.gopay.sdk.ui.utils.CardNumberInputValidator
 import cz.gopay.sdk.ui.utils.CardNumberMaskedVisualTransformation
 import cz.gopay.sdk.ui.utils.CardNumberVisualTransformation
@@ -43,11 +42,16 @@ import cz.gopay.sdk.ui.utils.ExpirationDateVisualTransformation
 import kotlinx.coroutines.launch
 
 /**
- * Result of card tokenization operation
+ * Result of card encryption performed by the form.
+ *
+ * The form encrypts the entered card data into a JWE that the host app forwards to the merchant
+ * backend; the merchant backend then calls `POST /cards/tokens` (which requires merchant
+ * credentials and so cannot run on-device). The SDK never sees the resulting card token.
  */
-sealed class TokenizationResult {
-    data class Success(val tokenResponse: CardTokenResponse) : TokenizationResult()
-    data class Error(val message: String, val exception: Throwable? = null) : TokenizationResult()
+sealed class CardEncryptionResult {
+    /** JWE compact serialization (RFC 7516) suitable for submission to the merchant backend. */
+    data class Success(val jwe: String) : CardEncryptionResult()
+    data class Error(val message: String, val exception: Throwable? = null) : CardEncryptionResult()
 }
 
 /**
@@ -116,33 +120,32 @@ data class PaymentCardFormTheme(
 )
 
 /**
- * A secure payment card form that handles card data input and tokenization.
- * This component never exposes raw card data to the parent - it handles tokenization internally
- * and only returns the secure token to the caller.
- * 
- * Security Features:
- * - When debug mode is enabled in the SDK configuration, this form automatically sets FLAG_SECURE
- *   on the activity window to prevent screen capture and screenshots
- * - All card data is validated and tokenized securely within the SDK
- * - Raw card data is never exposed to the parent component
+ * A secure payment card form that handles card data input and JWE encryption.
  *
- * @param onTokenizationComplete Callback called when tokenization completes (success or error)
- * @param modifier Modifier for the form layout
- * @param onFormReady Callback that provides a submit function for external triggering
- * @param onValidationError Callback called when validation errors occur
- * @param inputFields Configuration for input field labels, helper texts, and error states
- * @param theme Theme configuration for customizing the form appearance
- * @param permanent Whether to save the card for permanent usage (default: false)
+ * The form never exposes raw card data to the parent — it validates input and encrypts it into a
+ * JWE that the parent forwards to its merchant backend. The backend (which holds merchant
+ * credentials) then calls `POST /cards/tokens` to obtain the final card token.
+ *
+ * Security:
+ * - In non-debug builds, the form sets `FLAG_SECURE` on the window to prevent screen capture.
+ * - Card data is validated locally and JWE-encrypted using the merchant's public key (fetched
+ *   from `GET /cards/public-key` with shareable-key auth and cached in memory).
+ *
+ * @param onEncryptionComplete Callback invoked with the JWE (success) or an error.
+ * @param modifier Modifier for the form layout.
+ * @param onFormReady Provides a submit function for external triggering.
+ * @param onValidationError Invoked when validation errors are present.
+ * @param inputFields Configuration for input field labels, helper texts, error states.
+ * @param theme Theme configuration for customizing the form appearance.
  */
 @Composable
 fun PaymentCardForm(
-    onTokenizationComplete: (TokenizationResult) -> Unit,
+    onEncryptionComplete: (CardEncryptionResult) -> Unit,
     modifier: Modifier = Modifier,
-    onFormReady: ((suspend () -> TokenizationResult) -> Unit)? = null,
+    onFormReady: ((suspend () -> CardEncryptionResult) -> Unit)? = null,
     onValidationError: ((CardValidator.CardValidationResult) -> Unit)? = null,
     inputFields: PaymentFormInputs = PaymentFormInputs(),
-    theme: PaymentCardFormTheme = PaymentCardFormTheme(),
-    permanent: Boolean = false
+    theme: PaymentCardFormTheme = PaymentCardFormTheme()
 ) {
     // Store clean input values (digits only)
     var cardNumberDigits by remember { mutableStateOf("") }
@@ -171,13 +174,12 @@ fun PaymentCardForm(
     val view = LocalView.current
 
     // Create the submit function
-    val submitCardData: suspend () -> TokenizationResult = {
+    val submitCardData: suspend () -> CardEncryptionResult = {
         submitCardDataImpl(
             cardNumberDigits = cardNumberDigits,
             expirationDateDigits = expirationDateDigits,
             cvv = cvv,
-            permanent = permanent,
-            onTokenizationComplete = onTokenizationComplete,
+            onEncryptionComplete = onEncryptionComplete,
             onValidationError = onValidationError,
             resetForm = resetForm
         )
@@ -289,33 +291,26 @@ private suspend fun submitCardDataImpl(
     cardNumberDigits: String,
     expirationDateDigits: String,
     cvv: String,
-    permanent: Boolean,
-    onTokenizationComplete: (TokenizationResult) -> Unit,
+    onEncryptionComplete: (CardEncryptionResult) -> Unit,
     onValidationError: ((CardValidator.CardValidationResult) -> Unit)?,
     resetForm: () -> Unit
-): TokenizationResult {
+): CardEncryptionResult {
     return try {
-        // Validate all fields first
         val validation = CardValidator.validateCard(
             cardNumber = cardNumberDigits,
             expirationDate = formatExpirationForValidation(expirationDateDigits),
             cvv = cvv
         )
-
         if (!validation.isAllValid) {
-            // Call validation error callback if provided
             onValidationError?.invoke(validation)
             throw IllegalArgumentException("Please fix the validation errors")
         }
 
-        // Parse expiration date using utility
         val formattedExpDate = formatExpirationForValidation(expirationDateDigits)
         val expParts = parseExpirationDate(formattedExpDate)
             ?: throw IllegalArgumentException("Invalid expiration date format. Use MM/YY")
-
         val (expMonth, expYear) = expParts
 
-        // Create card data - this stays within the SDK
         val cardData = CardData(
             cardPan = cardNumberDigits,
             expMonth = expMonth.toString().padStart(2, '0'),
@@ -323,22 +318,17 @@ private suspend fun submitCardDataImpl(
             cvv = cvv
         )
 
-        // Use SDK to tokenize card (using existing method)
-        val tokenResponse = GopaySDK.getInstance().tokenizeCard(cardData, permanent)
-
-        val result = TokenizationResult.Success(tokenResponse)
-        
-        // Reset the form after successful tokenization
+        val jwe = GopaySDK.getInstance().encryptCardData(cardData)
+        val result = CardEncryptionResult.Success(jwe)
         resetForm()
-        
-        onTokenizationComplete(result)
+        onEncryptionComplete(result)
         result
     } catch (e: Exception) {
-        val result = TokenizationResult.Error(
-            message = e.message ?: "Card tokenization failed",
+        val result = CardEncryptionResult.Error(
+            message = e.message ?: "Card encryption failed",
             exception = e
         )
-        onTokenizationComplete(result)
+        onEncryptionComplete(result)
         result
     }
-} 
+}

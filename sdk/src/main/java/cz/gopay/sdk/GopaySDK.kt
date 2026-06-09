@@ -1,474 +1,202 @@
 package cz.gopay.sdk
 
 import android.app.Activity
-import android.content.Context
-import android.content.Intent
+import com.google.android.gms.wallet.IsReadyToPayRequest
+import com.google.android.gms.wallet.Wallet
+import com.google.android.gms.wallet.WalletConstants
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
-import cz.gopay.sdk.internal.GopayContextProvider
-import cz.gopay.sdk.model.AuthenticationResponse
 import cz.gopay.sdk.model.CardData
-import cz.gopay.sdk.model.CardTokenResponse
-import cz.gopay.sdk.model.ChargePaymentRequest
-import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.GooglePayInfoResponse
 import cz.gopay.sdk.model.Jwk
-import cz.gopay.sdk.model.QrCodeFormat
-import cz.gopay.sdk.model.QrPaymentDetails
-import cz.gopay.sdk.modules.network.GopayApiService
 import cz.gopay.sdk.modules.network.NetworkManager
-import cz.gopay.sdk.ui.PaymentVerificationActivity
-import cz.gopay.sdk.ui.PaymentVerificationBridge
-import cz.gopay.sdk.service.CardTokenizationService
 import cz.gopay.sdk.service.EncryptionService
-import cz.gopay.sdk.service.PaymentService
-import cz.gopay.sdk.service.PublicKeyService
-import cz.gopay.sdk.storage.TokenStorage
-import cz.gopay.sdk.util.Base64Utils
-import cz.gopay.sdk.util.JwtUtils
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import cz.gopay.sdk.service.GooglePayHelper
+import cz.gopay.sdk.service.PublicKeyCache
+import cz.gopay.sdk.session.PaymentSession
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import okhttp3.CertificatePinner
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509TrustManager
 
 /**
- * Public interface for the Gopay SDK. Only methods in this interface are intended for public use.
- */
-interface GopaySDKInterface {
-    fun getTokenStorage(): TokenStorage
-    fun getApiService(): GopayApiService
-    fun setAuthenticationResponse(authResponse: AuthenticationResponse)
-    suspend fun authenticate(
-        clientId: String,
-        clientSecret: String,
-        scope: String?
-    ): AuthenticationResponse
-    suspend fun refreshToken(): AuthenticationResponse
-    fun isAuthenticated(): Boolean
-    fun isDebugEnabled(): Boolean
-    fun logout()
-}
-
-/**
  * Main entry point for the Gopay SDK.
+ *
+ * Usage:
+ * 1. `GopaySDK.initialize(GopayConfig(environment, clientId, shareableKey))` once on app start.
+ * 2. Merchant backend creates a payment and returns `payment_id` + `payment_secret` to the device.
+ * 3. `GopaySDK.getInstance().startPaymentSession(paymentId, paymentSecret)` — returns a
+ *    [PaymentSession] scoped to that single payment.
+ * 4. All charge/status/Google Pay/3DS operations run through `session.*`. Multiple sessions can
+ *    run concurrently — sessions are keyed by `payment_id` and never share credentials.
+ * 5. `session.close()` when done; the `payment_secret` and JWT are wiped from memory.
+ *
+ * Card collection: `GopaySDK.encryptCardData(cardData)` (or the `PaymentCardForm` composable)
+ * returns a JWE that the host app forwards to its backend; the merchant backend calls
+ * `POST /cards/tokens`. The mobile SDK never touches that endpoint.
  */
 class GopaySDK private constructor(
-    /**
-     * The configuration for this SDK instance.
-     */
     val config: GopayConfig,
     val sslSocketFactory: SSLSocketFactory? = null,
     val trustManager: X509TrustManager? = null,
     val certificatePinner: CertificatePinner? = null
-) : GopaySDKInterface {
+) {
 
-    /**
-     * Network manager handling HTTP client and API service.
-     * Uses automatically obtained Application context.
-     */
     private val networkManager =
-        NetworkManager(config, GopayContextProvider.getApplicationContext(), sslSocketFactory, trustManager, certificatePinner)
+        NetworkManager(config, sslSocketFactory, trustManager, certificatePinner)
 
-    private val tokenStorage: TokenStorage = networkManager.tokenStorage
-    private val apiService: GopayApiService = networkManager.apiService
-    private val encryptionService = EncryptionService(tokenStorage)
-    private val publicKeyService = PublicKeyService(apiService, tokenStorage)
-    private val cardTokenizationService = CardTokenizationService(
-        apiService,
-        encryptionService,
-        publicKeyService,
-        tokenStorage
-    )
-    private val paymentService = PaymentService(apiService)
+    private val encryptionService = EncryptionService()
 
-    override fun isDebugEnabled(): Boolean = config.debug
+    /** Registry of live payment sessions keyed by `payment_id`. Supports concurrent payments. */
+    private val sessions: ConcurrentHashMap<String, PaymentSession> = ConcurrentHashMap()
 
-    /**
-     * Gets the token storage instance for managing authentication tokens
-     *
-     * @return TokenStorage instance
-     */
-    override fun getTokenStorage(): TokenStorage = networkManager.tokenStorage;
+    private val paymentSessionFactory: PaymentSession.Factory =
+        PaymentSession.Factory(
+            authApi = networkManager.authApi,
+            paymentApiBuilder = { provider -> networkManager.buildPaymentApi(provider) }
+        )
 
-    /**
-     * Gets the API service instance for advanced usage and testing
-     *
-     * @return GopayApiService instance
-     */
-    override fun getApiService(): GopayApiService = networkManager.apiService
-
-    /**
-     * Sets authentication tokens from server-side authentication response.
-     * This method validates JWT expiration and saves the tokens to storage.
-     *
-     * @param authResponse The authentication response from server-side authentication
-     * @throws GopaySDKException if the access token is expired or invalid
-     */
-    override fun setAuthenticationResponse(authResponse: AuthenticationResponse) {
-        val tokenStorage = getTokenStorage()
-
-        // Validate that the access token is not expired
-        if (JwtUtils.isTokenExpired(authResponse.accessToken)) {
-            throw GopaySDKException(
-                errorCode = GopayErrorCodes.AUTH_ACCESS_TOKEN_EXPIRED,
-                message = "Access token is expired"
-            )
-        }
-
-        // Note: Refresh tokens are opaque strings (not JWTs) according to GoPay API documentation
-        // Their validity is determined by the authorization server, not by client-side validation
-
-        // Save the tokens to storage
-        tokenStorage.saveTokens(authResponse.accessToken, authResponse.refreshToken)
+    private val publicKeyCache: PublicKeyCache by lazy {
+        PublicKeyCache(networkManager.publicApi)
     }
 
-    /**
-     * Authenticates with the GoPay API using client credentials flow.
-     * This method should be called from a coroutine context.
-     *
-     * @param clientId The client ID for authentication
-     * @param clientSecret The client secret for authentication
-     * @param scope Space-separated list of required scopes (optional)
-     * @return AuthenticationResponse with tokens
-     * @throws GopaySDKException if authentication fails
-     */
-    override suspend fun authenticate(
-        clientId: String,
-        clientSecret: String,
-        scope: String?
-    ): AuthenticationResponse {
-        try {
-            // Create Basic authentication header
-            val credentials = "$clientId:$clientSecret"
-            val encodedCredentials = Base64Utils.encodeUrlSafe(credentials)
-            val authHeader = "Basic $encodedCredentials"
-
-            // Call the API service
-            val response = networkManager.apiService.authenticate(
-                authorization = authHeader,
-                grantType = "client_credentials",
-                scope = scope
-            )
-
-            // Convert to public model
-            val authResponse = AuthenticationResponse.fromAuthResponse(response)
-
-            // Automatically save the tokens to storage
-            setAuthenticationResponse(authResponse)
-
-            return authResponse
-        } catch (e: Exception) {
-            when (e) {
-                is GopaySDKException -> throw e
-                else -> throw GopaySDKException(
-                    errorCode = GopayErrorCodes.AUTH_INVALID_CREDENTIALS,
-                    message = "Authentication failed: ${e.message}",
-                    cause = e,
-                )
-            }
-        }
-    }
+    /** Whether the SDK was initialized in debug mode. */
+    fun isDebugEnabled(): Boolean = config.debug
 
     /**
-     * Refreshes the current access token using the stored refresh token.
-     * This method should be called from a coroutine context.
+     * Starts a payment-scoped session.
      *
-     * @return AuthenticationResponse with new tokens
-     * @throws GopaySDKException if refresh fails
+     * Performs the `POST /oauth2/token` call with `grant_type=payment_credentials` and basic auth
+     * `paymentId:paymentSecret` eagerly, so bad credentials surface at the start of the flow
+     * rather than on first API call. The resulting JWT is held in memory only — neither the
+     * secret nor the token is persisted.
+     *
+     * Each [paymentId] may have at most one live session at a time; call [PaymentSession.close]
+     * before starting another for the same payment, or use [getPaymentSession] to reuse an
+     * existing one.
+     *
+     * @param scope OAuth scopes to request. Defaults to [PaymentSession.DEFAULT_SCOPE]
+     *              (`payment:charge payment:read`). Override only when a wider scope is needed.
      */
-    override suspend fun refreshToken(): AuthenticationResponse {
-        try {
-            val tokenStorage = getTokenStorage()
-            val refreshToken = tokenStorage.getRefreshToken()
-                ?: throw GopaySDKException(
-                    errorCode = GopayErrorCodes.AUTH_NO_TOKENS_AVAILABLE,
-                    message = "No refresh token available"
-                )
-
-            // Extract client ID from current access token
-            val accessToken = tokenStorage.getAccessToken()
-            val clientId = if (accessToken != null) {
-                JwtUtils.getClientId(accessToken)
-            } else {
-                throw GopaySDKException(
-                    errorCode = GopayErrorCodes.AUTH_INVALID_CLIENT_ID,
-                    message = "Cannot extract client ID from access token"
-                )
-            }
-
-            // Call the API service for token refresh
-            val response = networkManager.apiService.authenticate(
-                authorization = null,
-                grantType = "refresh_token",
-                refreshToken = refreshToken,
-                clientId = clientId
-            )
-
-            // Convert to public model
-            val authResponse = AuthenticationResponse.fromAuthResponse(response)
-
-            // Automatically save the new tokens to storage
-            setAuthenticationResponse(authResponse)
-
-            return authResponse
-        } catch (e: Exception) {
-            when (e) {
-                is GopaySDKException -> throw e
-                else -> throw GopaySDKException(
-                    errorCode = GopayErrorCodes.AUTH_TOKEN_REFRESH_FAILED,
-                    message = "Token refresh failed: ${e.message}",
-                    cause = e
-                )
-            }
-        }
-    }
-
-    /**
-     * Checks if the user is currently authenticated (has valid access token).
-     *
-     * @return True if authenticated with valid token, false otherwise
-     */
-    override fun isAuthenticated(): Boolean {
-        val accessToken = getTokenStorage().getAccessToken()
-        return accessToken != null && !JwtUtils.isTokenExpired(accessToken)
-    }
-
-    /**
-     * Clears all stored authentication tokens.
-     */
-    override fun logout() {
-        getTokenStorage().clear()
-    }
-    
-    /**
-     * WARNING: This method is intended for development and internal testing only.
-     * It should NOT be called in production code. This API will be made private in production releases.
-     *
-     * @param cardData The card information to tokenize
-     * @return CardTokenResponse containing token and card metadata
-     * @throws IllegalArgumentException for invalid card data
-     * @throws IllegalStateException if no access token is available
-     * @throws Exception for encryption, network, or API errors
-     */
-    @Deprecated("This method is for development/testing only and will be made private in production.", level = DeprecationLevel.WARNING,
-        replaceWith = ReplaceWith("tokenizeCard(cardData, permanent = false)")
-    )
-    suspend fun tokenizeCard(cardData: CardData): CardTokenResponse {
-        return tokenizeCard(cardData, permanent = false)
-    }
-    /**
-     * Tokenizes a card by encrypting card data and calling GoPay API
-     *
-     * @param cardData The card information to tokenize
-     * @param permanent Whether to save the card for permanent usage (default: false)
-     * @return CardTokenResponse containing token and card metadata
-     * @throws IllegalArgumentException for invalid card data
-     * @throws IllegalStateException if no access token is available
-     * @throws Exception for encryption, network, or API errors
-     */
-    internal suspend fun tokenizeCard(cardData: CardData, permanent: Boolean = false): CardTokenResponse {
-        return cardTokenizationService.tokenizeCardWithValidation(cardData, permanent)
-    }
-
-    /**
-     * Gets the public encryption key used for encrypting card data.
-     * This method first checks for a cached key in storage and only fetches from the API if needed.
-     * This method should be called from a coroutine context.
-     *
-     * @param forceRefresh If true, bypasses cache and fetches fresh key from API
-     * @return JwkResponse containing the public encryption key
-     * @throws GopaySDKException if the request fails or user is not authenticated
-     */
-    internal suspend fun getPublicKey(forceRefresh: Boolean = false): Jwk {
-        return publicKeyService.getPublicKey()
-    }
-
-    /**
-     * WARNING: This method is intended for development and internal testing only.
-     * It should NOT be called in production code. This API will be made private in production releases.
-     *
-     * @param forceRefresh If true, bypasses cache and fetches fresh key from API
-     * @return JwkResponse containing the public encryption key
-     * @throws GopaySDKException if the request fails or user is not authenticated
-     */
-    @Deprecated("This method is for development/testing only and will be made private in production.", level = DeprecationLevel.WARNING,
-        replaceWith = ReplaceWith("getPublicKey(false)")
-    )
-    suspend fun getPublicKey(): Jwk {
-        return getPublicKey(false)
-    }
-
-    /**
-     * Creates a payment for the specified e-shop (goid).
-     * This method should be called from a coroutine context.
-     *
-     * Requires a valid access token with at least the "payment:create" scope.
-     *
-     * @param goid E-shop identifier
-     * @param request Payment creation request
-     * @return PaymentCreateResponse with payment details and gateway URL
-     * @throws Exception for network or API errors
-     */
-    suspend fun createPayment(
-        goid: String,
-        request: cz.gopay.sdk.model.PaymentCreateRequest
-    ): cz.gopay.sdk.model.PaymentCreateResponse {
-        return paymentService.createPayment(goid, request)
-    }
-
-    /**
-     * Retrieves the current status of an existing payment.
-     * Requires a valid access token with the "payment:read" scope.
-     *
-     * @param paymentId The payment identifier returned from createPayment
-     * @return PaymentCreateResponse with full payment details and optional charge reference
-     * @throws Exception for network or API errors
-     */
-    suspend fun getPaymentStatus(paymentId: String): cz.gopay.sdk.model.PaymentCreateResponse {
-        return paymentService.getPaymentStatus(paymentId)
-    }
-
-    /**
-     * Charges a payment using a card token or bank account instrument.
-     *
-     * The response may contain an [cz.gopay.sdk.model.ChargeAction] with a `redirectUrl` when
-     * 3DS authentication is required. Pass that URL to [handle3dsVerification], then call
-     * [getChargeState] to retrieve the final result.
-     *
-     * Requires a valid access token with the "payment:write" scope.
-     *
-     * @param paymentId The payment identifier to charge
-     * @param request Charge request specifying the instrument, return URL, and optional browser data
-     * @return ChargePaymentResponse with charge ID, state, instrument details, and optional action
-     * @throws Exception for network or API errors
-     */
-    suspend fun chargePayment(
+    suspend fun startPaymentSession(
         paymentId: String,
-        request: ChargePaymentRequest
-    ): ChargePaymentResponse {
-        return paymentService.chargePayment(paymentId, request)
-    }
+        paymentSecret: String,
+        scope: String = PaymentSession.DEFAULT_SCOPE
+    ): PaymentSession {
+        require(paymentId.isNotBlank()) { "paymentId must not be blank" }
+        require(paymentSecret.isNotBlank()) { "paymentSecret must not be blank" }
 
-    /**
-     * Gets the current state of a payment charge.
-     *
-     * The response may contain an [cz.gopay.sdk.model.ChargeAction] with a `redirectUrl` when
-     * 3DS authentication is still required. Pass that URL to [handle3dsVerification] and then
-     * call this method again to retrieve the final state.
-     *
-     * Requires a valid access token with the "payment:read" scope.
-     *
-     * @param paymentId The payment identifier whose charge state to retrieve
-     * @return ChargePaymentResponse with current charge state and optional action details
-     * @throws Exception for network or API errors
-     */
-    suspend fun getChargeState(paymentId: String): ChargePaymentResponse {
-        return paymentService.getChargeState(paymentId)
-    }
-
-    /**
-     * Retrieves QR code payment info for a bank transfer payment.
-     * Requires a valid access token with the "payment:read" scope.
-     *
-     * @param paymentId The payment identifier
-     * @param format QR code image format — PNG or SVG (defaults to PNG)
-     * @return QrPaymentDetails with bank transfer recipient info and base64-encoded QR code images
-     * @throws Exception for network or API errors
-     */
-    suspend fun getQrPaymentInfo(
-        paymentId: String,
-        format: QrCodeFormat? = null
-    ): QrPaymentDetails {
-        return paymentService.getQrPaymentInfo(paymentId, format)
-    }
-
-    /**
-     * Retrieves the Google Pay payment configuration for a payment.
-     * Use the returned [GooglePayInfoResponse.paymentDataRequest] to initialize the Google Pay button.
-     *
-     * Requires a valid access token with the "payment:read" scope.
-     *
-     * @param paymentId The payment identifier
-     * @return GooglePayInfoResponse with environment flag and PaymentDataRequest config
-     * @throws Exception for network or API errors
-     */
-    suspend fun getGooglePayInfo(paymentId: String): GooglePayInfoResponse {
-        return paymentService.getGooglePayInfo(paymentId)
-    }
-
-    /**
-     * Launches a managed WebView to complete a 3DS authentication flow and suspends until
-     * the user finishes or cancels.
-     *
-     * Call this whenever [chargePayment] or [getChargeState] returns a response whose
-     * `action.redirectUrl` is non-null. After this method returns, call [getChargeState]
-     * to retrieve the final charge result.
-     *
-     * Requires the "payment:read" scope.
-     *
-     * @param activity The current Activity used to launch the 3DS WebView
-     * @param redirectUrl The `action.redirectUrl` from a [ChargePaymentResponse]
-     * @throws GopaySDKException if a verification is already in progress
-     * @throws kotlinx.coroutines.CancellationException if the user cancels the WebView
-     */
-    suspend fun handle3dsVerification(activity: Activity, redirectUrl: String) {
-        val deferred = CompletableDeferred<Boolean>()
-        if (!PaymentVerificationBridge.register(deferred)) {
+        val session = paymentSessionFactory.create(
+            paymentId = paymentId,
+            paymentSecret = paymentSecret,
+            scope = scope,
+            onClose = { sessions.remove(it.paymentId, it) }
+        )
+        // putIfAbsent is the only check needed — concurrent callers either land here or in close()
+        // below if they raced and lost.
+        val existing = sessions.putIfAbsent(paymentId, session)
+        if (existing != null) {
+            session.close()
             throw GopaySDKException(
-                errorCode = GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS,
-                message = "A payment verification is already in progress"
+                errorCode = GopayErrorCodes.AUTH_PAYMENT_SESSION_ALREADY_EXISTS,
+                message = "A PaymentSession for $paymentId already exists; close it before starting a new one."
             )
         }
-        try {
-            withContext(Dispatchers.Main) {
-                activity.startActivity(
-                    Intent(activity, PaymentVerificationActivity::class.java)
-                        .putExtra(PaymentVerificationActivity.EXTRA_REDIRECT_URL, redirectUrl)
-                )
-            }
-            deferred.await()
-        } finally {
-            PaymentVerificationBridge.clear()
+        return session
+    }
+
+    /**
+     * Looks up an in-progress PaymentSession by `payment_id`. Returns null if none is registered
+     * (never started, or already closed).
+     */
+    fun getPaymentSession(paymentId: String): PaymentSession? = sessions[paymentId]
+
+    /**
+     * Closes and unregisters every live PaymentSession, wiping in-memory secrets and tokens.
+     * Intended for global teardown (e.g. user signs out of the host app).
+     */
+    fun closeAllPaymentSessions() {
+        sessions.values.toList().forEach { it.close() }
+    }
+
+    /**
+     * Fetches the merchant's encryption JWK from `GET /cards/public-key` using the
+     * `shareable_key` basic auth scheme. Requires `clientId` and `shareableKey` to be set on
+     * [GopayConfig]. The key is cached in memory only.
+     *
+     * @param forceRefresh Bypass the in-memory cache and fetch fresh.
+     */
+    suspend fun getPublicEncryptionKey(forceRefresh: Boolean = false): Jwk =
+        publicKeyCache.get(forceRefresh)
+
+    /**
+     * Encrypts card data into a JWE for server-side tokenization.
+     *
+     * The mobile SDK never calls `POST /cards/tokens` itself (that endpoint requires merchant
+     * credentials). Instead, the merchant backend submits the returned JWE on the device's
+     * behalf. The public key is fetched via [getPublicEncryptionKey] and cached in memory; card
+     * data is never persisted.
+     *
+     * @return JWE compact serialization (RFC 7516) ready to send to the merchant backend.
+     * @throws IllegalArgumentException if [cardData] fails basic validation.
+     * @throws GopaySDKException if `clientId`/`shareableKey` are missing or the public key fetch fails.
+     */
+    suspend fun encryptCardData(cardData: CardData): String {
+        validateCardData(cardData)
+        val jwk = publicKeyCache.get()
+        return encryptionService.createJweEncryptedPayload(cardData, jwk)
+    }
+
+    private fun validateCardData(cardData: CardData) {
+        require(cardData.cardPan.isNotBlank()) { "Card PAN cannot be empty" }
+        require(cardData.cardPan.length in 13..19) { "Card PAN must be 13-19 digits" }
+        require(cardData.cardPan.all { it.isDigit() }) { "Card PAN must contain only digits" }
+        require(cardData.expMonth.matches(Regex("^(0[1-9]|1[0-2])$"))) { "Expiration month must be 01-12" }
+        require(cardData.expYear.matches(Regex("^[0-9]{2,4}$"))) { "Expiration year must be 2-4 digits" }
+        require(cardData.cvv.matches(Regex("^[0-9]{3,4}$"))) { "CVV must be 3-4 digits" }
+    }
+
+    /**
+     * Checks whether Google Pay is available and ready on this device using the allowed payment
+     * methods from a GoPay API response. Call this before showing a Google Pay button.
+     *
+     * @param activity The current Activity (used to create a PaymentsClient).
+     * @param info The [GooglePayInfoResponse] returned from [PaymentSession.getGooglePayInfo].
+     */
+    suspend fun isGooglePayAvailable(activity: Activity, info: GooglePayInfoResponse): Boolean {
+        val env = if (info.environment == "PRODUCTION") WalletConstants.ENVIRONMENT_PRODUCTION
+                  else WalletConstants.ENVIRONMENT_TEST
+        val client = Wallet.getPaymentsClient(
+            activity,
+            Wallet.WalletOptions.Builder().setEnvironment(env).build()
+        )
+        val requestJson = GooglePayHelper.buildIsReadyToPayRequestJson(
+            info.paymentDataRequest.allowedPaymentMethods
+        )
+        return suspendCoroutine { cont ->
+            client.isReadyToPay(IsReadyToPayRequest.fromJson(requestJson))
+                .addOnCompleteListener { task ->
+                    cont.resume(task.isSuccessful && task.result == true)
+                }
         }
     }
 
     companion object {
-        // Singleton instance
         @Volatile
         private var instance: GopaySDK? = null
 
         /**
-         * Initialize the SDK with the given configuration.
-         * Application context is obtained automatically.
-         * Must be called before using any SDK features.
-         *
-         * @param config The SDK configuration
+         * Initialize the SDK with the given configuration. Must be called before any other SDK
+         * operation. The SDK no longer requires an Android `Context` — all credentials live in
+         * memory inside [GopayConfig] and per-payment [PaymentSession] instances.
          */
         @JvmStatic
         fun initialize(config: GopayConfig) {
-            // Set up error reporting if callback is provided
             ErrorReporter.setErrorCallback(config.errorCallback)
-            instance = GopaySDK(config)
-        }
-
-        /**
-         * Initialize the SDK with manual context (for special cases).
-         * This is provided for backward compatibility and special use cases
-         * where automatic context detection might not work.
-         *
-         * @param config The SDK configuration
-         * @param context Android context (will use applicationContext)
-         */
-        @JvmStatic
-        fun initialize(config: GopayConfig, context: Context) {
-            // Set up error reporting if callback is provided
-            ErrorReporter.setErrorCallback(config.errorCallback)
-            // Set the context manually before creating the SDK instance
-            GopayContextProvider.setApplicationContext(context.applicationContext)
             instance = GopaySDK(config)
         }
 
@@ -476,24 +204,15 @@ class GopaySDK private constructor(
          * Get the singleton instance of the SDK.
          *
          * @throws GopaySDKException if SDK hasn't been initialized
-         * @return The SDK instance
          */
         @JvmStatic
-        fun getInstance(): GopaySDK {
-            return instance ?: throw GopaySDKException(
-                errorCode = GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED,
-                message = "GopaySDK has not been initialized. Call GopaySDK.initialize(config) first."
-            )
-        }
+        fun getInstance(): GopaySDK = instance ?: throw GopaySDKException(
+            errorCode = GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED,
+            message = "GopaySDK has not been initialized. Call GopaySDK.initialize(config) first."
+        )
 
-        /**
-         * Check if the SDK has been initialized.
-         *
-         * @return True if initialized, false otherwise
-         */
+        /** Check if the SDK has been initialized. */
         @JvmStatic
-        fun isInitialized(): Boolean {
-            return instance != null
-        }
+        fun isInitialized(): Boolean = instance != null
     }
-} 
+}
