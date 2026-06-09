@@ -1,5 +1,6 @@
 package cz.gopay.sdk.modules.network
 
+import com.squareup.moshi.Json
 import retrofit2.Response
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
@@ -42,9 +43,9 @@ internal interface AuthApi {
  * an `expires_in` field.
  */
 internal data class TokenResponse(
-    val access_token: String,
-    val token_type: String,
+    @Json(name = "access_token") val accessToken: String,
+    @Json(name = "token_type") val tokenType: String,
     val scope: String? = null,
-    val expires_in: Long? = null
+    @Json(name = "expires_in") val expiresIn: Long? = null
 )
 

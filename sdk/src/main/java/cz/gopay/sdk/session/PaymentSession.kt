@@ -123,9 +123,9 @@ class PaymentSession internal constructor(
                     cause = e
                 )
             }
-            token = response.access_token
-            tokenExpiresAt = JwtUtils.expirationSecondsOrZero(response.access_token)
-            response.access_token
+            token = response.accessToken
+            tokenExpiresAt = JwtUtils.expirationSecondsOrZero(response.accessToken)
+            response.accessToken
         }
     }
 

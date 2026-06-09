@@ -4,6 +4,8 @@ package cz.gopay.sdk.util
  * Base64 utility that works in both Android runtime and unit test environments
  */
 object Base64Utils {
+
+    private const val JAVA_BASE64_CLASS = "java.util.Base64"
     
     /**
      * Decodes a Base64 URL-safe encoded string
@@ -24,7 +26,7 @@ object Base64Utils {
 
     private fun decodeUsingJavaBase64Decoder(input: String, e: Throwable): ByteArray = try {
         // Use reflection to access java.util.Base64 (available in unit tests and API 26+)
-        val base64Class = Class.forName("java.util.Base64")
+        val base64Class = Class.forName(JAVA_BASE64_CLASS)
         val getUrlDecoderMethod = base64Class.getMethod("getUrlDecoder")
         val decoder = getUrlDecoderMethod.invoke(null)
         val decodeMethod = decoder.javaClass.getMethod("decode", String::class.java)
@@ -55,7 +57,7 @@ object Base64Utils {
     
     private fun encodeUsingJavaBase64Encoder(input: ByteArray, e: Throwable): String = try {
         // Use reflection to access java.util.Base64 (available in unit tests and API 26+)
-        val base64Class = Class.forName("java.util.Base64")
+        val base64Class = Class.forName(JAVA_BASE64_CLASS)
         val getUrlEncoderMethod = base64Class.getMethod("getUrlEncoder")
         val encoder = getUrlEncoderMethod.invoke(null)
         val withoutPaddingMethod = encoder.javaClass.getMethod("withoutPadding")
@@ -89,7 +91,7 @@ object Base64Utils {
     }
 
     private fun encodeStandardUsingJavaBase64(input: ByteArray, e: Throwable): String = try {
-        val base64Class = Class.forName("java.util.Base64")
+        val base64Class = Class.forName(JAVA_BASE64_CLASS)
         val getEncoderMethod = base64Class.getMethod("getEncoder")
         val encoder = getEncoderMethod.invoke(null)
         val encodeToStringMethod = encoder.javaClass.getMethod("encodeToString", ByteArray::class.java)

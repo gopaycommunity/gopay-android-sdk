@@ -53,10 +53,10 @@ object GooglePayHelper {
     fun parseGooglePayToken(paymentDataJson: String): PaymentCardInput {
         val outerAdapter = moshi.adapter(GooglePayOuterData::class.java)
         val outer = try {
-            outerAdapter.fromJson(paymentDataJson)
+            outerAdapter.fromJson(paymentDataJson)!!
         } catch (e: Exception) {
             throw IllegalArgumentException("Failed to parse Google Pay PaymentData JSON: ${e.message}", e)
-        } ?: throw IllegalArgumentException("Failed to parse Google Pay PaymentData JSON")
+        }
 
         val tokenJson = outer.paymentMethodData?.tokenizationData?.token
             ?: throw IllegalArgumentException("Missing paymentMethodData.tokenizationData.token in Google Pay PaymentData")
