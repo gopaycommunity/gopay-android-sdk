@@ -1,3 +1,14 @@
+# [1.9.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.8.2...1.9.0) (2026-06-11)
+
+
+### Features
+
+* 3ds verification handling GPMOB-69 ([adef45c](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/adef45cc922eb5738d42216ba3dbecde99807f28))
+* add create payment api method GPMOB-119 ([f45af1a](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/f45af1a69dde74f9bdc5004407711de3fb675ef0))
+* add getQrPaymentInfo for bank transfer QR codes GPMOB-130 ([019f859](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/019f859b0649239085ed80614dbcd1c8ac4ff591))
+* add Google Pay support — getGooglePayInfo and charge instrument GPMOB-131 ([adb769f](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/adb769f6f3f3429018b00d41953a2c449d82305f))
+* example app redesign ([cb5b214](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/cb5b2149113a96820f240bcd9732278dfb0eab0c))
+
 ## [1.8.2](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.8.1...1.8.2) (2026-06-05)
 
 
