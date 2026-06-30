@@ -148,7 +148,10 @@ class GopaySDK private constructor(
     suspend fun encryptCardData(cardData: CardData): String {
         validateCardData(cardData)
         val jwk = publicKeyCache.get()
-        return encryptionService.createJweEncryptedPayload(cardData, jwk)
+        val clientId = requireNotNull(config.clientId) {
+            "GopayConfig.clientId must be set to encrypt card data"
+        }
+        return encryptionService.createJweEncryptedPayload(cardData, jwk, clientId)
     }
 
     private fun validateCardData(cardData: CardData) {

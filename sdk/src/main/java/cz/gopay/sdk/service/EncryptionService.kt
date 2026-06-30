@@ -1,6 +1,7 @@
 package cz.gopay.sdk.service
 
 import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.CardJwePayload
 import cz.gopay.sdk.model.JweHeader
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.util.Base64Utils
@@ -11,6 +12,7 @@ import java.security.PublicKey
 import java.security.SecureRandom
 import java.security.spec.MGF1ParameterSpec
 import java.security.spec.RSAPublicKeySpec
+import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -35,13 +37,14 @@ class EncryptionService {
         private const val CEK_SIZE_BITS = 256
         private const val GCM_IV_SIZE_BYTES = 12
         private const val GCM_TAG_SIZE_BITS = 128
+        private const val TOKEN_VALIDITY_SECONDS = 600L
     }
 
     /**
      * Creates a JWE encrypted payload using the provided JWK. The merchant backend submits the
      * returned JWE to `POST /cards/tokens` with merchant credentials.
      */
-    fun createJweEncryptedPayload(cardData: CardData, jwk: Jwk): String {
+    fun createJweEncryptedPayload(cardData: CardData, jwk: Jwk, clientId: String): String {
         val publicKey = jwkToPublicKey(jwk)
 
         val jweHeader = JweHeader(kid = jwk.kid)
@@ -52,7 +55,19 @@ class EncryptionService {
         val cek = generateContentEncryptionKey()
         val encryptedKey = encryptContentEncryptionKey(cek, publicKey)
         val iv = generateInitializationVector()
-        val cardDataJson = JsonUtils.toJson(cardData)
+
+        val issuedAt = System.currentTimeMillis() / 1000L
+        val payload = CardJwePayload(
+            cardPan = cardData.cardPan,
+            expMonth = cardData.expMonth,
+            expYear = cardData.expYear,
+            cvv = cardData.cvv,
+            clientId = clientId,
+            iat = issuedAt,
+            exp = issuedAt + TOKEN_VALIDITY_SECONDS,
+            jti = "android-${UUID.randomUUID()}"
+        )
+        val cardDataJson = JsonUtils.toJson(payload)
             ?: throw IllegalStateException("Failed to serialize card data")
         val (ciphertext, authTag) = encryptCardDataWithAAD(
             cardDataJson,

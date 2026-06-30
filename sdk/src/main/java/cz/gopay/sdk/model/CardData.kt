@@ -13,6 +13,19 @@ data class CardData(
     val cvv: String
 )
 
+/** Full JWE plaintext payload — card fields plus the metadata claims required by the spec. */
+internal data class CardJwePayload(
+    @Json(name = "card_pan") val cardPan: String,
+    @Json(name = "exp_month") val expMonth: String,
+    @Json(name = "exp_year") val expYear: String,
+    val cvv: String,
+    @Json(name = "client_id") val clientId: String,
+    // NumericDate (Unix seconds) — backend rejects ISO 8601 strings
+    val iat: Long,
+    val exp: Long,
+    val jti: String
+)
+
 /** JWE header structure (RFC 7516 §4) emitted by [cz.gopay.sdk.service.EncryptionService]. */
 data class JweHeader(
     val alg: String = "RSA-OAEP-256",

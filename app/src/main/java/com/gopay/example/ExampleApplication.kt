@@ -13,9 +13,9 @@ class ExampleApplication : Application() {
         // For local development against the dev gateway. Production apps use Environment.PRODUCTION
         // (or SANDBOX during integration testing) and read clientId/shareableKey from a secure config.
         val config = GopayConfig(
-            environment = Environment.DEVELOPMENT.create("https://stoplight.io/mocks/gopay-api/merchant-v4/10757016"),
-            clientId = "SDK",
-            shareableKey = "FILLINYOURPASSWORD",
+            environment = Environment.DEVELOPMENT.create(DemoConfig.BASE_URL),
+            clientId = DemoConfig.CLIENT_ID,
+            shareableKey = DemoConfig.SHAREABLE_KEY,
             debug = true,
             requestTimeoutMs = 5_000,
             errorCallback = { error ->

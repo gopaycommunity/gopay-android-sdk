@@ -188,7 +188,7 @@ data class InstrumentDetails(
  */
 data class PaymentInstrumentData(
     @Json(name = "payment_instrument") val paymentInstrument: String,
-    val details: InstrumentDetails
+    val details: InstrumentDetails? = null
 )
 
 /**

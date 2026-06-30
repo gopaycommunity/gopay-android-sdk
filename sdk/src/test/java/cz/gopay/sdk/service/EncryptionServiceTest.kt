@@ -1,6 +1,7 @@
 package cz.gopay.sdk.service
 
 import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.CardJwePayload
 import cz.gopay.sdk.model.JweHeader
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.util.Base64Utils
@@ -41,6 +42,7 @@ class EncryptionServiceTest {
         expYear = "30",
         cvv = "123"
     )
+    private val testClientId = "merchant-client-001"
 
     @Before
     fun setUp() {
@@ -59,7 +61,7 @@ class EncryptionServiceTest {
 
     @Test
     fun `createJweEncryptedPayload produces five compact segments`() {
-        val jwe = service.createJweEncryptedPayload(cardData, jwk)
+        val jwe = service.createJweEncryptedPayload(cardData, jwk, testClientId)
 
         val parts = jwe.split(".")
         assertEquals("JWE compact serialization must have 5 segments", 5, parts.size)
@@ -70,7 +72,7 @@ class EncryptionServiceTest {
 
     @Test
     fun `JWE header declares the expected algorithms and kid`() {
-        val jwe = service.createJweEncryptedPayload(cardData, jwk)
+        val jwe = service.createJweEncryptedPayload(cardData, jwk, testClientId)
         val headerJson = String(Base64Utils.decodeUrlSafe(jwe.split(".")[0]), Charsets.UTF_8)
 
         val header = JsonUtils.fromJson<JweHeader>(headerJson)
@@ -83,7 +85,7 @@ class EncryptionServiceTest {
 
     @Test
     fun `JWE round-trips back to the original card data`() {
-        val jwe = service.createJweEncryptedPayload(cardData, jwk)
+        val jwe = service.createJweEncryptedPayload(cardData, jwk, testClientId)
         val parts = jwe.split(".")
 
         val encodedHeader = parts[0]
@@ -102,14 +104,22 @@ class EncryptionServiceTest {
         aes.updateAAD(encodedHeader.toByteArray(Charsets.UTF_8))
         val plaintext = String(aes.doFinal(ciphertext + authTag), Charsets.UTF_8)
 
-        val decrypted = JsonUtils.fromJson<CardData>(plaintext)
-        assertEquals("Round-trip must recover original card data", cardData, decrypted)
+        val decrypted = JsonUtils.fromJson<CardJwePayload>(plaintext)
+        assertNotNull("Payload must deserialize", decrypted)
+        assertEquals("card_pan", cardData.cardPan, decrypted!!.cardPan)
+        assertEquals("exp_month", cardData.expMonth, decrypted.expMonth)
+        assertEquals("exp_year", cardData.expYear, decrypted.expYear)
+        assertEquals("cvv", cardData.cvv, decrypted.cvv)
+        assertEquals("client_id", testClientId, decrypted.clientId)
+        assertTrue("iat must be a recent Unix timestamp", decrypted.iat > 0)
+        assertEquals("exp must be iat + 600s", decrypted.iat + 600L, decrypted.exp)
+        assertTrue("jti must have android- prefix", decrypted.jti.startsWith("android-"))
     }
 
     @Test
     fun `each call uses fresh randomness so output differs`() {
-        val first = service.createJweEncryptedPayload(cardData, jwk)
-        val second = service.createJweEncryptedPayload(cardData, jwk)
+        val first = service.createJweEncryptedPayload(cardData, jwk, testClientId)
+        val second = service.createJweEncryptedPayload(cardData, jwk, testClientId)
 
         val firstParts = first.split(".")
         val secondParts = second.split(".")
@@ -124,7 +134,7 @@ class EncryptionServiceTest {
     @Test(expected = IllegalArgumentException::class)
     fun `malformed JWK modulus throws IllegalArgumentException`() {
         val badJwk = jwk.copy(n = "this is not valid base64url @@@")
-        service.createJweEncryptedPayload(cardData, badJwk)
+        service.createJweEncryptedPayload(cardData, badJwk, testClientId)
     }
 
     private fun decryptCek(encryptedKey: ByteArray): ByteArray {
