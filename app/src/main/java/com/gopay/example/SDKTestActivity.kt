@@ -73,6 +73,7 @@ fun SDKTestScreen() {
     var paymentSecret by remember { mutableStateOf("") }
     var session by remember { mutableStateOf<PaymentSession?>(null) }
     var cardToken by remember { mutableStateOf("") }
+    var jwe by remember { mutableStateOf("") }
     var pending3dsUrl by remember { mutableStateOf<String?>(null) }
     var responseText by remember { mutableStateOf("Ready.") }
     var busyLabel by remember { mutableStateOf<String?>(null) }
@@ -312,16 +313,52 @@ fun SDKTestScreen() {
             }
 
             // === SECTION 4: CARD FORM → JWE ===
-            SectionCard("4. Card form → JWE (tokenize server-side)") {
+            SectionCard("4. Card form → JWE") {
                 Text(
                     "Card data is JWE-encrypted on the device using the public key from GET " +
-                    "/cards/public-key. Send the resulting JWE to your backend, which calls " +
-                    "POST /cards/tokens to obtain the card token.",
+                    "/cards/public-key. Send the JWE to your backend for POST /cards/tokens, or " +
+                    "charge the encrypted card directly below — no tokenization round-trip.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                CardFormSection(isBusy = isBusy) { jwe ->
-                    log("// Encrypt card → JWE (send to your server for POST /cards/tokens)\n${jwe.take(120)}…")
+                CardFormSection(isBusy = isBusy) { encrypted ->
+                    jwe = encrypted
+                    log("// submitCardForm() -> JWE (filled into the field below)\n${encrypted.take(120)}…")
+                }
+
+                LabeledField(
+                    "JWE (from on-device card encryption)",
+                    jwe,
+                    enabled = !isBusy
+                ) { jwe = it }
+
+                DemoButton(
+                    "Charge with encrypted card (JWE)",
+                    enabled = !isBusy && jwe.isNotBlank()
+                ) {
+                    run("Charge with encrypted card") {
+                        // Charge the encrypted card directly — no POST /cards/tokens round-trip.
+                        val charge = s.charge(
+                            ChargePaymentRequest.encryptedCard(
+                                payload = jwe.trim(),
+                                browserData = BrowserData(
+                                    language = "en-US",
+                                    timezone = 0,
+                                    screenWidth = 1080,
+                                    screenHeight = 1920,
+                                    colorDepth = 24,
+                                    javascriptEnabled = true
+                                ),
+                                challengePreference = ChallengePreference.AUTO
+                            )
+                        )
+                        val actionInfo = charge.action?.let {
+                            "Action: ${it.actionType} (${it.state})\nRedirect: ${it.redirectUrl ?: "N/A"}"
+                        } ?: "Action: none"
+                        log("// charge(.encryptedCard) -> ChargePaymentResponse\nCharge ID: ${charge.id}\nState: ${charge.state}\n$actionInfo")
+                        charge.action?.redirectUrl?.let { pending3dsUrl = it }
+                        if (pending3dsUrl != null) log("3DS required — tap \"Handle 3DS verification\" to continue.")
+                    }
                 }
             }
         }

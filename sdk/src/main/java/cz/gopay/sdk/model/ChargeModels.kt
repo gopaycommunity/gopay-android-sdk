@@ -59,7 +59,8 @@ data class ApplePayHeader(
  * (`CARD_TOKEN | GOOGLE_PAY | APPLE_PAY | ENCRYPTED_CARD`).
  *
  * Use the [Companion] factories; the constructor is open so the SDK can add new variants
- * without breaking callers.
+ * without breaking callers. `payload` belongs to the `ENCRYPTED_CARD` variant — a JWE produced
+ * by [cz.gopay.sdk.GopaySDK.encryptCardData].
  */
 data class PaymentCardInput(
     @Json(name = "input_type") val inputType: String,
@@ -73,11 +74,21 @@ data class PaymentCardInput(
     // APPLE_PAY
     val data: String? = null,
     val version: String? = null,
-    val header: ApplePayHeader? = null
+    val header: ApplePayHeader? = null,
+    // ENCRYPTED_CARD
+    val payload: String? = null
 ) {
     companion object {
         fun cardToken(cardToken: String): PaymentCardInput =
             PaymentCardInput(inputType = "CARD_TOKEN", cardToken = cardToken)
+
+        /**
+         * `ENCRYPTED_CARD` input — charges directly with a JWE-encrypted card, skipping the
+         * server-side `POST /cards/tokens` round-trip. [payload] is the JWE compact string from
+         * [cz.gopay.sdk.GopaySDK.encryptCardData].
+         */
+        fun encryptedCard(payload: String): PaymentCardInput =
+            PaymentCardInput(inputType = "ENCRYPTED_CARD", payload = payload)
 
         fun googlePay(
             protocolVersion: String,
@@ -129,6 +140,9 @@ data class PaymentChargeInstrument(
  */
 data class ChargePaymentRequest(
     @Json(name = "payment_instrument") val paymentInstrument: PaymentChargeInstrument,
+    // `return_url` is defined on `Payment-Charge-Input` in the spec but the deployed Payments 4.0
+    // gateway rejects it ("Unrecognized field return_url"). Leave null so it's omitted from the
+    // request; the 3DS redirect comes from the charge response's `action.redirect_url`.
     @Json(name = "return_url") val returnUrl: String? = null
 ) {
     companion object {
@@ -140,6 +154,25 @@ data class ChargePaymentRequest(
         ): ChargePaymentRequest = ChargePaymentRequest(
             paymentInstrument = PaymentChargeInstrument(
                 input = PaymentCardInput.cardToken(cardToken),
+                browserData = browserData,
+                challengePreference = challengePreference
+            ),
+            returnUrl = returnUrl
+        )
+
+        /**
+         * Charge directly with a JWE-encrypted card ([payload]), skipping the server-side
+         * `POST /cards/tokens` tokenization step. [payload] is the JWE compact string returned by
+         * [cz.gopay.sdk.GopaySDK.encryptCardData].
+         */
+        fun encryptedCard(
+            payload: String,
+            browserData: BrowserData,
+            challengePreference: ChallengePreference? = null,
+            returnUrl: String? = null
+        ): ChargePaymentRequest = ChargePaymentRequest(
+            paymentInstrument = PaymentChargeInstrument(
+                input = PaymentCardInput.encryptedCard(payload),
                 browserData = browserData,
                 challengePreference = challengePreference
             ),

@@ -155,6 +155,27 @@ val jwe: String = GopaySDK.getInstance().encryptCardData(
 // POST `jwe` to your backend; backend returns a card_token.
 ```
 
+### Charge directly with the encrypted card
+
+If you don't need a reusable card token, charge the JWE directly with the `ENCRYPTED_CARD`
+input — this skips the server-side `POST /cards/tokens` round-trip entirely. The JWE is sent as
+the charge's `payload`; nothing else changes about the charge or 3DS flow.
+
+```kotlin
+val jwe = GopaySDK.getInstance().encryptCardData(
+    CardData(cardPan = "4444…", expMonth = "06", expYear = "27", cvv = "123")
+)
+val charge = session.charge(
+    ChargePaymentRequest.encryptedCard(
+        payload = jwe,
+        browserData = BrowserData(...),
+        challengePreference = ChallengePreference.AUTO
+    )
+)
+charge.action?.redirectUrl?.let { session.handle3dsVerification(activity, it) }
+val finalState = session.getChargeState()
+```
+
 ### `PaymentCardForm` composable
 
 ```kotlin

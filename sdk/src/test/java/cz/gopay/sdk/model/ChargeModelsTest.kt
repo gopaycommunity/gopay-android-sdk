@@ -1,8 +1,10 @@
 package cz.gopay.sdk.model
 
 import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -108,5 +110,49 @@ class ChargeModelsTest {
         assertEquals("PAYMENT_CARD", resp.paymentInstrument!!.paymentInstrument)
         assertNotNull(resp.action)
         assertEquals(ChargeActionType.EMV3DS, resp.action!!.actionType)
+    }
+
+    @Test
+    fun `encryptedCard request serializes to ENCRYPTED_CARD input shape`() {
+        val requestAdapter = moshi.adapter(ChargePaymentRequest::class.java)
+        val request = ChargePaymentRequest.encryptedCard(
+            payload = "jwe.compact.string",
+            browserData = BrowserData(
+                language = "cs-CZ",
+                timezone = -60,
+                screenWidth = 1170,
+                screenHeight = 2532,
+                colorDepth = 24
+            ),
+            challengePreference = ChallengePreference.AUTO
+        )
+
+        // Re-parse the produced JSON into a generic map so the assertions read the wire shape,
+        // not the Kotlin model. (org.json is stubbed in plain JVM unit tests, so use Moshi.)
+        val mapType = Types.newParameterizedType(
+            Map::class.java, String::class.java, Any::class.java
+        )
+        val mapAdapter = moshi.adapter<Map<String, Any?>>(mapType)
+        val json = mapAdapter.fromJson(requestAdapter.toJson(request))!!
+
+        // The deployed gateway rejects a request-level return_url, so charges must not send one.
+        assertFalse("return_url must not be sent on a charge", json.containsKey("return_url"))
+        @Suppress("UNCHECKED_CAST")
+        val instrument = json["payment_instrument"] as Map<String, Any?>
+        assertEquals("PAYMENT_CARD", instrument["payment_instrument"])
+        assertEquals("AUTO", instrument["challenge_preference"])
+
+        @Suppress("UNCHECKED_CAST")
+        val input = instrument["input"] as Map<String, Any?>
+        assertEquals("ENCRYPTED_CARD", input["input_type"])
+        assertEquals("jwe.compact.string", input["payload"])
+        // Fields from other variants must be omitted for an ENCRYPTED_CARD input.
+        assertFalse("card_token must be absent", input.containsKey("card_token"))
+
+        @Suppress("UNCHECKED_CAST")
+        val browser = instrument["browser_data"] as Map<String, Any?>
+        // Moshi decodes JSON numbers as Double into a generic Any map.
+        assertEquals(1170.0, browser["screen_width"])
+        assertEquals(24.0, browser["color_depth"])
     }
 }
