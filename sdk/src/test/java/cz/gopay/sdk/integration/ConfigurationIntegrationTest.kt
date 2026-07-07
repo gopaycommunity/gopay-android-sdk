@@ -3,6 +3,7 @@ package cz.gopay.sdk.integration
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.config.Environment
 import cz.gopay.sdk.config.GopayConfig
+import cz.gopay.sdk.locales.GopayLocales
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,6 +20,11 @@ class ConfigurationIntegrationTest {
         val field = GopaySDK::class.java.getDeclaredField("instance")
         field.isAccessible = true
         field.set(null, null)
+
+        // GopaySDK.initialize() also mutates GopayLocales (a separate JVM-wide singleton); undo
+        // that too, or a non-default locale/customLocales config here would leak into other tests.
+        GopayLocales.clearCustom()
+        GopayLocales.setDefaultLocale(null)
     }
 
     @Test

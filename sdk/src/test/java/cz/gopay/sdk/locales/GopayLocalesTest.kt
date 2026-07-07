@@ -6,14 +6,21 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.util.Locale
 
 class GopayLocalesTest {
 
+    // GopayLocales is a JVM-wide singleton, so also reset before each test: a prior test class in
+    // the same run (e.g. GopaySDKTest, via GopaySDK.initialize) could otherwise leave it dirty.
+    @Before
+    fun setUp() = resetGlobalState()
+
     @After
-    fun tearDown() {
-        // Keep global state clean for other tests.
+    fun tearDown() = resetGlobalState()
+
+    private fun resetGlobalState() {
         GopayLocales.clearCustom()
         GopayLocales.setDefaultLocale(null)
     }
@@ -33,7 +40,16 @@ class GopayLocalesTest {
 
     @Test
     fun resolve_unknownCode_fallsBackToCzech() {
-        assertSame(GopayLocales.CS, GopayLocales.resolve("xx"))
+        // Pin the system language to one with no built-in: resolve() falls through to it before
+        // Czech, so leaving the host's ambient language in place makes this test environment-
+        // dependent (e.g. it happens to resolve to English under a Linux CI/Docker en_US locale).
+        val original = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale("ja")) // no built-in Japanese locale
+            assertSame(GopayLocales.CS, GopayLocales.resolve("xx"))
+        } finally {
+            Locale.setDefault(original)
+        }
     }
 
     @Test
@@ -101,11 +117,19 @@ class GopayLocalesTest {
 
     @Test
     fun clearCustom_removesCustomButKeepsBuiltIns() {
-        GopayLocales.register("xx", GopayLocales.EN)
-        GopayLocales.clearCustom()
+        // Same reasoning as resolve_unknownCode_fallsBackToCzech: pin the system language so the
+        // post-clear fallback for "xx" is deterministic across environments.
+        val original = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale("ja")) // no built-in Japanese locale
+            GopayLocales.register("xx", GopayLocales.EN)
+            GopayLocales.clearCustom()
 
-        assertSame(GopayLocales.CS, GopayLocales.resolve("xx")) // custom gone -> fallback
-        assertSame(GopayLocales.DE, GopayLocales.resolve("de")) // built-in intact
+            assertSame(GopayLocales.CS, GopayLocales.resolve("xx")) // custom gone -> fallback
+            assertSame(GopayLocales.DE, GopayLocales.resolve("de")) // built-in intact
+        } finally {
+            Locale.setDefault(original)
+        }
     }
 
     @Test
