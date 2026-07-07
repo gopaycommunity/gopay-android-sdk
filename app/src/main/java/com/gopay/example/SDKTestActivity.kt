@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,7 +24,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.gopay.example.ui.theme.ExampleAppTheme
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.model.BrowserData
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.ChallengePreference
@@ -49,7 +54,6 @@ import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.ui.CardEncryptionResult
-import cz.gopay.sdk.ui.InputFieldConfig
 import cz.gopay.sdk.ui.PaymentCardForm
 import cz.gopay.sdk.ui.PaymentCardFormTheme
 import cz.gopay.sdk.ui.PaymentFormInputs
@@ -445,15 +449,26 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
     var submitCardData: (suspend () -> CardEncryptionResult)? by remember { mutableStateOf(null) }
     val coroutineScope = rememberCoroutineScope()
 
-    var inputFields by remember {
-        mutableStateOf(
-            PaymentFormInputs(
-                cardNumber = InputFieldConfig(label = "Card Number", helperText = "", placeholder = "1234 1234 1234 1234"),
-                expirationDate = InputFieldConfig(label = "Expiry Date", helperText = "", placeholder = "12/27"),
-                cvv = InputFieldConfig(label = "Security Code", helperText = "", placeholder = "123")
-            )
-        )
-    }
+    // Selected form locale; null follows the SDK/device default (which falls back to Czech).
+    var selectedLocale by remember { mutableStateOf<String?>(null) }
+    var localeMenuExpanded by remember { mutableStateOf(false) }
+
+    // Per-field validation errors, populated (in the active locale) by onValidationError.
+    var cardError by remember { mutableStateOf<String?>(null) }
+    var expError by remember { mutableStateOf<String?>(null) }
+    var cvvError by remember { mutableStateOf<String?>(null) }
+
+    // Active locale strings — labels come from here, and we also read the localized error messages
+    // from it below. (The form exposes the strings; the host decides how to show errors.)
+    val localeStrings = GopayLocales.resolve(selectedLocale)
+
+    // Labels/placeholders come from the locale; per-field error text is overlaid from state.
+    val baseInputs = PaymentFormInputs.from(localeStrings)
+    val inputFields = baseInputs.copy(
+        cardNumber = baseInputs.cardNumber.copy(hasError = cardError != null, errorText = cardError),
+        expirationDate = baseInputs.expirationDate.copy(hasError = expError != null, errorText = expError),
+        cvv = baseInputs.cvv.copy(hasError = cvvError != null, errorText = cvvError)
+    )
 
     val theme = PaymentCardFormTheme(
         labelTextStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)),
@@ -469,6 +484,28 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
     )
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Locale selector — switch the language of the form labels/placeholders live.
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Locale:", style = MaterialTheme.typography.bodyMedium)
+            Box {
+                OutlinedButton(onClick = { localeMenuExpanded = true }) {
+                    Text(selectedLocale ?: "System default")
+                }
+                DropdownMenu(expanded = localeMenuExpanded, onDismissRequest = { localeMenuExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("System default") },
+                        onClick = { selectedLocale = null; localeMenuExpanded = false }
+                    )
+                    GopayLocales.availableCodes().forEach { code ->
+                        DropdownMenuItem(
+                            text = { Text(code) },
+                            onClick = { selectedLocale = code; localeMenuExpanded = false }
+                        )
+                    }
+                }
+            }
+        }
+
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             PaymentCardForm(
                 onEncryptionComplete = { result ->
@@ -485,20 +522,9 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
                 },
                 onFormReady = { submitFn -> submitCardData = submitFn },
                 onValidationError = { validation ->
-                    inputFields = inputFields.copy(
-                        cardNumber = inputFields.cardNumber.copy(
-                            hasError = !validation.cardNumber.isValid,
-                            errorText = if (!validation.cardNumber.isValid) "Invalid card number" else null
-                        ),
-                        expirationDate = inputFields.expirationDate.copy(
-                            hasError = !validation.expirationDate.isValid,
-                            errorText = if (!validation.expirationDate.isValid) "Invalid expiry date" else null
-                        ),
-                        cvv = inputFields.cvv.copy(
-                            hasError = !validation.cvv.isValid,
-                            errorText = if (!validation.cvv.isValid) "Invalid security code" else null
-                        )
-                    )
+                    cardError = if (!validation.cardNumber.isValid) localeStrings.panErrorPattern else null
+                    expError = if (!validation.expirationDate.isValid) localeStrings.expErrorPattern else null
+                    cvvError = if (!validation.cvv.isValid) localeStrings.cvvErrorPattern else null
                     errorMessage = null
                 },
                 inputFields = inputFields,
@@ -511,11 +537,9 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
                 coroutineScope.launch {
                     isProcessing = true
                     errorMessage = null
-                    inputFields = inputFields.copy(
-                        cardNumber = inputFields.cardNumber.copy(hasError = false, errorText = null),
-                        expirationDate = inputFields.expirationDate.copy(hasError = false, errorText = null),
-                        cvv = inputFields.cvv.copy(hasError = false, errorText = null)
-                    )
+                    cardError = null
+                    expError = null
+                    cvvError = null
                     try {
                         submitCardData?.invoke()
                     } catch (e: Exception) {

@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cz.gopay.sdk.GopaySDK
+import cz.gopay.sdk.locales.GopayLocaleStrings
+import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.ui.utils.CardNumberInputValidator
 import cz.gopay.sdk.ui.utils.CardNumberMaskedVisualTransformation
@@ -72,7 +74,20 @@ data class PaymentFormInputs(
     val cardNumber: InputFieldConfig = InputFieldConfig(label = "Card Number", placeholder = "1234 1234 1234 1234"),
     val expirationDate: InputFieldConfig = InputFieldConfig(label = "MM/YY", placeholder = "MM/YY"),
     val cvv: InputFieldConfig = InputFieldConfig(label = "CVV", placeholder = "123")
-)
+) {
+    companion object {
+        /**
+         * Builds a [PaymentFormInputs] from a [GopayLocaleStrings], populating each field's label
+         * and placeholder from the locale. Error / helper texts are left unset — validation errors
+         * remain host-driven (see [PaymentCardForm]'s `onValidationError`).
+         */
+        fun from(strings: GopayLocaleStrings): PaymentFormInputs = PaymentFormInputs(
+            cardNumber = InputFieldConfig(label = strings.panLabel, placeholder = strings.panPlaceholder),
+            expirationDate = InputFieldConfig(label = strings.expLabel, placeholder = strings.expPlaceholder),
+            cvv = InputFieldConfig(label = strings.cvvLabel, placeholder = strings.cvvPlaceholder)
+        )
+    }
+}
 
 /**
  * Helper function to format expiration date digits for validation
@@ -131,11 +146,19 @@ data class PaymentCardFormTheme(
  * - Card data is validated locally and JWE-encrypted using the merchant's public key (fetched
  *   from `GET /cards/public-key` with shareable-key auth and cached in memory).
  *
+ * Localization: field labels and placeholders default to the locale resolved from [locale] /
+ * [localeStrings] (falling back to the SDK-wide default, then the device language, then Czech).
+ * Pass [inputFields] to override the resolved labels entirely.
+ *
  * @param onEncryptionComplete Callback invoked with the JWE (success) or an error.
  * @param modifier Modifier for the form layout.
  * @param onFormReady Provides a submit function for external triggering.
  * @param onValidationError Invoked when validation errors are present.
- * @param inputFields Configuration for input field labels, helper texts, error states.
+ * @param locale Locale code (e.g. `"cs"`, `"de"`) for the field labels. `null` uses the SDK default.
+ *              Ignored when [localeStrings] or [inputFields] is supplied.
+ * @param localeStrings Explicit locale strings to use, bypassing [locale] resolution.
+ * @param inputFields Configuration for input field labels, helper texts, error states. When `null`
+ *                    (default) the labels are derived from the resolved locale.
  * @param theme Theme configuration for customizing the form appearance.
  */
 @Composable
@@ -144,9 +167,13 @@ fun PaymentCardForm(
     modifier: Modifier = Modifier,
     onFormReady: ((suspend () -> CardEncryptionResult) -> Unit)? = null,
     onValidationError: ((CardValidator.CardValidationResult) -> Unit)? = null,
-    inputFields: PaymentFormInputs = PaymentFormInputs(),
+    locale: String? = null,
+    localeStrings: GopayLocaleStrings? = null,
+    inputFields: PaymentFormInputs? = null,
     theme: PaymentCardFormTheme = PaymentCardFormTheme()
 ) {
+    val resolvedStrings = localeStrings ?: GopayLocales.resolve(locale)
+    val fields = inputFields ?: PaymentFormInputs.from(resolvedStrings)
     // Store clean input values (digits only)
     var cardNumberDigits by remember { mutableStateOf("") }
     var expirationDateDigits by remember { mutableStateOf("") }
@@ -222,10 +249,10 @@ fun PaymentCardForm(
                 }
             },
             config = LabeledInputFieldConfig(
-                label = inputFields.cardNumber.label,
-                error = inputFields.cardNumber.errorText,
-                helperText = inputFields.cardNumber.helperText,
-                placeholder = inputFields.cardNumber.placeholder,
+                label = fields.cardNumber.label,
+                error = fields.cardNumber.errorText,
+                helperText = fields.cardNumber.helperText,
+                placeholder = fields.cardNumber.placeholder,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 visualTransformation = if (!isCardNumberFocused && isCardNumberValid) CardNumberMaskedVisualTransformation() else CardNumberVisualTransformation(),
                 textFieldModifier = Modifier
@@ -252,10 +279,10 @@ fun PaymentCardForm(
                     }
                 },
                 config = LabeledInputFieldConfig(
-                    label = inputFields.expirationDate.label,
-                    error = inputFields.expirationDate.errorText,
-                    helperText = inputFields.expirationDate.helperText,
-                    placeholder = inputFields.expirationDate.placeholder,
+                    label = fields.expirationDate.label,
+                    error = fields.expirationDate.errorText,
+                    helperText = fields.expirationDate.helperText,
+                    placeholder = fields.expirationDate.placeholder,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     visualTransformation = ExpirationDateVisualTransformation(),
                     textFieldModifier = Modifier.focusRequester(expirationFocusRequester)
@@ -270,10 +297,10 @@ fun PaymentCardForm(
                     cvv = CvvValidator.validateInput(newValue, cvv)
                 },
                 config = LabeledInputFieldConfig(
-                    label = inputFields.cvv.label,
-                    error = inputFields.cvv.errorText,
-                    helperText = inputFields.cvv.helperText,
-                    placeholder = inputFields.cvv.placeholder,
+                    label = fields.cvv.label,
+                    error = fields.cvv.errorText,
+                    helperText = fields.cvv.helperText,
+                    placeholder = fields.cvv.placeholder,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     visualTransformation = if (isCvvFocused) VisualTransformation.None else CvvMaskedVisualTransformation(),
                     textFieldModifier = Modifier

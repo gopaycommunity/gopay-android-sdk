@@ -1,6 +1,7 @@
 package cz.gopay.sdk.config
 
 import cz.gopay.sdk.exception.ErrorCallback
+import cz.gopay.sdk.locales.GopayLocaleStrings
 
 /**
  * Configuration class for the Gopay SDK.
@@ -41,7 +42,21 @@ data class GopayConfig(
      * Optional callback for error reporting.
      * When set, all SDK errors will be reported to this callback for analytics integration.
      */
-    val errorCallback: ErrorCallback? = null
+    val errorCallback: ErrorCallback? = null,
+
+    /**
+     * Preferred locale code (ISO 639-1, e.g. `"cs"`, `"de"`) for the payment card form labels.
+     * When `null` (default) the SDK uses the device language, falling back to Czech. A
+     * [cz.gopay.sdk.ui.PaymentCardForm] `locale` parameter overrides this per form.
+     */
+    val locale: String? = null,
+
+    /**
+     * Custom locale translations to register with the SDK, keyed by locale code. These are
+     * available to the payment card form alongside the built-in locales and take priority over a
+     * built-in of the same code. See [cz.gopay.sdk.locales.GopayLocaleStrings].
+     */
+    val customLocales: Map<String, GopayLocaleStrings> = emptyMap()
 ) {
     /**
      * Get the API base URL for the current environment.

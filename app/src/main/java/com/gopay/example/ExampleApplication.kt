@@ -4,6 +4,7 @@ import android.app.Application
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.config.Environment
 import cz.gopay.sdk.config.GopayConfig
+import cz.gopay.sdk.locales.GopayLocales
 
 class ExampleApplication : Application() {
 
@@ -18,6 +19,15 @@ class ExampleApplication : Application() {
             shareableKey = DemoConfig.SHAREABLE_KEY,
             debug = true,
             requestTimeoutMs = 5_000,
+            // Register a custom locale (code "xx") the form can select alongside the built-ins, and
+            // leave `locale = null` so the default follows the device language (falling back to cs).
+            customLocales = mapOf(
+                "xx" to GopayLocales.EN.copy(
+                    panLabel = "Yer card number",
+                    expLabel = "Doom date",
+                    cvvLabel = "Secret code"
+                )
+            ),
             errorCallback = { error ->
                 println("Global SDK Error: [${error.errorCode}] ${error.message}")
                 error.httpContext?.let { http ->

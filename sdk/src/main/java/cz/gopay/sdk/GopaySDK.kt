@@ -8,6 +8,8 @@ import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.locales.GopayLocaleStrings
+import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.GooglePayInfoResponse
 import cz.gopay.sdk.model.Jwk
@@ -154,6 +156,16 @@ class GopaySDK private constructor(
         return encryptionService.createJweEncryptedPayload(cardData, jwk, clientId)
     }
 
+    /**
+     * Resolves the [GopayLocaleStrings] the payment card form uses for its labels.
+     *
+     * Resolution order: [preferred] (if given and known) -> the SDK-wide [GopayConfig.locale] ->
+     * the device language -> Czech. Handy for reading the localized error / pay strings from host
+     * code (e.g. to display inline validation messages).
+     */
+    fun currentLocaleStrings(preferred: String? = null): GopayLocaleStrings =
+        GopayLocales.resolve(preferred)
+
     private fun validateCardData(cardData: CardData) {
         require(cardData.cardPan.isNotBlank()) { "Card PAN cannot be empty" }
         require(cardData.cardPan.length in 13..19) { "Card PAN must be 13-19 digits" }
@@ -200,6 +212,8 @@ class GopaySDK private constructor(
         @JvmStatic
         fun initialize(config: GopayConfig) {
             ErrorReporter.setErrorCallback(config.errorCallback)
+            GopayLocales.registerAll(config.customLocales)
+            GopayLocales.setDefaultLocale(config.locale)
             instance = GopaySDK(config)
         }
 

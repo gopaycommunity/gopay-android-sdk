@@ -40,6 +40,8 @@ forward; the backend submits the JWE and gets back the card token.
 - Managed Google Pay and 3DS flows directly on the session.
 - JWE card encryption using the merchant public key (cached in-memory).
 - Compose `PaymentCardForm` composable that emits a JWE.
+- Localized form labels in 20 languages (device language, falling back to Czech), with per-form
+  overrides and custom locale registration.
 
 ## Quick start
 
@@ -199,6 +201,45 @@ The form validates input, sets `FLAG_SECURE` on non-debug builds, and never expo
 data to the host. Theming is controlled by `PaymentCardFormTheme`; the form callback contract
 also offers `onFormReady { submitFn -> … }` for external submit triggers and
 `onValidationError { … }` for inline error display.
+
+### Localizing the form
+
+Form labels and placeholders are localized. By default the form uses the **device language and
+falls back to Czech (`cs`)** when the language has no translation. 20 languages ship built in
+(`bg cs de en es et fr hr hu it lt lv nl pl pt ro ru sk sl uk`).
+
+Set a preferred locale globally on the config, or per form:
+
+```kotlin
+// Global default for every form (null = follow the device language)
+GopaySDK.initialize(GopayConfig(environment = …, locale = "de"))
+
+// Per-form override (wins over the global default)
+PaymentCardForm(onEncryptionComplete = { … }, locale = "cs")
+```
+
+Add your own translation with the same structure and select it by code:
+
+```kotlin
+import cz.gopay.sdk.locales.GopayLocales
+import cz.gopay.sdk.locales.GopayLocaleStrings
+
+val brandEnglish = GopayLocales.EN.copy(panLabel = "Your card number")
+
+GopaySDK.initialize(
+    GopayConfig(environment = …, customLocales = mapOf("en" to brandEnglish))
+)
+// or at runtime: GopayLocales.register("en", brandEnglish)
+PaymentCardForm(onEncryptionComplete = { … }, locale = "en")
+```
+
+Validation error strings are localized too, but the form keeps error *display* host-driven: read
+them from the resolved locale in your `onValidationError` handler:
+
+```kotlin
+val strings = GopaySDK.getInstance().currentLocaleStrings(locale = "cs")
+// strings.panErrorPattern, strings.expErrorPattern, strings.cvvErrorPattern, …
+```
 
 ## Google Pay flow
 
