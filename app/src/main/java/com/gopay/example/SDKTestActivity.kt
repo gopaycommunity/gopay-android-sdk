@@ -47,10 +47,8 @@ import com.gopay.example.ui.theme.ExampleAppTheme
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocales
-import cz.gopay.sdk.model.BrowserData
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.ChallengePreference
-import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.ui.CardEncryptionResult
@@ -242,24 +240,15 @@ fun SDKTestScreen() {
                     enabled = !isBusy && cardToken.isNotBlank()
                 ) {
                     run("Charge payment") {
-                        val charge = s.charge(
-                            ChargePaymentRequest.cardToken(
-                                cardToken = cardToken.trim(),
-                                browserData = BrowserData(
-                                    language = "en-US",
-                                    timezone = 0,
-                                    screenWidth = 1080,
-                                    screenHeight = 1920,
-                                    colorDepth = 24,
-                                    javascriptEnabled = true
-                                ),
-                                challengePreference = ChallengePreference.AUTO
-                            )
+                        val charge = s.chargeWithCardToken(
+                            activity = context as Activity,
+                            cardToken = cardToken.trim(),
+                            challengePreference = ChallengePreference.AUTO
                         )
                         val actionInfo = charge.action?.let {
                             "Action: ${it.actionType} (${it.state})\nRedirect: ${it.redirectUrl ?: "N/A"}"
                         } ?: "Action: none"
-                        log("// charge(.cardToken) -> ChargePaymentResponse\nCharge ID: ${charge.id}\nState: ${charge.state}\n$actionInfo")
+                        log("// chargeWithCardToken() -> ChargePaymentResponse\nCharge ID: ${charge.id}\nState: ${charge.state}\n$actionInfo")
                         charge.action?.redirectUrl?.let { pending3dsUrl = it }
                         if (pending3dsUrl != null) log("3DS required — tap \"Handle 3DS verification\" to continue.")
                     }
@@ -342,24 +331,15 @@ fun SDKTestScreen() {
                 ) {
                     run("Charge with encrypted card") {
                         // Charge the encrypted card directly — no POST /cards/tokens round-trip.
-                        val charge = s.charge(
-                            ChargePaymentRequest.encryptedCard(
-                                payload = jwe.trim(),
-                                browserData = BrowserData(
-                                    language = "en-US",
-                                    timezone = 0,
-                                    screenWidth = 1080,
-                                    screenHeight = 1920,
-                                    colorDepth = 24,
-                                    javascriptEnabled = true
-                                ),
-                                challengePreference = ChallengePreference.AUTO
-                            )
+                        val charge = s.chargeWithEncryptedCard(
+                            activity = context as Activity,
+                            payload = jwe.trim(),
+                            challengePreference = ChallengePreference.AUTO
                         )
                         val actionInfo = charge.action?.let {
                             "Action: ${it.actionType} (${it.state})\nRedirect: ${it.redirectUrl ?: "N/A"}"
                         } ?: "Action: none"
-                        log("// charge(.encryptedCard) -> ChargePaymentResponse\nCharge ID: ${charge.id}\nState: ${charge.state}\n$actionInfo")
+                        log("// chargeWithEncryptedCard() -> ChargePaymentResponse\nCharge ID: ${charge.id}\nState: ${charge.state}\n$actionInfo")
                         charge.action?.redirectUrl?.let { pending3dsUrl = it }
                         if (pending3dsUrl != null) log("3DS required — tap \"Handle 3DS verification\" to continue.")
                     }

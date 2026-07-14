@@ -216,6 +216,57 @@ class PaymentSession internal constructor(
     }
 
     /**
+     * Charges a previously tokenized card (`POST /cards/tokens`). Convenience wrapper over
+     * [charge] + [ChargePaymentRequest.cardToken] that fills in real device-derived [BrowserData]
+     * when the caller doesn't supply one.
+     *
+     * @param browserData Optional 3DS browser data. Required by the spec on every card charge;
+     *                    when null, the SDK derives it from the [activity]'s resources. Override
+     *                    if you collected more accurate values elsewhere.
+     * @param challengePreference 3DS challenge preference forwarded to the gateway.
+     */
+    suspend fun chargeWithCardToken(
+        activity: Activity,
+        cardToken: String,
+        browserData: BrowserData? = null,
+        challengePreference: ChallengePreference? = null,
+        returnUrl: String? = null
+    ): ChargePaymentResponse = charge(
+        ChargePaymentRequest.cardToken(
+            cardToken = cardToken,
+            browserData = browserData ?: browserDataFromActivity(activity),
+            challengePreference = challengePreference,
+            returnUrl = returnUrl
+        )
+    )
+
+    /**
+     * Charges directly with a JWE-encrypted card, skipping the server-side `POST /cards/tokens`
+     * round-trip. Convenience wrapper over [charge] + [ChargePaymentRequest.encryptedCard] that
+     * fills in real device-derived [BrowserData] when the caller doesn't supply one.
+     *
+     * @param payload The JWE compact string from [cz.gopay.sdk.GopaySDK.encryptCardData].
+     * @param browserData Optional 3DS browser data. Required by the spec on every card charge;
+     *                    when null, the SDK derives it from the [activity]'s resources. Override
+     *                    if you collected more accurate values elsewhere.
+     * @param challengePreference 3DS challenge preference forwarded to the gateway.
+     */
+    suspend fun chargeWithEncryptedCard(
+        activity: Activity,
+        payload: String,
+        browserData: BrowserData? = null,
+        challengePreference: ChallengePreference? = null,
+        returnUrl: String? = null
+    ): ChargePaymentResponse = charge(
+        ChargePaymentRequest.encryptedCard(
+            payload = payload,
+            browserData = browserData ?: browserDataFromActivity(activity),
+            challengePreference = challengePreference,
+            returnUrl = returnUrl
+        )
+    )
+
+    /**
      * Launches a managed WebView to complete a 3DS challenge and suspends until the user finishes
      * or cancels. Call this whenever [charge] or [getChargeState] returns a response with a
      * non-null `action.redirectUrl`. After this returns, call [getChargeState] to read the
@@ -295,10 +346,20 @@ class PaymentSession internal constructor(
         // components.schemas.Payment-Credentials-Request).
         private const val GRANT_TYPE_PAYMENT_CREDENTIALS = "payment_credentials"
 
+        // Standard `Accept` header sent by a modern mobile WebView. There's no device API to
+        // read this back at charge time (the ACS challenge WebView doesn't exist yet), so this
+        // mirrors the conventional value every mainstream mobile browser/3DS SDK reports.
+        private const val DEFAULT_ACCEPT_HEADER =
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+
         /**
          * Best-effort [BrowserData] derived from an [Activity]'s configuration. The spec
          * requires `browser_data` on every card charge but a Google Pay payment doesn't
          * naturally surface it; the device's locale + screen + timezone are reasonable defaults.
+         * `colorDepth` has no real device API on Android; 24 is the universal value every mobile
+         * browser reports regardless of hardware. `javascriptEnabled` reflects that the SDK's own
+         * 3DS challenge ([cz.gopay.sdk.ui.PaymentVerificationActivity]) renders in a `WebView`
+         * with `settings.javaScriptEnabled = true`.
          */
         private fun browserDataFromActivity(activity: Activity): BrowserData {
             val resources = activity.resources
@@ -313,7 +374,8 @@ class PaymentSession internal constructor(
                 screenHeight = metrics.heightPixels,
                 colorDepth = 24,
                 userAgent = System.getProperty("http.agent"),
-                javascriptEnabled = false
+                acceptHeader = DEFAULT_ACCEPT_HEADER,
+                javascriptEnabled = true
             )
         }
     }
