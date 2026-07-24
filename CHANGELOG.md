@@ -1,3 +1,17 @@
+# [1.10.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.9.0...1.10.0) (2026-07-24)
+
+
+### Bug Fixes
+
+* failing tests ([f40e1ce](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/f40e1cef133297bde96b5f85e7e83bda133c9409))
+
+
+### Features
+
+* added form locales and localization logic GPMOB-126 ([5f37d81](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/5f37d81e09957a057ecaf81963498e153d95002b))
+* charge with JWE payload GPMOB-135 ([7b0ded8](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/7b0ded868bf5697ae9448411c2fa5c717c2bc494))
+* JWE structure update GPMOB-135 ([4920fe3](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/4920fe356e08880239d6fce267af3be43b78af21))
+
 # [1.9.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.8.2...1.9.0) (2026-06-11)
 
 
