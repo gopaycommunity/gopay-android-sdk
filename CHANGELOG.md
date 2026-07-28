@@ -1,3 +1,10 @@
+# [1.11.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.10.0...1.11.0) (2026-07-28)
+
+
+### Features
+
+* fill browser data on charge GPMOB-124 ([59337f6](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/59337f6942695309e86769b6aa563dc4296872d6))
+
 # [1.10.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.9.0...1.10.0) (2026-07-24)
 
 
