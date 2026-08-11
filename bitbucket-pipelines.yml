@@ -15,7 +15,7 @@ definitions:
               script:
                   - export REPO_URL=https://gopay-release-bot:$BITBUCKET_BOT_PUSH_TOKEN@bitbucket.org/$BITBUCKET_REPO_FULL_NAME.git
                   - git remote set-url origin $REPO_URL
-                  - npx -p semantic-release -p @semantic-release/changelog -p @semantic-release/git semantic-release --repository-url $REPO_URL
+                  - npx -p semantic-release -p @semantic-release/changelog -p @semantic-release/git -p @semantic-release/exec semantic-release --repository-url $REPO_URL
         - step: &tests
               name: Tests
               image: cimg/android:2025.04
@@ -45,7 +45,7 @@ definitions:
               clone:
                   depth: full
               script:
-                  - git fetch origin master
+                  - git fetch origin master --tags
                   - git checkout master
                   # Add GitHub as remote repository (ignore if already exists)
                   # Use GITHUB_PERSONAL_ACCESS_TOKEN for personal token or GITHUB_APP_TOKEN for GitHub App
@@ -54,6 +54,7 @@ definitions:
                   - git fetch github
                   # Push master branch to GitHub with safe force push
                   - git push github master --force-with-lease
+                  - git push github --tags
 
 pipelines:
     branches:
@@ -62,6 +63,7 @@ pipelines:
                   - step: *release
             - step: *tests
             - step: *sonarcloud-analysis
+            - step: *github-sync
     pull-requests:
         '**':
             - step: *tests
