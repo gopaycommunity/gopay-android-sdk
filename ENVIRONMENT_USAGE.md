@@ -30,23 +30,34 @@ Use for local development with a custom endpoint URL.
 
 ```kotlin
 // With custom development URL
+// — a gateway you run yourself; note that on an emulator "localhost" is the emulator,
+//   so use 10.0.2.2 to reach a server on your own machine
 val config = GopayConfig(
     environment = Environment.DEVELOPMENT.create("https://localhost:8080")
 )
 
 // Or with HTTPS
+// — same call, just a remote dev/staging host instead of a local one. Both examples are
+//   https:// because that is what you will almost always want; see the cleartext note below
 val config = GopayConfig(
     environment = Environment.DEVELOPMENT.create("https://dev-api.mycompany.com")
 )
 ```
 
+`create()` accepts a plain `http://` URL, but Android blocks cleartext traffic by default (and
+the bundled demo app sets `usesCleartextTraffic="false"` explicitly). For an `http://` dev
+endpoint you also need a network-security config permitting cleartext for that host.
+
 ## Environment URLs
 
-| Environment | Base URL                            |
-| ----------- | ----------------------------------- |
-| Production  | `https://api.gopay.com/v1/`         |
-| Sandbox     | `https://api.sandbox.gopay.com/v1/` |
-| Development | Custom (user-defined)               |
+| Environment | Base URL                            | Status                       |
+| ----------- | ----------------------------------- | ---------------------------- |
+| Development | Custom (user-defined)               | Use this                     |
+| Sandbox     | `https://api.sandbox.gopay.com/v1/` | Not reachable on the 4.0 API |
+| Production  | `https://api.gopay.com/v1/`         | Not reachable on the 4.0 API |
+
+Use `Environment.DEVELOPMENT.create(<gateway-url>)` with the gateway URL you were given — that is
+what the bundled demo app does.
 
 ## Development Environment Requirements
 
@@ -68,7 +79,8 @@ class MyApplication : Application() {
                 true -> Environment.DEVELOPMENT.create("https://localhost:8080")
                 false -> Environment.PRODUCTION
             },
-            debugLoggingEnabled = BuildConfig.DEBUG,
+            // `debug` — GopayConfig has no `debugLoggingEnabled` field, that name will not compile
+            debug = BuildConfig.DEBUG,
             requestTimeoutMs = 30000
         )
 
@@ -76,6 +88,11 @@ class MyApplication : Application() {
     }
 }
 ```
+
+The full set of things you can pass to `GopayConfig` is `environment` (the only required one),
+`clientId`, `shareableKey`, `requestTimeoutMs` (default 30000), `debug`, `errorCallback`,
+`locale`, and `customLocales`. `apiBaseUrl` is also exposed but is derived from `environment`,
+not set by you — see [`GopayConfig.kt`](sdk/src/main/java/cz/gopay/sdk/config/GopayConfig.kt).
 
 ## Error Handling
 

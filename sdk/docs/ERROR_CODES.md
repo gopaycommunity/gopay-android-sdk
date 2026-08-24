@@ -8,6 +8,7 @@ This document provides a comprehensive reference for all error codes used in the
 - **NETWORK_XXX**: Network connectivity and HTTP errors  
 - **CONFIG_XXX**: Configuration and initialization errors
 - **PAYMENT_XXX**: Payment processing errors
+- **CARD_XXX**: Card tokenization errors
 - **VALIDATION_XXX**: Input validation errors
 - **SECURITY_XXX**: Security-related errors
 - **INTERNAL_XXX**: Internal SDK errors
@@ -89,6 +90,45 @@ This document provides a comprehensive reference for all error codes used in the
 - **Developer Action**:
   - Prompt user to re-enter credentials
   - Check account status
+
+### AUTH_009: Payment Token Expired
+- **Description**: The payment-scoped JWT expired and could not be re-acquired from the cached payment credentials
+- **Common Causes**:
+  - Session left idle past the token lifetime
+  - `payment_secret` no longer valid for the payment
+- **Developer Action**:
+  - The SDK re-authenticates once automatically; a second 401 surfaces this code
+  - Start a new `PaymentSession` for the payment
+
+### AUTH_010: Invalid Payment Credentials
+- **Description**: The `payment_id` / `payment_secret` pair was rejected by `/oauth2/token`
+- **Common Causes**:
+  - Pair belongs to a different environment
+  - Payment already closed or expired on the gateway
+- **Developer Action**:
+  - Re-fetch the pair from your merchant backend
+  - Confirm the SDK points at the same environment that created the payment
+
+### AUTH_011: Shareable Key Missing
+- **Description**: `clientId` / `shareableKey` are absent from `GopayConfig` but required by the requested operation
+- **Common Causes**:
+  - SDK initialized without them, then a public-resource endpoint was called (`GET /cards/public-key`)
+- **Developer Action**:
+  - Supply both in `GopayConfig` — they are safe to embed in the app
+
+### AUTH_012: Payment Session Already Exists
+- **Description**: A `PaymentSession` for the given `payment_id` is already registered
+- **Common Causes**:
+  - `startPaymentSession` called twice for the same payment
+- **Developer Action**:
+  - Reuse the existing session, or close it before starting another
+
+### AUTH_013: Payment Session Closed
+- **Description**: An operation was invoked on a `PaymentSession` that has been closed
+- **Common Causes**:
+  - Session used after `close()` or `closeAllPaymentSessions()`
+- **Developer Action**:
+  - Start a new session for the payment
 
 ## Network Errors (NETWORK_XXX)
 
@@ -321,6 +361,32 @@ This document provides a comprehensive reference for all error codes used in the
   - Check payment status
   - Implement timeout handling
 
+### PAYMENT_008: Verification Already In Progress
+- **Description**: A 3DS verification is already running; only one can run at a time
+- **Common Causes**:
+  - `handle3dsVerification` invoked while a verification sheet is open
+- **Developer Action**:
+  - Await the in-flight verification before starting another
+
+### PAYMENT_009: Wallet Sheet Already In Progress
+- **Description**: A Google Pay sheet is already running; only one can run at a time (the iOS SDK uses this code for Apple Pay)
+- **Common Causes**:
+  - `chargeWithGooglePay` invoked twice, e.g. from a double tap
+- **Developer Action**:
+  - Disable the pay button while a charge is in flight
+
+## Card Errors (CARD_XXX)
+
+### CARD_001: Card Tokenization Failed
+- **Description**: Card tokenization failed
+- **Common Causes**:
+  - The merchant backend rejected or failed the `POST /cards/tokens` call
+- **Developer Action**:
+  - Handle tokenization failures on your backend and surface a retry to the user
+  - Note that the SDK does not raise this code today: it produces a JWE and never calls the
+    tokenization endpoint itself, so the failure happens on your server. The constant exists so
+    both platforms share one catalog.
+
 ## Validation Errors (VALIDATION_XXX)
 
 ### VALIDATION_001: Invalid JWT Format
@@ -388,6 +454,14 @@ This document provides a comprehensive reference for all error codes used in the
   - Validate phone format
   - Use phone validation libraries
   - Provide format examples
+
+### VALIDATION_007: Invalid Input
+- **Description**: Invalid input data was provided to an SDK call
+- **Common Causes**:
+  - Empty `paymentId` / `paymentSecret`
+  - Card form submitted with fields that fail validation
+- **Developer Action**:
+  - Validate inputs before calling, and surface the form's own validation state
 
 ## Security Errors (SECURITY_XXX)
 
@@ -544,9 +618,11 @@ catch (e: GopaySDKException) {
 
 If you encounter errors not covered in this documentation or need additional assistance:
 
-1. Check the [SDK documentation](README.md)
+1. Check the [SDK documentation](../../README.md)
 2. Review your implementation against the examples
 3. Enable debug logging to get more details
 4. Contact support with the error code and context
 
-For error reporting and analytics integration, see the [Error Reporting Guide](ERROR_REPORTING.md). 
+To receive every exception the SDK throws, register an analytics callback via
+`GopayConfig.errorCallback`.
+ 

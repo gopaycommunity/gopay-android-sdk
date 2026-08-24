@@ -3,7 +3,7 @@
 Android SDK for charging GoPay payments from a mobile app. Maps to the Payments 4.0 API
 (`Payments.yaml`).
 
-## Auth model — what the SDK does and doesn't do
+## Overview
 
 The SDK runs on the **device**, so it never holds merchant credentials. There are two auth
 schemes the SDK is allowed to use:
@@ -30,8 +30,6 @@ forward; the backend submits the JWE and gets back the card token.
    └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Features
-
 - Per-payment `PaymentSession` with eager auth, single-flight Mutex re-auth on 401, and one
   bounded retry. Multiple sessions can run concurrently — credentials never leak between them.
 - In-memory only — no `SharedPreferences`, no encrypted token storage, no `ContentProvider`
@@ -43,15 +41,64 @@ forward; the backend submits the JWE and gets back the card token.
 - Localized form labels in 20 languages (device language, falling back to Czech), with per-form
   overrides and custom locale registration.
 
-## Quick start
+## Requirements
 
-### 1. Dependency
+- JDK 17+ (Gradle 8.7 / AGP 8.6)
+- Android SDK Platform 35 (`compileSdk = 35`), `minSdk = 24`
+- Kotlin, Gradle Kotlin DSL
+
+## Installation
+
+Inside this repo the demo app consumes the SDK as a Gradle module:
 
 ```kotlin
 dependencies {
     implementation(project(":sdk"))
 }
 ```
+
+To consume it from another project, publish it to a Maven repo first:
+
+```bash
+./gradlew :sdk:publishToLocalRepo   # -> sdk/build/repo
+./gradlew :sdk:publishToMavenLocal  # -> ~/.m2/repository
+```
+
+then depend on `cz.gopay:sdk:<version>`. Group/artifact/version come from the `sdk.groupId`,
+`sdk.artifactId`, and `sdk.version` Gradle properties (defaults `cz.gopay` / `sdk` / `1.0.0`);
+`./gradlew :sdk:showPublishingInfo` prints the resolved values.
+
+> **Publishing currently fails on a fresh clone.** `sdk/gradle.properties` is committed with
+> `signing.secretKeyRingFile` pointing at one developer's home directory, so the signing plugin
+> cannot build a signatory and the task dies before publishing:
+>
+> ```
+> Could not evaluate spec for 'Signing is required, or signatory is set'.
+> Unable to retrieve secret key from key ring file '/Users/<someone>/.gnupg/secring.gpg'
+> ```
+>
+> Commenting out the three `signing.*` lines in `sdk/gradle.properties` makes both tasks succeed
+> and produce a working (unsigned) AAR. Overriding them with `-P` does **not** help — an empty
+> value still creates a signatory. This needs fixing properly: the keyring path and password
+> don't belong in a committed file.
+
+> **Pass the version explicitly when you publish.** Nothing bumps `sdk.version` in
+> `sdk/gradle.properties`, so the Maven coordinates and `BuildConfig.VERSION_NAME` do not match
+> the released tag unless you pass `-Psdk.version=<x>`.
+
+## Quick start
+
+### 1. Local setup
+
+`local.properties` is gitignored, so a fresh clone has no Android SDK location and every Gradle
+command fails with `SDK location not found`. Android Studio writes it on first open; from the CLI:
+
+```bash
+echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
+```
+
+You also need JDK 17+ (Gradle 8.7 / AGP 8.6; JDK 21 verified) and Android SDK Platform 35
+(`compileSdk = 35`). To run the bundled demo app see [`app/README.md`](app/README.md).
 
 ### 2. Initialize
 
@@ -86,18 +133,19 @@ val session = GopaySDK.getInstance().startPaymentSession(
 )
 
 try {
-    val charge = session.charge(
-        ChargePaymentRequest(
-            paymentInstrument = PaymentInstrumentInput.cardToken(cardToken),
-            browserData = BrowserData(...)
-        )
-    )
+    // chargeWithCardToken derives the spec-required BrowserData from the activity for you.
+    val charge = session.chargeWithCardToken(activity, cardToken)
     charge.action?.redirectUrl?.let { session.handle3dsVerification(activity, it) }
     val finalState = session.getChargeState()
 } finally {
     session.close()  // wipes the secret + JWT from memory
 }
 ```
+
+Prefer `chargeWithCardToken` / `chargeWithEncryptedCard` / `chargeWithGooglePay` over the raw
+`charge(ChargePaymentRequest)`: the spec requires `browser_data` on every card charge, and the
+wrappers fill it in from the activity (locale, screen metrics, timezone, user agent). Drop to
+`charge(...)` only when you have collected more accurate browser data yourself.
 
 ## `GopaySDK` API
 
@@ -123,7 +171,9 @@ auth or HTTP errors.
 | Method | Maps to |
 | --- | --- |
 | `getStatus()` | `GET /payments/{payment_id}` |
-| `charge(ChargePaymentRequest)` | `POST /payments/{payment_id}/charge` |
+| `charge(ChargePaymentRequest)` | `POST /payments/{payment_id}/charge` — low level; you supply `BrowserData` |
+| `chargeWithCardToken(activity, cardToken, browserData?, challengePreference?, returnUrl?)` | `charge(...)` with a card token + device-derived `BrowserData` |
+| `chargeWithEncryptedCard(activity, payload, browserData?, challengePreference?, returnUrl?)` | `charge(...)` with a JWE + device-derived `BrowserData` |
 | `getChargeState()` | `GET /payments/{payment_id}/charge` |
 | `getQrPaymentInfo(format?)` | `GET /payments/{payment_id}/qr-payment/info` |
 | `getGooglePayInfo()` | `GET /payments/{payment_id}/google-pay/info` |
@@ -142,7 +192,7 @@ secrets — keyed in the SDK by `paymentId`. Google Pay and 3DS use a process-wi
 only one sheet/WebView can be visible at a time; collisions surface as
 `PAYMENT_GOOGLE_PAY_IN_PROGRESS` / `PAYMENT_VERIFICATION_IN_PROGRESS`.
 
-## Card collection (JWE flow)
+## Card form → JWE
 
 The SDK collects card data and encrypts it into a JWE. The merchant backend then submits the
 JWE to `POST /cards/tokens` and receives a card token, which the app can pass to
@@ -167,12 +217,10 @@ the charge's `payload`; nothing else changes about the charge or 3DS flow.
 val jwe = GopaySDK.getInstance().encryptCardData(
     CardData(cardPan = "4444…", expMonth = "06", expYear = "27", cvv = "123")
 )
-val charge = session.charge(
-    ChargePaymentRequest.encryptedCard(
-        payload = jwe,
-        browserData = BrowserData(...),
-        challengePreference = ChallengePreference.AUTO
-    )
+val charge = session.chargeWithEncryptedCard(
+    activity = activity,
+    payload = jwe,
+    challengePreference = ChallengePreference.AUTO
 )
 charge.action?.redirectUrl?.let { session.handle3dsVerification(activity, it) }
 val finalState = session.getChargeState()
@@ -264,11 +312,14 @@ implementation("com.google.android.gms:play-services-wallet:19.4.0")
 
 ## Environments
 
-| Environment | Base URL |
-| --- | --- |
-| `Environment.DEVELOPMENT.create(url)` | Custom — must start with `http://` or `https://` |
-| `Environment.SANDBOX` | `https://api.sandbox.gopay.com/v1/` |
-| `Environment.PRODUCTION` | `https://api.gopay.com/v1/` |
+| Environment | Base URL | Status |
+| --- | --- | --- |
+| `Environment.DEVELOPMENT.create(url)` | Custom — must start with `http://` or `https://` | Use this |
+| `Environment.SANDBOX` | `https://api.sandbox.gopay.com/v1/` | Not reachable on the 4.0 API |
+| `Environment.PRODUCTION` | `https://api.gopay.com/v1/` | Not reachable on the 4.0 API |
+
+Point `DEVELOPMENT` at the gateway URL you were given — see
+[`ENVIRONMENT_USAGE.md`](ENVIRONMENT_USAGE.md).
 
 ## Error handling
 
@@ -300,6 +351,15 @@ try {
 Plug an analytics callback via `GopayConfig.errorCallback` to receive every exception the SDK
 throws.
 
+Every code, with its causes and what to do about it, is in
+[`sdk/docs/ERROR_CODES.md`](sdk/docs/ERROR_CODES.md). The codes are shared with the iOS SDK, which
+throws a subset of the same catalog.
+
+## Example app
+
+A demo app that fakes the merchant backend and exercises every session operation lives in
+[`app/`](app/) — see [`app/README.md`](app/README.md) for setup and a walkthrough.
+
 ## Security notes
 
 - Neither the `payment_secret` nor the JWT is ever written to disk. Both live in memory inside
@@ -308,13 +368,33 @@ throws.
 - The merchant public key is cached only in memory; clears on process death.
 - `PaymentCardForm` enables `FLAG_SECURE` on the host window in non-debug builds to block
   screenshots of card data.
-- Network: HTTPS only. Optional certificate pinning is forwarded from `GopayConfig`.
+- Network: HTTPS only.
+- Certificate pinning is plumbed all the way through `NetworkManager`/`NetworkModule`, but is
+  **not reachable from the public API today**: the `CertificatePinner` is a parameter of
+  `GopaySDK`'s private constructor and `GopaySDK.initialize(config)` never passes one.
+  `GopayConfig` has no pinning field. Exposing it needs a small API change.
 
 ## Testing
 
 ```bash
 ./gradlew :sdk:testDebugUnitTest
 ```
+
+Requires `local.properties` (see [Quick start](#1-local-setup)). `:sdk:jacocoTestReport` is wired
+as a `finalizedBy` of the test task, so a coverage report is generated automatically afterwards:
+`sdk/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml` plus a browsable
+`.../jacocoTestReport/html/index.html`.
+
+To check the whole project compiles, including the demo app:
+
+```bash
+./gradlew :app:assembleDebug
+```
+
+## Releasing
+
+semantic-release cuts versions on `master` from the commit messages. Publishing the AAR is a
+separate, manual step — see [`sdk/docs/PUBLISHING.md`](sdk/docs/PUBLISHING.md).
 
 ## License
 
