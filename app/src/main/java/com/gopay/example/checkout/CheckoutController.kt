@@ -195,7 +195,14 @@ class CheckoutController {
         val jwe = when (val result = submit()) {
             is CardEncryptionResult.Success -> result.jwe
             is CardEncryptionResult.Error -> {
-                cardFormError = result.message
+                // An empty form right after a successful encryption is the SDK's cleanup at work
+                // (GPMOB-140). The gateway accepts each JWE only once, so a retry can't replay
+                // the previous one — the user has to enter the card again.
+                cardFormError = if (result.message == CardEncryptionResult.NO_CARD_DATA_MESSAGE) {
+                    "Please re-enter your card details and try again."
+                } else {
+                    result.message
+                }
                 return
             }
         }
