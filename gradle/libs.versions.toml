@@ -13,6 +13,7 @@ material = "1.12.0"
 foundationAndroid = "1.8.2"
 materialIconsVersion = "1.5.4"
 sdk = "1.0.0"
+zxingCore = "3.5.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -34,6 +35,8 @@ androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 androidx-foundation-android = { group = "androidx.compose.foundation", name = "foundation-android", version.ref = "foundationAndroid" }
 sdk = { module = "cz.gopay:sdk", version.ref = "sdk" }
+# Demo app only — renders the bank-transfer QR payload the gateway returns as a scannable bitmap.
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxingCore" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

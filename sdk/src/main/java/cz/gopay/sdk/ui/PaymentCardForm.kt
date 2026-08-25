@@ -120,6 +120,12 @@ data class PaymentCardFormTheme(
     val helperTextStyle: TextStyle = TextStyle(color = Color.Gray, fontSize = 12.sp),
     val errorTextStyle: TextStyle = TextStyle(color = Color.Red, fontSize = 12.sp),
     val loadingTextStyle: TextStyle = TextStyle(color = Color.Gray, fontSize = 14.sp),
+    /**
+     * Style for the empty-field placeholder. `null` keeps the historical default — [inputTextStyle]
+     * tinted `LightGray` — which is legible on a light form but reads as real input on a dark one,
+     * so dark themes should set this explicitly.
+     */
+    val placeholderTextStyle: TextStyle? = null,
     
     // Colors
     val inputBorderColor: Color = Color.Gray,

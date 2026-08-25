@@ -70,7 +70,8 @@ fun LabeledInputField(
                 if (value.isEmpty() && config.placeholder != null) {
                     BasicText(
                         text = config.placeholder,
-                        style = theme.inputTextStyle.copy(color = Color.LightGray)
+                        style = theme.placeholderTextStyle
+                            ?: theme.inputTextStyle.copy(color = Color.LightGray)
                     )
                 }
                 innerTextField()

@@ -205,6 +205,16 @@ class GopaySDK private constructor(
         private var instance: GopaySDK? = null
 
         /**
+         * The current version of the SDK, e.g. `"1.11.0"`.
+         *
+         * Sourced from the `sdk.version` Gradle property via `BuildConfig`, which the release
+         * pipeline rewrites (`scripts/set-version.sh`). Mirrors `GopaySDK.version` on iOS so both
+         * SDKs can report themselves the same way.
+         */
+        @JvmStatic
+        val version: String get() = BuildConfig.VERSION_NAME
+
+        /**
          * Initialize the SDK with the given configuration. Must be called before any other SDK
          * operation. The SDK no longer requires an Android `Context` — all credentials live in
          * memory inside [GopayConfig] and per-payment [PaymentSession] instances.

@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-
+import com.gopay.example.checkout.CheckoutScreen
 import com.gopay.example.ui.theme.ExampleAppTheme
 
 class CheckoutDemoActivity : ComponentActivity() {
@@ -12,9 +12,10 @@ class CheckoutDemoActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            ExampleAppTheme {
-//                CheckoutScreen()
+            // dynamicColor is off so the shop keeps its brand palette on Android 12+.
+            ExampleAppTheme(dynamicColor = false) {
+                CheckoutScreen(onClose = { finish() })
             }
         }
     }
-} 
+}

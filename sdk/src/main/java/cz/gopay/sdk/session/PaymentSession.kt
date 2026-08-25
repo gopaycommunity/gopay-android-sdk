@@ -365,8 +365,11 @@ class PaymentSession internal constructor(
             val resources = activity.resources
             val locale = resources.configuration.locales[0]
             val metrics = resources.displayMetrics
-            // JavaScript convention: minutes west of UTC (CET = -60).
-            val tzOffsetMinutes = -(TimeZone.getDefault().rawOffset / 60_000)
+            // JavaScript convention: minutes west of UTC (CET = -60, CEST = -120).
+            // Offset at the current instant, not rawOffset — the latter ignores daylight saving
+            // and would report the wrong zone for half the year, which `Date.getTimezoneOffset()`
+            // (the value the issuer expects) never does.
+            val tzOffsetMinutes = -(TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000)
             return BrowserData(
                 language = locale.toLanguageTag(),
                 timezone = tzOffsetMinutes,

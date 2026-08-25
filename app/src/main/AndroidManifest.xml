@@ -45,7 +45,19 @@
             android:label="Checkout Demo"
             android:theme="@style/Theme.ExampleTheme"
             android:parentActivityName="com.gopay.example.MainActivity" />
-            
+
+        <!-- Grants a content:// URI for the bank-transfer QR bitmap so the share sheet can attach
+             it as an image; the checkout writes the PNG to cacheDir just before sharing. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 
 </manifest>

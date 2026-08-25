@@ -1,6 +1,8 @@
 package com.gopay.example
 
 import android.util.Base64
+import cz.gopay.sdk.GopaySDK
+import cz.gopay.sdk.config.Environment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -48,7 +50,8 @@ object MerchantBackendSimulator {
     }
 
     private fun merchantToken(): String {
-        val credentials = "${DemoConfig.CLIENT_ID}:${DemoConfig.CLIENT_SECRET}"
+        val demoCredentials = DemoConfig.credentials
+        val credentials = "${demoCredentials.clientId}:${demoCredentials.clientSecret}"
         val basic = Base64.encodeToString(credentials.toByteArray(), Base64.NO_WRAP)
         val conn = openConnection("oauth2/token").apply {
             requestMethod = "POST"
@@ -63,7 +66,7 @@ object MerchantBackendSimulator {
     }
 
     private fun createPaymentWithToken(token: String, amount: Int, currency: String): CreatedPayment {
-        val conn = openConnection("eshops/${DemoConfig.GOID}/payments").apply {
+        val conn = openConnection("eshops/${DemoConfig.credentials.goid}/payments").apply {
             requestMethod = "POST"
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("Accept", "application/json")
@@ -88,8 +91,21 @@ object MerchantBackendSimulator {
         return CreatedPayment(paymentId = paymentId, paymentSecret = paymentSecret)
     }
 
-    private fun openConnection(path: String): HttpURLConnection =
-        (URL(DemoConfig.BASE_URL + path).openConnection() as HttpURLConnection)
+    /**
+     * Reads the base URL straight from the live SDK config rather than from [DemoConfig] directly,
+     * so this simulator can never disagree with the SDK about which gateway is active after an
+     * environment switch. [Environment.SANDBOX] and [Environment.PRODUCTION] always carry a real
+     * URL; only the credentials (client id / secret / goid) are unfilled placeholders for those,
+     * so a request against them fails with an auth error, not a malformed-URL crash. The blank
+     * fallback only matters if this is ever called before [GopaySDK.initialize] — which
+     * `ExampleApplication.onCreate` prevents in practice, but a `check` here turns that misuse
+     * into a clear message instead of a `MalformedURLException`.
+     */
+    private fun openConnection(path: String): HttpURLConnection {
+        val baseUrl = if (GopaySDK.isInitialized()) GopaySDK.getInstance().config.environment.apiBaseUrl else ""
+        check(baseUrl.isNotBlank()) { "GopaySDK is not initialized — no base URL to connect to." }
+        return URL(baseUrl + path).openConnection() as HttpURLConnection
+    }
 
     private fun readResponse(conn: HttpURLConnection, action: String): JSONObject {
         val status = conn.responseCode
