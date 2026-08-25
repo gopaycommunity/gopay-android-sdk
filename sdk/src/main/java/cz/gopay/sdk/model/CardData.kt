@@ -2,6 +2,10 @@ package cz.gopay.sdk.model
 
 import com.squareup.moshi.Json
 
+/** Last four digits for logging, or full mask when the value is too short to mask safely. */
+private fun maskPan(pan: String): String =
+    if (pan.length >= 13) "****${pan.takeLast(4)}" else "****"
+
 /**
  * Raw card data collected from the customer. Passed to [cz.gopay.sdk.GopaySDK.encryptCardData]
  * which produces a JWE for the merchant backend to tokenize.
@@ -11,7 +15,11 @@ data class CardData(
     @Json(name = "exp_month") val expMonth: String,
     @Json(name = "exp_year") val expYear: String,
     val cvv: String
-)
+) {
+    /** Masked — the data-class default would print the full PAN and CVV into any log. */
+    override fun toString(): String =
+        "CardData(cardPan=${maskPan(cardPan)}, expMonth=$expMonth, expYear=$expYear, cvv=***)"
+}
 
 /** Full JWE plaintext payload — card fields plus the metadata claims required by the spec. */
 internal data class CardJwePayload(
@@ -24,7 +32,12 @@ internal data class CardJwePayload(
     val iat: Long,
     val exp: Long,
     val jti: String
-)
+) {
+    /** Masked — the data-class default would print the full PAN and CVV into any log. */
+    override fun toString(): String =
+        "CardJwePayload(cardPan=${maskPan(cardPan)}, expMonth=$expMonth, expYear=$expYear, " +
+            "cvv=***, clientId=$clientId, iat=$iat, exp=$exp, jti=$jti)"
+}
 
 /** JWE header structure (RFC 7516 §4) emitted by [cz.gopay.sdk.service.EncryptionService]. */
 data class JweHeader(

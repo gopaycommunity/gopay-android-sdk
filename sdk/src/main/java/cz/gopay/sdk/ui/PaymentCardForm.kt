@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +55,18 @@ sealed class CardEncryptionResult {
     /** JWE compact serialization (RFC 7516) suitable for submission to the merchant backend. */
     data class Success(val jwe: String) : CardEncryptionResult()
     data class Error(val message: String, val exception: Throwable? = null) : CardEncryptionResult()
+
+    companion object {
+        /**
+         * [Error.message] when submit ran on a completely empty form — typically after the SDK
+         * cleared the fields following a successful encryption (GPMOB-140). Hosts can match on
+         * this to show a "please re-enter your card" prompt: the gateway accepts each JWE only
+         * once, so a retry needs a fresh entry, not a replay of the previous JWE.
+         * Mirrors the iOS SDK's `GopaySDKErrors.noCardFormData`.
+         */
+        const val NO_CARD_DATA_MESSAGE =
+            "No card form data available. Please use GopayCardForm to enter card data."
+    }
 }
 
 /**
@@ -237,6 +250,18 @@ fun PaymentCardForm(
         }
     }
 
+    // Drop the card-data references when the form leaves the composition, so PAN/CVV don't
+    // outlive their use (PCI DSS 4.0.1, req. 3.3.1; the iOS SDK clears its stored copy on
+    // onDisappear for the same reason). Note this fires on ANY removal from composition —
+    // hosts must not place the form in a recycling container (LazyColumn, pager), where
+    // scrolling would discard the user's input; that also holds without this effect, since
+    // the plain `remember` state above doesn't survive leaving the composition either.
+    // Deliberately NOT cleared on a failed encryption: authorization hasn't happened yet,
+    // and the user shouldn't have to retype the card after a network drop.
+    DisposableEffect(Unit) {
+        onDispose { resetForm() }
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth(),
@@ -307,7 +332,9 @@ fun PaymentCardForm(
                     error = fields.cvv.errorText,
                     helperText = fields.cvv.helperText,
                     placeholder = fields.cvv.placeholder,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    // NumberPassword: same numeric layout, but tells the IME not to cache or
+                    // learn the CVV (keyboards may retain plain Number input for suggestions).
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     visualTransformation = if (isCvvFocused) VisualTransformation.None else CvvMaskedVisualTransformation(),
                     textFieldModifier = Modifier
                         .focusRequester(cvvFocusRequester)
@@ -336,7 +363,12 @@ private suspend fun submitCardDataImpl(
         )
         if (!validation.isAllValid) {
             onValidationError?.invoke(validation)
-            throw IllegalArgumentException("Please fix the validation errors")
+            // An all-empty form is reported distinctly: it is the expected state right after a
+            // successful encryption cleared the fields, and hosts key their JWE-reuse retry on it.
+            val formIsEmpty = cardNumberDigits.isEmpty() && expirationDateDigits.isEmpty() && cvv.isEmpty()
+            throw IllegalArgumentException(
+                if (formIsEmpty) CardEncryptionResult.NO_CARD_DATA_MESSAGE else "Please fix the validation errors"
+            )
         }
 
         val formattedExpDate = formatExpirationForValidation(expirationDateDigits)

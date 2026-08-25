@@ -368,6 +368,11 @@ A demo app that fakes the merchant backend and exercises every session operation
 - The merchant public key is cached only in memory; clears on process death.
 - `PaymentCardForm` enables `FLAG_SECURE` on the host window in non-debug builds to block
   screenshots of card data.
+- Card data lives in memory only while the form needs it: the form state is cleared after a
+  successful encryption and when the form leaves the composition (PCI DSS 4.0.1, req. 3.3.1).
+  It is deliberately kept after a *failed* encryption so the user can retry without retyping.
+  `CardData`'s `toString()` is masked, so a stray log never prints the PAN or CVV. JVM strings
+  cannot be securely overwritten, so clearing releases the references rather than zeroing bytes.
 - Network: HTTPS only.
 - Certificate pinning is plumbed all the way through `NetworkManager`/`NetworkModule`, but is
   **not reachable from the public API today**: the `CertificatePinner` is a parameter of
