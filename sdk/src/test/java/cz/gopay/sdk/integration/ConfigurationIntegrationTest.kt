@@ -44,7 +44,7 @@ class ConfigurationIntegrationTest {
 
         val sdk = GopaySDK.getInstance()
         assertEquals(Environment.SANDBOX, sdk.config.environment)
-        assertEquals("https://api.sandbox.gopay.com/v1/", sdk.config.apiBaseUrl)
+        assertEquals("https://gw.sandbox.gopay.com/gp-gw/api/4.0/", sdk.config.apiBaseUrl)
         assertEquals("test-client", sdk.config.clientId)
         assertEquals("test-shareable", sdk.config.shareableKey)
         assertTrue(sdk.config.debug)
@@ -59,6 +59,6 @@ class ConfigurationIntegrationTest {
         GopaySDK.initialize(GopayConfig(environment = Environment.PRODUCTION))
         val sdk = GopaySDK.getInstance()
         assertEquals(Environment.PRODUCTION, sdk.config.environment)
-        assertEquals("https://api.gopay.com/v1/", sdk.config.apiBaseUrl)
+        assertEquals("https://gate.gopay.com/gp-gw/api/4.0/", sdk.config.apiBaseUrl)
     }
 }

@@ -50,14 +50,16 @@ endpoint you also need a network-security config permitting cleartext for that h
 
 ## Environment URLs
 
-| Environment | Base URL                            | Status                       |
-| ----------- | ----------------------------------- | ---------------------------- |
-| Development | Custom (user-defined)               | Use this                     |
-| Sandbox     | `https://api.sandbox.gopay.com/v1/` | Not reachable on the 4.0 API |
-| Production  | `https://api.gopay.com/v1/`         | Not reachable on the 4.0 API |
+| Environment | Base URL                                      | Use for                 |
+| ----------- | --------------------------------------------- | ----------------------- |
+| Sandbox     | `https://gw.sandbox.gopay.com/gp-gw/api/4.0/` | Testing and integration |
+| Production  | `https://gate.gopay.com/gp-gw/api/4.0/`       | Live transactions       |
+| Development | Custom (user-defined)                         | A gateway of your own   |
 
-Use `Environment.DEVELOPMENT.create(<gateway-url>)` with the gateway URL you were given — that is
-what the bundled demo app does.
+Both built-in hosts come from the Payments 4.0 spec's `servers` block, so `SANDBOX` and
+`PRODUCTION` need no URL from you. Reach for
+`Environment.DEVELOPMENT.create(<gateway-url>)` only when you have been given a gateway that is
+neither — that is what the bundled demo app does.
 
 ## Development Environment Requirements
 

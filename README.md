@@ -314,11 +314,12 @@ implementation("com.google.android.gms:play-services-wallet:19.4.0")
 
 | Environment | Base URL | Status |
 | --- | --- | --- |
-| `Environment.DEVELOPMENT.create(url)` | Custom — must start with `http://` or `https://` | Use this |
-| `Environment.SANDBOX` | `https://api.sandbox.gopay.com/v1/` | Not reachable on the 4.0 API |
-| `Environment.PRODUCTION` | `https://api.gopay.com/v1/` | Not reachable on the 4.0 API |
+| `Environment.SANDBOX` | `https://gw.sandbox.gopay.com/gp-gw/api/4.0/` | Testing and integration |
+| `Environment.PRODUCTION` | `https://gate.gopay.com/gp-gw/api/4.0/` | Live transactions |
+| `Environment.DEVELOPMENT.create(url)` | Custom — must start with `http://` or `https://` | A gateway of your own |
 
-Point `DEVELOPMENT` at the gateway URL you were given — see
+Both built-in hosts come from the Payments 4.0 spec's `servers` block. Use `DEVELOPMENT` only
+when you have been given a gateway that is neither — see
 [`ENVIRONMENT_USAGE.md`](ENVIRONMENT_USAGE.md).
 
 ## Error handling

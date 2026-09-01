@@ -23,13 +23,13 @@ class EnvironmentTest {
     @Test
     fun testProductionEnvironment() {
         // Verify production environment properties
-        assertEquals("https://api.gopay.com/v1/", Environment.PRODUCTION.apiBaseUrl)
+        assertEquals("https://gate.gopay.com/gp-gw/api/4.0/", Environment.PRODUCTION.apiBaseUrl)
     }
 
     @Test
     fun testSandboxEnvironment() {
         // Verify sandbox environment properties
-        assertEquals("https://api.sandbox.gopay.com/v1/", Environment.SANDBOX.apiBaseUrl)
+        assertEquals("https://gw.sandbox.gopay.com/gp-gw/api/4.0/", Environment.SANDBOX.apiBaseUrl)
     }
 
     @Test
@@ -48,6 +48,14 @@ class EnvironmentTest {
         assertEquals("https://localhost:8080/", developmentEnv.apiBaseUrl)
     }
 
+    @Test
+    fun testDevelopmentEnvironmentAcceptsUppercaseScheme() {
+        // URL schemes are case-insensitive, and iOS accepts this form — a launch override must
+        // not work on one platform and fail on the other.
+        val developmentEnv = Environment.DEVELOPMENT.create("HTTPS://localhost:8080/")
+        assertEquals("HTTPS://localhost:8080/", developmentEnv.apiBaseUrl)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun testDevelopmentEnvironmentWithEmptyUrl() {
         // Verify development environment rejects empty URL
@@ -64,6 +72,6 @@ class EnvironmentTest {
     fun testEndpointComposition() {
         // Verify that we can compose full endpoints correctly
         val paymentEndpoint = Environment.PRODUCTION.apiBaseUrl + "payments"
-        assertEquals("https://api.gopay.com/v1/payments", paymentEndpoint)
+        assertEquals("https://gate.gopay.com/gp-gw/api/4.0/payments", paymentEndpoint)
     }
 } 
