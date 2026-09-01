@@ -10,6 +10,8 @@ class ExampleApplication : Application() {
 
         // Initialize the SDK once on app start, on the development environment. See DemoConfig.kt
         // for the environment/credential bundles and the runtime switcher (MainActivity's badge).
+        // An Application has no access to the launch intent, so a base URL passed as an intent
+        // extra is applied a moment later by MainActivity, which re-initializes the SDK.
         val config = DemoConfig.buildConfig(DemoEnvironment.DEVELOPMENT)
         GopaySDK.initialize(config)
 

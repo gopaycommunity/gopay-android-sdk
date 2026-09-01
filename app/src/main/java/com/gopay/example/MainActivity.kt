@@ -54,11 +54,46 @@ import cz.gopay.sdk.GopaySDK
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Only on a real launch, never on a mere recreation — see applyLaunchOverrides.
+        if (savedInstanceState == null || !DemoConfig.launchOverridesApplied) applyLaunchOverrides()
         enableEdgeToEdge()
         setContent {
             ExampleAppTheme(dynamicColor = false) {
                 MainMenuScreen()
             }
+        }
+    }
+
+    /**
+     * Re-points the SDK at whatever gateway the launch intent names — see [DemoLaunchOverrides]
+     * for the extras and the `adb` invocation. Runs before `setContent`, so no screen can create a
+     * payment session against the environment we're about to leave, and is a no-op on a plain
+     * launch.
+     *
+     * Deliberately skipped on activity recreation: a rotation replays the original intent, and
+     * re-applying it would silently drag the environment back to development after someone picked
+     * sandbox or production from the badge. A restore after process death also arrives with a
+     * non-null `savedInstanceState`, but there `DemoConfig` is a fresh object back at its
+     * defaults, so the override genuinely has to be redone — `launchOverridesApplied` is what
+     * tells the two apart.
+     *
+     * Overrides therefore land on a cold start only. `am start` on a task that is already up just
+     * brings it to the front without delivering the new extras (this activity is `standard`
+     * launchMode, so not even `onNewIntent` fires), which is why the documented invocation uses
+     * `am start -S`. That is the semantics you want anyway — re-pointing at another gateway with
+     * a live payment session still open would be worse.
+     */
+    private fun applyLaunchOverrides() {
+        val overrides = DemoLaunchOverrides.from(intent::getStringExtra)
+        when (val outcome = DemoConfig.applyLaunchOverrides(overrides)) {
+            is OverrideOutcome.None -> Unit
+            is OverrideOutcome.Applied -> println("⚙️ Launch override applied — gateway ${outcome.baseUrl}")
+            is OverrideOutcome.Rejected ->
+                println(
+                    "\n⛔️ LAUNCH OVERRIDES IGNORED IN FULL — the base URL was unusable, so the " +
+                        "credentials that came with it were dropped too rather than sent to the " +
+                        "compiled-in gateway. Fix the URL and relaunch.\n   ${outcome.reason}\n"
+                )
         }
     }
 }
