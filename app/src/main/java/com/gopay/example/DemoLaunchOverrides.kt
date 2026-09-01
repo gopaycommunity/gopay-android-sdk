@@ -19,6 +19,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
  * `-S` matters: it force-stops first, so the extras reach a cold start. Without it `am start`
  * only brings an already-running task to the front and the app keeps the gateway it had.
  *
+ * `scripts/run-demo.sh` builds that command from the gitignored
+ * `.env`, which is how the demo gets real credentials without any of them being committed.
+ *
  * Every extra is optional and anything omitted keeps its compiled-in default, so a plain launch
  * behaves exactly as before. The base URL alone can also be set at build time via the
  * `gopay.demo.baseUrl` Gradle property (`BuildConfig.DEMO_BASE_URL`); an extra wins over that.

@@ -361,6 +361,9 @@ throws a subset of the same catalog.
 A demo app that fakes the merchant backend and exercises every session operation lives in
 [`app/`](app/) — see [`app/README.md`](app/README.md) for setup and a walkthrough.
 
+Its credentials are not in the repository: copy [`.env.example`](.env.example) to `.env`, fill in
+your GoPay values, and launch with `./scripts/run-demo.sh --install`.
+
 ## Security notes
 
 - Neither the `payment_secret` nor the JWT is ever written to disk. Both live in memory inside

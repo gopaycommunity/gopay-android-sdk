@@ -34,10 +34,11 @@ enum class DemoEnvironment(val title: String) {
         }
 
     /**
-     * Merchant credentials for this environment. Sandbox and production ship as empty
-     * placeholders — fill them in before selecting those environments. An empty `clientId` /
-     * `shareableKey` / `clientSecret` fails clearly at the gateway rather than silently mixing
-     * environments.
+     * Merchant credentials for this environment. Sandbox and production are empty here and stay
+     * empty: real values reach the demo only as launch overrides, which always land in
+     * [DEVELOPMENT] — run `scripts/run-demo.sh` and read the URL, not the badge. An empty
+     * `clientId` / `shareableKey` / `clientSecret` fails clearly at the gateway rather than
+     * silently mixing environments.
      */
     val credentials: DemoCredentials
         get() = when (this) {
@@ -92,6 +93,8 @@ object DemoConfig {
      * time. Replace with your own merchant's development host. */
     const val DEVELOPMENT_BASE_URL = "https://gw.alpha8.dev.gopay.com/gp-gw/api/4.0/"
 
+    /** Placeholders on purpose — real values live in the gitignored `.env` and arrive as launch
+     * overrides. See `.env.example` and `scripts/run-demo.sh`. */
     val DEVELOPMENT_CREDENTIALS = DemoCredentials(
         clientId = "your_client_id",
         // Public shareable key — safe to ship in the app.

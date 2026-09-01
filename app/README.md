@@ -91,20 +91,51 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 The first build downloads the Gradle 8.7 distribution and all dependencies — budget about five
 minutes. Subsequent builds take seconds.
 
+That last `am start` runs against the compiled-in placeholder credentials, which reach no
+gateway. To run against a real one, use `./scripts/run-demo.sh --install` instead —
+see [Credentials: `.env`](#credentials-env) below.
+
 Then tap **Open SDK Test Suite** on the main screen.
 
 ## Configuration
 
-All demo credentials live in [`DemoConfig.kt`](src/main/java/com/gopay/example/DemoConfig.kt):
-base URL, `clientId`, `shareableKey`, `goid`, the 3DS return URL, and `clientSecret`. Those are
-the compiled-in defaults — you can also override them at launch without touching the code, see
-below. Replace them with your own when pointing at sandbox or production.
+### Credentials: `.env`
+
+Credentials are **not** in the repository. Copy `.env.example` in the repo root to `.env`, fill in
+your GoPay values, and launch through the runner:
+
+```bash
+cp .env.example .env
+./scripts/run-demo.sh --install
+```
+
+`.env` holds one gateway at a time — five keys, no profiles; point the demo somewhere else by
+editing the values. It is gitignored, and the iOS demo app reads the same key names, so one set
+of values drives both platforms. `run-demo.sh` hands them to the app as intent extras, the one
+channel that does not bake a secret into the APK. `--install` runs `:app:installDebug` first, and
+`ANDROID_SERIAL` picks a device when more than one is attached.
+
+Every key is optional; one you leave empty is reported and the app keeps its compiled-in default
+for it. A value runs to the end of its line, so `KEY=value # note` puts ` # note` *inside* the
+credential and you get an opaque 401 — put comments on their own line. The base URL must be
+`https://`.
+
+Because the values travel as launch overrides they land in the **Development** slot, so the
+environment badge reads "Development" whatever gateway you set. The base URL the runner prints,
+and the host on the badge, is what the app is actually talking to.
+
+### The compiled-in defaults
+
+[`DemoConfig.kt`](src/main/java/com/gopay/example/DemoConfig.kt) holds the fallbacks a plain
+launch uses — the dev base URL, placeholder `clientId` / `shareableKey` / `clientSecret` /
+`goid`, and the 3DS return URL. They are placeholders on purpose; use `.env` rather than editing
+them.
 
 `CLIENT_SECRET` is a **merchant** secret and exists only to let `MerchantBackendSimulator` fake
 your server. Never ship it in a real app.
 
-> **The committed alpha8 credentials go stale.** The dev environment is periodically reset, which
-> rotates the client secret and the shareable key. Every call then fails with `401 UNAUTHORIZED —
+> **The alpha8 credentials go stale.** The dev environment is periodically reset, which rotates
+> the client secret and the shareable key. Every call then fails with `401 UNAUTHORIZED —
 > Invalid client_id or client_secret` on `/oauth2/token`, which looks like a code bug but isn't.
 > Verify with a token request before debugging anything else:
 >
@@ -114,8 +145,8 @@ your server. Never ship it in a real app.
 >   -d "grant_type=client_credentials&scope=payment:write payment:read card:write card:read"
 > ```
 >
-> A token back means the credentials are current; a `401` means they were rotated. Current values
-> are posted in the `#shared-gpy-mobile-sdk` Slack channel.
+> A token back means the credentials are current; a `401` means they were rotated — put the new
+> ones in your `.env`.
 
 [`ExampleApplication`](src/main/java/com/gopay/example/ExampleApplication.kt) initializes the
 SDK from those values with `Environment.DEVELOPMENT`, `debug = true`, a 5 s request timeout, a
@@ -128,8 +159,9 @@ You do not have to edit `DemoConfig.kt` to run against a different environment. 
 the same setting; a launch-time extra wins over a build-time property, which wins over the
 compiled-in constant.
 
-**At launch, no rebuild** — pass extras to `MainActivity`. This is the one to reach for when you
-have a gateway URL and a set of credentials in hand:
+**At launch, no rebuild** — pass extras to `MainActivity`. `scripts/run-demo.sh` above is a
+wrapper around exactly this; reach for the raw command when you have a one-off gateway URL and
+credentials in hand:
 
 ```bash
 adb shell am start -S -n com.gopay.example/.MainActivity \
