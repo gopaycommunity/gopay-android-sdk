@@ -23,14 +23,20 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 
@@ -88,19 +94,7 @@ fun LabeledInputField(
                 .semanticsLabel(theme, config.label)
                 .background(color = theme.inputBackgroundColor, shape = shape)
                 .focusRing(theme, isFocused)
-                // A zero width means no border at all, as on the web; Compose would otherwise
-                // draw a hairline.
-                .let {
-                    if (theme.inputBorderWidth > 0.dp) {
-                        it.border(
-                            width = theme.inputBorderWidth,
-                            color = theme.borderColorFor(isFocused = isFocused, hasError = hasError),
-                            shape = shape
-                        )
-                    } else {
-                        it
-                    }
-                }
+                .inputBorder(theme, shape, isFocused = isFocused, hasError = hasError)
                 .let {
                     // A minimum, not a fixed height: at a large font scale a hard height would
                     // leave the text drawing over the field below it. iOS keeps the value literal
@@ -147,6 +141,112 @@ fun LabeledInputField(
  */
 private fun Modifier.semanticsLabel(theme: PaymentCardFormTheme, label: String): Modifier =
     if (theme.labelHidden) semantics { contentDescription = label } else this
+
+/**
+ * Draws the border of an input in the style the theme asks for.
+ *
+ * A zero [PaymentCardFormTheme.inputBorderWidth] means no border at all, as on the web.
+ *
+ * [InputBorderStyle.UNDERLINE] draws only the bottom line, following the rounded bottom corners
+ * of the field when there is an [PaymentCardFormTheme.inputBorderRadius], the way a CSS
+ * `border-bottom` follows a `border-radius`; the background keeps all four corners rounded. While
+ * the field is focused the line is a gradient from [PaymentCardFormTheme.focusGradientStart] to
+ * [PaymentCardFormTheme.focusGradientEnd]. The gradient runs from the leading to the trailing edge, so it mirrors in a
+ * right-to-left layout just as the fields do. The hosted card form animates that gradient; the
+ * animation is web-only.
+ */
+private fun Modifier.inputBorder(
+    theme: PaymentCardFormTheme,
+    shape: Shape,
+    isFocused: Boolean,
+    hasError: Boolean
+): Modifier {
+    if (theme.inputBorderWidth <= 0.dp) return this
+    return when (theme.inputBorderStyle) {
+        InputBorderStyle.BOXED -> border(
+            width = theme.inputBorderWidth,
+            color = theme.borderColorFor(isFocused = isFocused, hasError = hasError),
+            shape = shape
+        )
+
+        InputBorderStyle.UNDERLINE -> drawBehind {
+            val stroke = usableStrokeWidth(size, theme.inputBorderWidth.toPx())
+            val path = underlinePath(stroke, theme.inputBorderRadius.coerceAtLeast(0.dp).toPx())
+            if (isFocused) {
+                drawPath(
+                    path = path,
+                    brush = Brush.horizontalGradient(focusGradientColors(theme, layoutDirection)),
+                    style = Stroke(width = stroke)
+                )
+            } else {
+                drawPath(
+                    path = path,
+                    color = theme.borderColorFor(isFocused = false, hasError = hasError),
+                    style = Stroke(width = stroke)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A stroke that still fits the field it outlines, clamped to half the field's smaller side.
+ *
+ * Compose clamps the same way inside its own `Modifier.border`, and a drawn outline needs it just
+ * as much: past that width the two sides of the outline end up on the wrong sides of each other,
+ * so the line is drawn outside the field and over whatever sits next to it.
+ */
+internal fun usableStrokeWidth(fieldSize: Size, strokeWidth: Float): Float =
+    strokeWidth.coerceAtMost(fieldSize.minDimension / 2f)
+
+/**
+ * The line an underline is stroked along: the bottom edge of the field, continuing up the arcs of
+ * the two bottom corners when [PaymentCardFormTheme.inputBorderRadius] rounds them. This is what
+ * a CSS `border-bottom` does on an element with a `border-radius`, and it keeps the line inside
+ * the rounded background of the field instead of sticking out under its corners.
+ */
+private fun DrawScope.underlinePath(strokeWidth: Float, radius: Float): Path {
+    val half = strokeWidth / 2f
+    val bottom = size.height - half
+    val arc = underlineArcRadius(size, strokeWidth, radius)
+    return Path().apply {
+        if (arc <= 0f) {
+            moveTo(0f, bottom)
+            lineTo(size.width, bottom)
+        } else {
+            // The stroke runs half its width inside the edge, so the arcs are concentric with the
+            // rounded corners of the background and that much smaller.
+            val left = half
+            val right = size.width - half
+            moveTo(left, bottom - arc)
+            arcTo(Rect(left, bottom - 2 * arc, left + 2 * arc, bottom), 180f, -90f, false)
+            lineTo(right - arc, bottom)
+            arcTo(Rect(right - 2 * arc, bottom - 2 * arc, right, bottom), 90f, -90f, false)
+        }
+    }
+}
+
+/**
+ * Radius of the arcs the underline follows around the bottom corners. The corner radius is clamped
+ * the way a browser clamps an oversized `border-radius`, to half the shorter side, and the stroke
+ * centerline runs half a stroke inside it; a corner too small to hold the stroke is left square.
+ */
+internal fun underlineArcRadius(fieldSize: Size, strokeWidth: Float, cornerRadius: Float): Float {
+    val corner = cornerRadius.coerceIn(0f, minOf(fieldSize.width, fieldSize.height) / 2f)
+    return (corner - strokeWidth / 2f).coerceAtLeast(0f)
+}
+
+/**
+ * Focus gradient stops ordered left to right, mirrored so that the start color always sits on the
+ * leading edge of the field.
+ */
+internal fun focusGradientColors(
+    theme: PaymentCardFormTheme,
+    layoutDirection: LayoutDirection
+): List<Color> {
+    val stops = listOf(theme.focusGradientStart, theme.focusGradientEnd)
+    return if (layoutDirection == LayoutDirection.Ltr) stops else stops.asReversed()
+}
 
 /**
  * Border color of an input. A focused field shows the focus color even when it is invalid, so

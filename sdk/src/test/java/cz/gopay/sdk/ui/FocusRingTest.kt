@@ -39,4 +39,13 @@ class FocusRingTest {
 
         assertEquals(2f, outline.topLeftCornerRadius.x, 0f)
     }
+
+    @Test
+    fun usableStrokeWidth_neverOutgrowsTheField() {
+        val field = Size(200f, 50f)
+
+        assertEquals("A normal stroke passes through", 2f, usableStrokeWidth(field, 2f), 0.01f)
+        // Past half the smaller side the outline would turn itself inside out.
+        assertEquals("A huge stroke is clamped to the field", 25f, usableStrokeWidth(field, 260f), 0.01f)
+    }
 }

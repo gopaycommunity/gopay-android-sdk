@@ -1,9 +1,11 @@
 package cz.gopay.sdk.ui
 
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -171,6 +173,25 @@ class PaymentCardFormThemeTest {
             "Focus wins over an error on the active field",
             Color.Blue,
             theme.borderColorFor(isFocused = true, hasError = true)
+        )
+    }
+
+    @Test
+    fun focusGradient_mirrorsWithTheLayoutDirection() {
+        val theme = PaymentCardFormTheme(
+            focusGradientStart = Color.Red,
+            focusGradientEnd = Color.Blue
+        )
+
+        assertEquals(
+            "Left to right starts with the start color",
+            listOf(Color.Red, Color.Blue),
+            focusGradientColors(theme, LayoutDirection.Ltr)
+        )
+        assertEquals(
+            "Right to left puts the start color on the leading, right-hand edge",
+            listOf(Color.Blue, Color.Red),
+            focusGradientColors(theme, LayoutDirection.Rtl)
         )
     }
 
@@ -419,5 +440,15 @@ class PaymentCardFormThemeTest {
 
         assertEquals(1, warnings.size)
         assertTrue(warnings.single().contains("could not be read"))
+    }
+
+    @Test
+    fun underline_followsTheBottomCornersInsideTheStroke() {
+        val field = Size(width = 300f, height = 48f)
+
+        assertEquals("Concentric with the corner, half a stroke inside", 7f, underlineArcRadius(field, 2f, 8f), 0f)
+        assertEquals("A square corner keeps a straight line", 0f, underlineArcRadius(field, 2f, 0f), 0f)
+        assertEquals("A corner smaller than the stroke stays square", 0f, underlineArcRadius(field, 4f, 1f), 0f)
+        assertEquals("A pill radius is clamped to half the height", 23f, underlineArcRadius(field, 2f, 999f), 0f)
     }
 }
