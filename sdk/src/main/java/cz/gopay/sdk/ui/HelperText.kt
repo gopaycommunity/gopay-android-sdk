@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun HelperText(error: String?, helperText: String?, theme: PaymentCardFormTheme) {
     val text = error ?: helperText
-    if (text == null && theme.errorMinHeight == 0.dp) return
+    if (text == null && theme.errorMinHeight <= 0.dp) return
     Box(
         modifier = Modifier
             .padding(top = (theme.errorSpacing ?: theme.fieldSpacing).coerceAtLeast(0.dp))

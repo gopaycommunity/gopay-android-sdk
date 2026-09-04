@@ -1,6 +1,7 @@
 package cz.gopay.sdk.ui
 
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.LayoutDirection
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -42,10 +43,32 @@ class FocusRingTest {
 
     @Test
     fun usableStrokeWidth_neverOutgrowsTheField() {
-        val field = Size(200f, 50f)
+        val cell = Size(200f, 50f)
 
-        assertEquals("A normal stroke passes through", 2f, usableStrokeWidth(field, 2f), 0.01f)
+        assertEquals("A normal stroke passes through", 2f, usableStrokeWidth(cell, 2f), 0.01f)
         // Past half the smaller side the outline would turn itself inside out.
-        assertEquals("A huge stroke is clamped to the field", 25f, usableStrokeWidth(field, 260f), 0.01f)
+        assertEquals("A huge stroke is clamped to the field", 25f, usableStrokeWidth(cell, 260f), 0.01f)
+    }
+
+    @Test
+    fun collapsedCell_roundsOnlyTheOuterCornersOfTheBlock() {
+        val end = collapsedBorderEdges(
+            CollapsedBorderCell(CollapsedBorderPosition.BOTTOM_END, rowsTouch = true, bottomRowTouches = true),
+            LayoutDirection.Ltr
+        )
+
+        val outline = focusRingOutline(field, strokeWidth = 4f, cornerRadius = 8f, collapsedEdges = end)
+
+        assertEquals("The outer corner follows the block", 10f, outline.bottomRightCornerRadius.x, 0f)
+        assertEquals("A corner shared with a neighbour stays square", 2f, outline.topLeftCornerRadius.x, 0f)
+        assertEquals(2f, outline.topRightCornerRadius.x, 0f)
+        assertEquals(2f, outline.bottomLeftCornerRadius.x, 0f)
+    }
+
+    @Test
+    fun pillRadius_isClampedToTheField() {
+        val outline = focusRingOutline(field, strokeWidth = 4f, cornerRadius = 999f)
+
+        assertEquals(field.height / 2f + 2f, outline.topLeftCornerRadius.x, 0f)
     }
 }

@@ -82,7 +82,18 @@ enum class InputBorderStyle {
  *   the hosted form has no equivalent of a general shape either.
  * @property inputBorderCollapse Collapses the borders of adjacent [InputBorderStyle.BOXED] inputs
  *   into one shared line, so the fields read as a single block. [inputBorderRadius] then rounds
- *   only the outer corners of that block.
+ *   only the outer corners of that block. An edge is shared only where nothing is rendered between
+ *   the two fields: the expiration and the CVV share a line when [groupSpacing] is zero, and the
+ *   card number shares its bottom line with them when, in addition, [labelHidden] is on,
+ *   [errorMinHeight] is zero and no error or helper text is shown under the card number. Anywhere
+ *   else each field keeps its own full frame, as on the web, so a field is never left without a
+ *   side; an error text appearing under the card number therefore gives the bottom row its own
+ *   top line while it is shown. The iOS SDK resolves this the same way. A focused or invalid
+ *   field always draws its whole outline in the state color, painted over the shared lines, so
+ *   the state reads as one closed box inside the block. For a fully merged block:
+ *   `inputBorderStyle = InputBorderStyle.BOXED` and `inputBorderCollapse = true`, with
+ *   [groupSpacing] and [fieldSpacing] at zero, [labelHidden] on and [errorMinHeight] at zero.
+ *   Collapsing has no effect on the default underline style.
  * @property focusRingWidth Width of a ring drawn outside the border of the focused input. Needs
  *   [focusRingColor] as well; `null` in either draws no ring. The ring never shifts the layout, so
  *   a host that clips the form to its bounds (a `Card`, for instance) needs [formPadding] or its
