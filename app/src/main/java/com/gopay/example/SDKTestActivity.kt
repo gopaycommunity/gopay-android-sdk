@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gopay.example.ui.theme.ExampleAppTheme
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopaySDKException
@@ -451,20 +452,30 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
         cvv = baseInputs.cvv.copy(hasError = cvvError != null, errorText = cvvError)
     )
 
+    // Exercises the cc-v4 theme parameters the SDK gained in 2.0: uppercase labels with their own
+    // weight and tracking, a focus gradient and ring, and a reserved error line.
     val theme = PaymentCardFormTheme(
         labelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-        labelFontSize = MaterialTheme.typography.bodyMedium.fontSize,
+        labelFontSize = MaterialTheme.typography.labelSmall.fontSize,
+        labelFontWeight = 600,
+        labelUppercase = true,
+        labelLetterSpacing = 0.6.sp,
         inputTextColor = MaterialTheme.colorScheme.onSurface,
         inputFontSize = MaterialTheme.typography.bodyLarge.fontSize,
         helperTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
         helperFontSize = MaterialTheme.typography.bodySmall.fontSize,
         errorTextColor = MaterialTheme.colorScheme.error,
         errorFontSize = MaterialTheme.typography.bodySmall.fontSize,
+        errorMinHeight = 16.dp,
         inputBorderColor = MaterialTheme.colorScheme.outline,
         inputErrorBorderColor = MaterialTheme.colorScheme.error,
         inputBackgroundColor = MaterialTheme.colorScheme.surface,
         inputBorderRadius = 8.dp,
-        inputBorderWidth = 1.dp
+        inputBorderWidth = 1.dp,
+        focusGradientStart = MaterialTheme.colorScheme.primary,
+        focusGradientEnd = MaterialTheme.colorScheme.tertiary,
+        focusRingWidth = 2.dp,
+        focusRingColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
     )
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -490,34 +501,34 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
             }
         }
 
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-            PaymentCardForm(
-                onEncryptionComplete = { result ->
-                    isProcessing = false
-                    when (result) {
-                        is CardEncryptionResult.Success -> {
-                            errorMessage = null
-                            onJwe(result.jwe)
-                        }
-                        is CardEncryptionResult.Error -> {
-                            errorMessage = result.message
-                        }
+        PaymentCardForm(
+            onEncryptionComplete = { result ->
+                isProcessing = false
+                when (result) {
+                    is CardEncryptionResult.Success -> {
+                        errorMessage = null
+                        onJwe(result.jwe)
                     }
-                },
-                onFormReady = { submitFn -> submitCardData = submitFn },
-                onValidationError = { validation ->
-                    cardError = if (!validation.cardNumber.isValid) localeStrings.panErrorPattern else null
-                    expError = if (!validation.expirationDate.isValid) localeStrings.expErrorPattern else null
-                    cvvError = if (!validation.cvv.isValid) localeStrings.cvvErrorPattern else null
-                    errorMessage = null
-                },
-                inputFields = inputFields,
-                theme = theme,
-                // The card clips to its shape and the focus ring is drawn outside the fields, so
-                // the form needs room around it, as it has in the iOS demo.
-                modifier = Modifier.padding(16.dp)
-            )
-        }
+                    is CardEncryptionResult.Error -> {
+                        errorMessage = result.message
+                    }
+                }
+            },
+            onFormReady = { submitFn -> submitCardData = submitFn },
+            onValidationError = { validation ->
+                cardError = if (!validation.cardNumber.isValid) localeStrings.panErrorPattern else null
+                expError = if (!validation.expirationDate.isValid) localeStrings.expErrorPattern else null
+                cvvError = if (!validation.cvv.isValid) localeStrings.cvvErrorPattern else null
+                errorMessage = null
+            },
+            inputFields = inputFields,
+            theme = theme,
+            // Placed straight into the section card, the way the iOS example sits in its grey box:
+            // the card's own 16dp content padding keeps the fields 32dp from the screen edge and
+            // leaves room for the focus ring, which is drawn outside the fields and would be
+            // clipped by a container hugging the form.
+            modifier = Modifier.fillMaxWidth()
+        )
 
         Button(
             onClick = {
