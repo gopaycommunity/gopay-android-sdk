@@ -4,10 +4,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.util.Locale
 
 /**
  * Border treatment of the input fields.
@@ -62,7 +65,8 @@ enum class InputBorderStyle {
  *   field height follows deterministically from the font, the padding and [inputHeight], so the
  *   web's reason for this key (line box height varying per browser engine) does not exist here.
  * @property inputLetterSpacing Letter spacing of the entered text. `null` means none.
- * @property inputHeight Fixed height of the input. Takes precedence over the vertical padding.
+ * @property inputHeight Height of the input, taken as a minimum so a large font scale can still
+ *   grow the field rather than overflow it. Takes precedence over the vertical padding.
  *   `null` derives the height from the font and the padding.
  * @property placeholderColor Color of the placeholder text. `null` keeps the historical default,
  *   the input text tinted `LightGray`, which reads as real input on a dark form — set it there.
@@ -158,37 +162,63 @@ data class PaymentCardFormTheme(
     val helperFontSize: TextUnit = 12.sp
 )
 
+/** Label text as rendered, with [PaymentCardFormTheme.labelUppercase] applied. */
+internal fun PaymentCardFormTheme.renderedLabel(label: String): String =
+    if (labelUppercase) label.uppercase(Locale.getDefault()) else label
+
 /**
  * Maps a CSS font weight (100..900) to a Compose [FontWeight], clamping out-of-range values.
  */
 internal fun cssFontWeight(weight: Int): FontWeight = FontWeight(weight.coerceIn(100, 900))
 
-/** Text style of the field labels. */
+/**
+ * Text style of the field labels. A themed line height keeps the whole line box: Compose trims
+ * the extra height above the first and below the last line by default, which on a one-line label
+ * would swallow the setting entirely, so the box is kept and the text centered in it, the way
+ * CSS line-height and the iOS label behave.
+ */
 internal fun PaymentCardFormTheme.labelTextStyle(): TextStyle = TextStyle(
     color = labelColor,
     fontSize = labelFontSize,
-    fontWeight = cssFontWeight(labelFontWeight)
+    fontWeight = cssFontWeight(labelFontWeight),
+    fontFamily = fontFamily,
+    lineHeight = labelLineHeight ?: TextUnit.Unspecified,
+    lineHeightStyle = labelLineHeight?.let {
+        LineHeightStyle(alignment = LineHeightStyle.Alignment.Center, trim = LineHeightStyle.Trim.None)
+    },
+    letterSpacing = labelLetterSpacing ?: TextUnit.Unspecified
 )
 
-/** Text style of the entered text. */
+/**
+ * Text style of the entered text. Every field of the form holds a number, so the text is laid out
+ * left to right even in a right-to-left layout: the bidi algorithm would otherwise reorder the
+ * groups of a formatted card number ("3456 9012 5678 1234"), for the placeholder and the masked
+ * value alike.
+ */
 internal fun PaymentCardFormTheme.inputTextStyle(): TextStyle = TextStyle(
     color = inputTextColor,
     fontSize = inputFontSize,
-    fontWeight = inputFontWeight?.let(::cssFontWeight)
+    fontWeight = inputFontWeight?.let(::cssFontWeight),
+    fontFamily = fontFamily,
+    letterSpacing = inputLetterSpacing ?: TextUnit.Unspecified,
+    textDirection = TextDirection.Ltr
 )
 
 /** Text style of the placeholder shown in an empty field. */
 internal fun PaymentCardFormTheme.placeholderTextStyle(): TextStyle =
     inputTextStyle().copy(color = placeholderColor ?: Color.LightGray)
 
-/** Text style of the error line below a field. */
+/** Text style of the error line below a field. Prose, so its direction follows its content. */
 internal fun PaymentCardFormTheme.errorTextStyle(): TextStyle = TextStyle(
     color = errorTextColor,
-    fontSize = errorFontSize
+    fontSize = errorFontSize,
+    fontFamily = fontFamily,
+    textDirection = TextDirection.Content
 )
 
 /** Text style of the helper line below a field. */
 internal fun PaymentCardFormTheme.helperTextStyle(): TextStyle = TextStyle(
     color = helperTextColor,
-    fontSize = helperFontSize
+    fontSize = helperFontSize,
+    fontFamily = fontFamily
 )

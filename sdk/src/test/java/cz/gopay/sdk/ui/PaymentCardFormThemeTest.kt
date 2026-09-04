@@ -1,7 +1,10 @@
 package cz.gopay.sdk.ui
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cz.gopay.sdk.util.SdkLog
@@ -28,6 +31,17 @@ class PaymentCardFormThemeTest {
     @After
     fun restoreWarnings() {
         SdkLog.warnSink = previousSink
+    }
+
+    @Test
+    fun labelLineHeight_keepsTheWholeLineBoxOnASingleLine() {
+        val themed = PaymentCardFormTheme(labelLineHeight = 36.sp).labelTextStyle()
+        assertEquals(36.sp, themed.lineHeight)
+        assertEquals(androidx.compose.ui.text.style.LineHeightStyle.Trim.None, themed.lineHeightStyle?.trim)
+        assertEquals(androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center, themed.lineHeightStyle?.alignment)
+
+        val plain = PaymentCardFormTheme().labelTextStyle()
+        assertEquals(null, plain.lineHeightStyle)
     }
 
     @Test
@@ -75,6 +89,59 @@ class PaymentCardFormThemeTest {
             Color(0x804B5E68),
             parseCssColor(Color(0x804B5E68).toHexStringOrNull()!!)
         )
+    }
+
+    @Test
+    fun renderedLabel_appliesUppercaseOnlyWhenAsked() {
+        assertEquals(
+            "Card number",
+            PaymentCardFormTheme(labelUppercase = false).renderedLabel("Card number")
+        )
+        assertEquals(
+            "CARD NUMBER",
+            PaymentCardFormTheme(labelUppercase = true).renderedLabel("Card number")
+        )
+    }
+
+    @Test
+    fun textStyles_carryTheAtomicTypographyParams() {
+        val theme = PaymentCardFormTheme(
+            fontFamily = FontFamily.Monospace,
+            labelFontWeight = 600,
+            labelLineHeight = 16.sp,
+            labelLetterSpacing = 0.66.sp,
+            inputFontWeight = 500,
+            inputLetterSpacing = 0.5.sp,
+            placeholderColor = Color.Magenta
+        )
+
+        val label = theme.labelTextStyle()
+        assertEquals(FontWeight.SemiBold, label.fontWeight)
+        assertEquals(FontFamily.Monospace, label.fontFamily)
+        assertEquals(16.sp, label.lineHeight)
+        assertEquals(0.66.sp, label.letterSpacing)
+
+        val input = theme.inputTextStyle()
+        assertEquals(FontWeight.Medium, input.fontWeight)
+        assertEquals(0.5.sp, input.letterSpacing)
+
+        assertEquals(Color.Magenta, theme.placeholderTextStyle().color)
+        assertEquals(FontFamily.Monospace, theme.errorTextStyle().fontFamily)
+        assertEquals(TextDirection.Ltr, input.textDirection)
+        assertEquals(TextDirection.Ltr, theme.placeholderTextStyle().textDirection)
+        assertEquals(TextDirection.Content, theme.errorTextStyle().textDirection)
+        assertEquals(FontFamily.Monospace, theme.helperTextStyle().fontFamily)
+    }
+
+    @Test
+    fun textStyles_leaveUnsetTypographyToThePlatform() {
+        val theme = PaymentCardFormTheme()
+
+        assertEquals(TextUnit.Unspecified, theme.labelTextStyle().lineHeight)
+        assertEquals(TextUnit.Unspecified, theme.labelTextStyle().letterSpacing)
+        assertEquals(TextUnit.Unspecified, theme.inputTextStyle().letterSpacing)
+        assertNull("An unset weight stays unset", theme.inputTextStyle().fontWeight)
+        assertEquals(Color.LightGray, theme.placeholderTextStyle().color)
     }
 
     @Test
