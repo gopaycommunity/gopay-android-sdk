@@ -1,8 +1,6 @@
 package cz.gopay.sdk.ui
 
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.junit.Assert.assertEquals
@@ -38,54 +36,87 @@ class PaymentCardFormTest {
     @Test
     fun paymentCardFormTheme_defaultValues_areCorrect() {
         val theme = PaymentCardFormTheme()
-        
-        // Test default text styles
-        assertEquals("Default label color should be Gray", Color.Gray, theme.labelTextStyle.color)
-        assertEquals("Default label font size should be 14sp", 14.sp, theme.labelTextStyle.fontSize)
-        
-        assertEquals("Default input font size should be 16sp", 16.sp, theme.inputTextStyle.fontSize)
-        
-        assertEquals("Default error color should be Red", Color.Red, theme.errorTextStyle.color)
-        assertEquals("Default error font size should be 12sp", 12.sp, theme.errorTextStyle.fontSize)
-        
-        // Test default colors
+
+        // Labels
+        assertEquals("Default label color should be Gray", Color.Gray, theme.labelColor)
+        assertEquals("Default label font size should be 11sp, as on the web", 11.sp, theme.labelFontSize)
+        assertEquals("Default label weight should be semibold, as on the web", 600, theme.labelFontWeight)
+        assertTrue("Labels should be uppercased by default, as on the web", theme.labelUppercase)
+        assertFalse("Labels should be visible by default", theme.labelHidden)
+
+        // Input text
+        assertEquals("Default input font size should be 14sp, as on the web", 14.sp, theme.inputFontSize)
+        assertNull("Default input weight should be unset", theme.inputFontWeight)
+        assertNull("Default input height should be unset", theme.inputHeight)
+        assertNull("Default placeholder color should be unset", theme.placeholderColor)
+
+        // Border
+        assertEquals("Default border style should be underline, as on the web", InputBorderStyle.UNDERLINE, theme.inputBorderStyle)
         assertEquals("Default border color should be Gray", Color.Gray, theme.inputBorderColor)
-        assertEquals("Default background color should be White", Color.White, theme.inputBackgroundColor)
-        
-        // Test default sizes
+        assertEquals("Default background should be transparent, as on the web", Color.Transparent, theme.inputBackgroundColor)
         assertEquals("Default border width should be 1dp", 1.dp, theme.inputBorderWidth)
-        assertEquals("Default field spacing should be 2dp", 2.dp, theme.fieldSpacing)
+        assertEquals("Default border radius should be 0dp, as on the web", 0.dp, theme.inputBorderRadius)
+        assertEquals("Default vertical padding should be 6dp, as on the web", 6.dp, theme.inputPaddingVertical)
+        assertEquals("Default horizontal padding should be 0dp, as on the web", 0.dp, theme.inputPaddingHorizontal)
+        assertFalse("Borders should not collapse by default", theme.inputBorderCollapse)
+
+        // Focus
+        assertNull("Default focus ring width should be unset", theme.focusRingWidth)
+        assertNull("Default focus ring color should be unset", theme.focusRingColor)
+
+        // Errors
+        assertEquals("Default error color should be Red", Color.Red, theme.errorTextColor)
+        assertEquals("Default error font size should be 11sp, as on the web", 11.sp, theme.errorFontSize)
+        assertEquals("Default error min height should be 14dp, as on the web", 14.dp, theme.errorMinHeight)
+        assertNull("Default error spacing should fall back to fieldSpacing", theme.errorSpacing)
+
+        // Layout
         assertEquals("Default group spacing should be 16dp", 16.dp, theme.groupSpacing)
+        assertEquals("Default field spacing should be 4dp", 4.dp, theme.fieldSpacing)
+        assertEquals("Default form padding should be 16dp, as on the web", 16.dp, theme.formPadding)
+        assertEquals("Default form background should be transparent", Color.Transparent, theme.formBackgroundColor)
+
+        // Mobile-only helper text
+        assertEquals("Default helper color should be Gray", Color.Gray, theme.helperTextColor)
+        assertEquals("Default helper font size should be 12sp", 12.sp, theme.helperFontSize)
     }
 
     @Test
     fun paymentCardFormTheme_customValues_areApplied() {
         val customTheme = PaymentCardFormTheme(
-            labelTextStyle = TextStyle(color = Color.Blue, fontSize = 16.sp),
-            inputTextStyle = TextStyle(color = Color.Red, fontSize = 18.sp),
-            errorTextStyle = TextStyle(color = Color.Green, fontSize = 12.sp),
+            labelColor = Color.Blue,
+            labelFontSize = 16.sp,
+            labelFontWeight = 600,
+            labelUppercase = true,
+            inputTextColor = Color.Red,
+            inputFontSize = 18.sp,
+            errorTextColor = Color.Green,
+            errorFontSize = 12.sp,
+            inputBorderStyle = InputBorderStyle.UNDERLINE,
             inputBorderColor = Color.Yellow,
             inputBackgroundColor = Color.Cyan,
-            inputShape = RoundedCornerShape(8.dp),
+            inputBorderRadius = 8.dp,
             inputBorderWidth = 2.dp,
             fieldSpacing = 20.dp,
             groupSpacing = 12.dp
         )
 
-        // Test custom text styles
-        assertEquals("Custom label color should be Blue", Color.Blue, customTheme.labelTextStyle.color)
-        assertEquals("Custom label font size should be 16sp", 16.sp, customTheme.labelTextStyle.fontSize)
-        
-        assertEquals("Custom input color should be Red", Color.Red, customTheme.inputTextStyle.color)
-        assertEquals("Custom input font size should be 18sp", 18.sp, customTheme.inputTextStyle.fontSize)
-        
-        assertEquals("Custom error color should be Green", Color.Green, customTheme.errorTextStyle.color)
-        assertEquals("Custom error font size should be 12sp", 12.sp, customTheme.errorTextStyle.fontSize)
-        
-        // Test custom colors and sizes
+        assertEquals("Custom label color should be Blue", Color.Blue, customTheme.labelColor)
+        assertEquals("Custom label font size should be 16sp", 16.sp, customTheme.labelFontSize)
+        assertEquals("Custom label weight should be 600", 600, customTheme.labelFontWeight)
+        assertTrue("Custom labels should be uppercased", customTheme.labelUppercase)
+
+        assertEquals("Custom input color should be Red", Color.Red, customTheme.inputTextColor)
+        assertEquals("Custom input font size should be 18sp", 18.sp, customTheme.inputFontSize)
+
+        assertEquals("Custom error color should be Green", Color.Green, customTheme.errorTextColor)
+        assertEquals("Custom error font size should be 12sp", 12.sp, customTheme.errorFontSize)
+
+        assertEquals("Custom border style should be underline", InputBorderStyle.UNDERLINE, customTheme.inputBorderStyle)
         assertEquals("Custom border color should be Yellow", Color.Yellow, customTheme.inputBorderColor)
         assertEquals("Custom background color should be Cyan", Color.Cyan, customTheme.inputBackgroundColor)
         assertEquals("Custom border width should be 2dp", 2.dp, customTheme.inputBorderWidth)
+        assertEquals("Custom border radius should be 8dp", 8.dp, customTheme.inputBorderRadius)
         assertEquals("Custom field spacing should be 20dp", 20.dp, customTheme.fieldSpacing)
         assertEquals("Custom group spacing should be 12dp", 12.dp, customTheme.groupSpacing)
     }

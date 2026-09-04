@@ -4,10 +4,10 @@ import android.app.Activity
 import android.view.WindowManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -21,15 +21,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.locales.GopayLocaleStrings
 import cz.gopay.sdk.locales.GopayLocales
@@ -122,36 +117,6 @@ private fun parseExpirationDate(expirationDate: String): Pair<Int, Int>? {
     if (month < 1 || month > 12) return null
     return Pair(month, 2000 + year)
 }
-
-/**
- * Theme interface for customizing the appearance of the PaymentCardForm
- */
-data class PaymentCardFormTheme(
-    // Text styles
-    val labelTextStyle: TextStyle = TextStyle(color = Color.Gray, fontSize = 14.sp),
-    val inputTextStyle: TextStyle = TextStyle(fontSize = 16.sp),
-    val helperTextStyle: TextStyle = TextStyle(color = Color.Gray, fontSize = 12.sp),
-    val errorTextStyle: TextStyle = TextStyle(color = Color.Red, fontSize = 12.sp),
-    val loadingTextStyle: TextStyle = TextStyle(color = Color.Gray, fontSize = 14.sp),
-    /**
-     * Style for the empty-field placeholder. `null` keeps the historical default — [inputTextStyle]
-     * tinted `LightGray` — which is legible on a light form but reads as real input on a dark one,
-     * so dark themes should set this explicitly.
-     */
-    val placeholderTextStyle: TextStyle? = null,
-    
-    // Colors
-    val inputBorderColor: Color = Color.Gray,
-    val inputErrorBorderColor: Color = Color.Red,
-    val inputBackgroundColor: Color = Color.White,
-    
-    // Sizes and shapes
-    val inputBorderWidth: Dp = 1.dp,
-    val inputShape: Shape = RoundedCornerShape(4.dp),
-    val inputPadding: PaddingValues = PaddingValues(12.dp),
-    val fieldSpacing: Dp = 2.dp,
-    val groupSpacing: Dp = 16.dp
-)
 
 /**
  * A secure payment card form that handles card data input and JWE encryption.
@@ -264,8 +229,10 @@ fun PaymentCardForm(
 
     Column(
         modifier = modifier
-            .fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(theme.fieldSpacing)
+            .fillMaxWidth()
+            .background(theme.formBackgroundColor)
+            .padding(theme.formPadding.coerceAtLeast(0.dp)),
+        verticalArrangement = Arrangement.spacedBy(theme.groupSpacing.coerceAtLeast(0.dp))
     ) {
         // Card Number Input
         LabeledInputField(
@@ -295,7 +262,7 @@ fun PaymentCardForm(
         // Expiration Date and CVV Row
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(theme.groupSpacing)
+            horizontalArrangement = Arrangement.spacedBy(theme.groupSpacing.coerceAtLeast(0.dp))
         ) {
             // Expiration Date
             LabeledInputField(

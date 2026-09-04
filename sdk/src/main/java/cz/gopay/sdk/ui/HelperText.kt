@@ -16,16 +16,16 @@ fun HelperText(error: String?, helperText: String?, theme: PaymentCardFormTheme)
         error != null -> {
             BasicText(
                 text = error,
-                style = theme.errorTextStyle,
+                style = theme.errorTextStyle(),
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
         helperText != null -> {
             BasicText(
                 text = helperText,
-                style = theme.helperTextStyle,
+                style = theme.helperTextStyle(),
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
     }
-} 
+}

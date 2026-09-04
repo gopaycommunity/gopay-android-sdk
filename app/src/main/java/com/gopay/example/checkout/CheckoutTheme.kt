@@ -6,7 +6,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -74,18 +72,26 @@ object CheckoutTheme {
      */
     val cardForm: PaymentCardFormTheme
         @Composable get() = PaymentCardFormTheme(
-            labelTextStyle = TextStyle(color = inkMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
-            inputTextStyle = TextStyle(color = ink, fontSize = 16.sp, fontWeight = FontWeight.Medium),
-            placeholderTextStyle = TextStyle(color = inkMuted, fontSize = 16.sp),
-            helperTextStyle = TextStyle(color = inkMuted, fontSize = 12.sp),
-            errorTextStyle = TextStyle(color = danger, fontSize = 12.sp),
-            loadingTextStyle = TextStyle(color = inkMuted, fontSize = 14.sp),
+            labelColor = inkMuted,
+            labelFontSize = 12.sp,
+            labelFontWeight = 600,
+            inputTextColor = ink,
+            inputFontSize = 16.sp,
+            inputFontWeight = 500,
+            placeholderColor = inkMuted,
+            helperTextColor = inkMuted,
+            helperFontSize = 12.sp,
+            errorTextColor = danger,
+            errorFontSize = 12.sp,
             inputBorderColor = hairline,
             inputErrorBorderColor = danger,
             inputBackgroundColor = surfaceSunken,
             inputBorderWidth = 1.dp,
-            inputShape = RoundedCornerShape(controlRadius),
-            inputPadding = PaddingValues(14.dp),
+            inputBorderRadius = controlRadius,
+            inputPaddingVertical = 14.dp,
+            inputPaddingHorizontal = 14.dp,
+            focusGradientStart = accent,
+            focusGradientEnd = accent,
             fieldSpacing = 4.dp,
             groupSpacing = 14.dp
         )

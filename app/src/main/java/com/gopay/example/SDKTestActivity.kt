@@ -452,15 +452,18 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
     )
 
     val theme = PaymentCardFormTheme(
-        labelTextStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)),
-        inputTextStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-        helperTextStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)),
-        errorTextStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.error),
-        loadingTextStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.primary),
+        labelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+        labelFontSize = MaterialTheme.typography.bodyMedium.fontSize,
+        inputTextColor = MaterialTheme.colorScheme.onSurface,
+        inputFontSize = MaterialTheme.typography.bodyLarge.fontSize,
+        helperTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+        helperFontSize = MaterialTheme.typography.bodySmall.fontSize,
+        errorTextColor = MaterialTheme.colorScheme.error,
+        errorFontSize = MaterialTheme.typography.bodySmall.fontSize,
         inputBorderColor = MaterialTheme.colorScheme.outline,
         inputErrorBorderColor = MaterialTheme.colorScheme.error,
         inputBackgroundColor = MaterialTheme.colorScheme.surface,
-        inputShape = MaterialTheme.shapes.small,
+        inputBorderRadius = 8.dp,
         inputBorderWidth = 1.dp
     )
 

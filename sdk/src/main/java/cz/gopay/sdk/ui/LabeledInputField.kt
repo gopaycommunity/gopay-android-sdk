@@ -5,12 +5,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 
@@ -40,15 +40,16 @@ fun LabeledInputField(
     singleLine: Boolean = true,
     theme: PaymentCardFormTheme = PaymentCardFormTheme()
 ) {
+    val shape = RoundedCornerShape(theme.inputBorderRadius.coerceAtLeast(0.dp))
     Column(modifier = modifier) {
         BasicText(
             text = config.label,
             style = if (config.error != null) {
-                theme.labelTextStyle.copy(color = theme.errorTextStyle.color)
+                theme.labelTextStyle().copy(color = theme.errorTextColor)
             } else {
-                theme.labelTextStyle
+                theme.labelTextStyle()
             },
-            modifier = Modifier.padding(bottom = 4.dp)
+            modifier = Modifier.padding(bottom = theme.fieldSpacing.coerceAtLeast(0.dp))
         )
         BasicTextField(
             value = value,
@@ -57,21 +58,31 @@ fun LabeledInputField(
             visualTransformation = config.visualTransformation,
             modifier = config.textFieldModifier
                 .fillMaxWidth()
-                .background(color = theme.inputBackgroundColor, shape = theme.inputShape)
-                .border(
-                    width = theme.inputBorderWidth,
-                    color = if (config.error != null) theme.inputErrorBorderColor else theme.inputBorderColor,
-                    shape = theme.inputShape
-                )
-                .padding(theme.inputPadding),
+                .background(color = theme.inputBackgroundColor, shape = shape)
+                // A zero width means no border at all, as on the web; Compose would otherwise
+                // draw a hairline.
+                .let {
+                    if (theme.inputBorderWidth > 0.dp) {
+                        it.border(
+                            width = theme.inputBorderWidth,
+                            color = if (config.error != null) theme.inputErrorBorderColor else theme.inputBorderColor,
+                            shape = shape
+                        )
+                    } else {
+                        it
+                    }
+                }
+                .padding(
+                    horizontal = theme.inputPaddingHorizontal.coerceAtLeast(0.dp),
+                    vertical = theme.inputPaddingVertical.coerceAtLeast(0.dp)
+                ),
             singleLine = singleLine,
-            textStyle = theme.inputTextStyle,
+            textStyle = theme.inputTextStyle(),
             decorationBox = { innerTextField ->
                 if (value.isEmpty() && config.placeholder != null) {
                     BasicText(
                         text = config.placeholder,
-                        style = theme.placeholderTextStyle
-                            ?: theme.inputTextStyle.copy(color = Color.LightGray)
+                        style = theme.placeholderTextStyle()
                     )
                 }
                 innerTextField()
@@ -79,4 +90,4 @@ fun LabeledInputField(
         )
         HelperText(error = config.error, helperText = config.helperText, theme = theme)
     }
-} 
+}
