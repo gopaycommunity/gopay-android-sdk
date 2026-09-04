@@ -145,6 +145,36 @@ class PaymentCardFormThemeTest {
     }
 
     @Test
+    fun borderColor_prefersFocusOverError() {
+        val theme = PaymentCardFormTheme(
+            inputBorderColor = Color.Gray,
+            inputErrorBorderColor = Color.Red,
+            focusGradientStart = Color.Blue
+        )
+
+        assertEquals(
+            "A resting valid field shows the plain border",
+            Color.Gray,
+            theme.borderColorFor(isFocused = false, hasError = false)
+        )
+        assertEquals(
+            "An unfocused invalid field shows the error border",
+            Color.Red,
+            theme.borderColorFor(isFocused = false, hasError = true)
+        )
+        assertEquals(
+            "A focused field shows the focus color",
+            Color.Blue,
+            theme.borderColorFor(isFocused = true, hasError = false)
+        )
+        assertEquals(
+            "Focus wins over an error on the active field",
+            Color.Blue,
+            theme.borderColorFor(isFocused = true, hasError = true)
+        )
+    }
+
+    @Test
     fun themeDocument_roundTripsThroughJson() {
         // Every parameter the document can carry is set to a non-default value on purpose: the
         // two mappers are hand-written, one line per parameter, and a forgotten line would

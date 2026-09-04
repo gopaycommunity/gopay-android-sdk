@@ -512,7 +512,10 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
                     errorMessage = null
                 },
                 inputFields = inputFields,
-                theme = theme
+                theme = theme,
+                // The card clips to its shape and the focus ring is drawn outside the fields, so
+                // the form needs room around it, as it has in the iOS demo.
+                modifier = Modifier.padding(16.dp)
             )
         }
 

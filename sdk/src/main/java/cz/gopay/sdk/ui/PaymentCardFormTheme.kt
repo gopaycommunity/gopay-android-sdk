@@ -1,6 +1,8 @@
 package cz.gopay.sdk.ui
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -82,7 +84,9 @@ enum class InputBorderStyle {
  *   into one shared line, so the fields read as a single block. [inputBorderRadius] then rounds
  *   only the outer corners of that block.
  * @property focusRingWidth Width of a ring drawn outside the border of the focused input. Needs
- *   [focusRingColor] as well; `null` in either draws no ring. The ring never shifts the layout.
+ *   [focusRingColor] as well; `null` in either draws no ring. The ring never shifts the layout, so
+ *   a host that clips the form to its bounds (a `Card`, for instance) needs [formPadding] or its
+ *   own padding of at least this width, or the ring is cut off at the edge of the form.
  * @property focusRingColor Color of the focus ring, paired with [focusRingWidth].
  * @property focusGradientStart Primary focus color: the solid border color of a focused
  *   [InputBorderStyle.BOXED] input, and the left end of the focused underline gradient.
@@ -207,6 +211,33 @@ internal fun PaymentCardFormTheme.inputTextStyle(): TextStyle = TextStyle(
 /** Text style of the placeholder shown in an empty field. */
 internal fun PaymentCardFormTheme.placeholderTextStyle(): TextStyle =
     inputTextStyle().copy(color = placeholderColor ?: Color.LightGray)
+
+/** How much taller a rendered line is than the font size that names it, for the default family. */
+private const val ERROR_LINE_HEIGHT_FACTOR = 1.2f
+
+/**
+ * Height reserved below an input so the form does not jump when an error appears.
+ *
+ * [PaymentCardFormTheme.errorMinHeight] is what the theme asked for. Zero means no reserve at all
+ * and the slot disappears; above zero, a reserve shorter than one rendered line of the error font
+ * would not hold the message it exists for, so the taller of the two wins. Mirrors the iOS `reservedErrorHeight(for:)`, which reads the line height from the font
+ * itself; Compose has no equivalent outside a measuring pass, so this uses the usual factor.
+ */
+@Composable
+internal fun PaymentCardFormTheme.reservedErrorHeight(): Dp {
+    val requested = errorMinHeight.coerceAtLeast(0.dp)
+    if (requested <= 0.dp) return 0.dp
+    // A rendered line is about a fifth taller than the font size that names it, so reserving the
+    // bare size still lets the form jump when a message appears. `toDp` accepts only `sp`, and
+    // `errorFontSize` is a public parameter a host can leave unset or carry over from a text
+    // style in `em`, which would otherwise take the whole form down.
+    val oneLine = if (errorFontSize.isSp) {
+        with(LocalDensity.current) { errorFontSize.toDp() } * ERROR_LINE_HEIGHT_FACTOR
+    } else {
+        0.dp
+    }
+    return maxOf(requested, oneLine)
+}
 
 /** Text style of the error line below a field. Prose, so its direction follows its content. */
 internal fun PaymentCardFormTheme.errorTextStyle(): TextStyle = TextStyle(
