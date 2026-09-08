@@ -50,8 +50,8 @@ class EnvironmentTest {
 
     @Test
     fun testDevelopmentEnvironmentAcceptsUppercaseScheme() {
-        // URL schemes are case-insensitive, and iOS accepts this form — a launch override must
-        // not work on one platform and fail on the other.
+        // URL schemes are case-insensitive, and iOS accepts this form — the same demo base URL
+        // must not work on one platform and fail on the other.
         val developmentEnv = Environment.DEVELOPMENT.create("HTTPS://localhost:8080/")
         assertEquals("HTTPS://localhost:8080/", developmentEnv.apiBaseUrl)
     }

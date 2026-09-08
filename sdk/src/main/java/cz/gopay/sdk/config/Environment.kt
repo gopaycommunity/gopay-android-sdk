@@ -27,7 +27,7 @@ sealed class Environment(val apiBaseUrl: String) {
         customUrl.let {
             require(it.isNotBlank()) { "Development URL cannot be empty" }
             // Case-insensitive: URL schemes are, and iOS accepts "HTTPS://" too. Rejecting it
-            // here would make the same launch override work on one platform and not the other.
+            // here would make the same demo base URL work on one platform and not the other.
             require(it.startsWith("http://", ignoreCase = true) ||
                 it.startsWith("https://", ignoreCase = true)) {
                 "Development URL must start with http:// or https://"

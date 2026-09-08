@@ -67,9 +67,3 @@ local.properties
 
 .github/instructions/*
 
-# Demo credentials, per developer — see .env.example for the keys and scripts/run-demo.sh
-# for how they reach the app. Never commit the filled-in file.
-.env
-
-# The demo runner is versioned, despite the blanket *.sh rule above.
-!scripts/*.sh

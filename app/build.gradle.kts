@@ -1,7 +1,35 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
 }
+
+// Demo gateway and merchant values, read from a `-P` project property or, failing that, the
+// gitignored `local.properties` in the repo root. A missing key is an empty string, so the build
+// works without them.
+val demoProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
+fun demoProperty(key: String): String =
+    (project.findProperty(key) as String? ?: demoProperties.getProperty(key) ?: "")
+        .trim()
+        // The value is interpolated into a Java string literal in the generated BuildConfig.
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+
+// The SDK appends the trailing slash; only the scheme has to be right here, and getting it wrong
+// should fail the build rather than the app at launch.
+val demoBaseUrl = demoProperty("gopay.demo.baseUrl")
+require(
+    demoBaseUrl.isEmpty() ||
+        demoBaseUrl.startsWith("http://", ignoreCase = true) ||
+        demoBaseUrl.startsWith("https://", ignoreCase = true)
+) { "gopay.demo.baseUrl must be empty or an http(s) URL, got '$demoBaseUrl'" }
 
 android {
     namespace = "com.gopay.example"
@@ -19,22 +47,11 @@ android {
             useSupportLibrary = true
         }
 
-        // Build-time default for the demo's development gateway URL, so a build can be aimed at
-        // another environment without editing code:
-        //     ./gradlew :app:installDebug -Pgopay.demo.baseUrl=https://gw.example.com/gp-gw/api/4.0/
-        // Empty means "use the constant in DemoConfig". A runtime intent extra still wins over
-        // this — see DemoLaunchOverrides. Credentials are deliberately NOT settable here: a Gradle
-        // property gets baked into the APK, which is exactly what we don't want for a client
-        // secret. Pass those as intent extras instead.
-        // Escaped, because the value is interpolated straight into a Java string literal in the
-        // generated BuildConfig — an unescaped quote there fails the build in generated code.
-        val demoBaseUrl = (project.findProperty("gopay.demo.baseUrl") as String? ?: "")
-            .trim()
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
         buildConfigField("String", "DEMO_BASE_URL", "\"$demoBaseUrl\"")
+        buildConfigField("String", "DEMO_CLIENT_ID", "\"${demoProperty("gopay.demo.clientId")}\"")
+        buildConfigField("String", "DEMO_SHAREABLE_KEY", "\"${demoProperty("gopay.demo.shareableKey")}\"")
+        buildConfigField("String", "DEMO_CLIENT_SECRET", "\"${demoProperty("gopay.demo.clientSecret")}\"")
+        buildConfigField("String", "DEMO_GOID", "\"${demoProperty("gopay.demo.goid")}\"")
     }
 
     signingConfigs {
@@ -93,7 +110,6 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.zxing.core)
-    implementation(libs.okhttp)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

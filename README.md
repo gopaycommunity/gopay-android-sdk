@@ -361,8 +361,8 @@ throws a subset of the same catalog.
 A demo app that fakes the merchant backend and exercises every session operation lives in
 [`app/`](app/) — see [`app/README.md`](app/README.md) for setup and a walkthrough.
 
-Its credentials are not in the repository: copy [`.env.example`](.env.example) to `.env`, fill in
-your GoPay values, and launch with `./scripts/run-demo.sh --install`.
+Its gateway and merchant values are not in the repository: put them in `local.properties` in the
+repo root, then run the app from Android Studio or with `./gradlew :app:installDebug`.
 
 ## Security notes
 

@@ -2,7 +2,6 @@ package com.gopay.example
 
 import android.util.Base64
 import cz.gopay.sdk.GopaySDK
-import cz.gopay.sdk.config.Environment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -94,12 +93,8 @@ object MerchantBackendSimulator {
     /**
      * Reads the base URL straight from the live SDK config rather than from [DemoConfig] directly,
      * so this simulator can never disagree with the SDK about which gateway is active after an
-     * environment switch. [Environment.SANDBOX] and [Environment.PRODUCTION] always carry a real
-     * URL; only the credentials (client id / secret / goid) are unfilled placeholders for those,
-     * so a request against them fails with an auth error, not a malformed-URL crash. The blank
-     * fallback only matters if this is ever called before [GopaySDK.initialize] — which
-     * `ExampleApplication.onCreate` prevents in practice, but a `check` here turns that misuse
-     * into a clear message instead of a `MalformedURLException`.
+     * environment switch. The blank fallback only matters before [GopaySDK.initialize], where the
+     * `check` turns the misuse into a clear message instead of a `MalformedURLException`.
      */
     private fun openConnection(path: String): HttpURLConnection {
         val baseUrl = if (GopaySDK.isInitialized()) GopaySDK.getInstance().config.environment.apiBaseUrl else ""
