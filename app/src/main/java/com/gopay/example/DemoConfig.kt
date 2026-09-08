@@ -27,11 +27,25 @@ enum class DemoEnvironment(val title: String) {
 }
 
 /**
- * What a `gopay.demo.baseUrl` value resolves to: blank means the SDK's own sandbox host, anything
- * else a custom gateway.
+ * What a `gopay.demo.baseUrl` value resolves to: blank means the SDK's own sandbox host, one of the
+ * SDK's built-in gateway URLs that environment, anything else a custom gateway.
  */
-internal fun demoBaseUrlEnvironment(baseUrl: String): Environment =
-    if (baseUrl.isBlank()) Environment.SANDBOX else Environment.DEVELOPMENT.create(baseUrl)
+internal fun demoBaseUrlEnvironment(baseUrl: String): Environment {
+    val normalized = baseUrl.trim().let { if (it.isEmpty() || it.endsWith("/")) it else "$it/" }
+    return when (normalized) {
+        "", Environment.SANDBOX.apiBaseUrl -> Environment.SANDBOX
+        Environment.PRODUCTION.apiBaseUrl -> Environment.PRODUCTION
+        else -> Environment.DEVELOPMENT.create(baseUrl)
+    }
+}
+
+/** The badge entry the demo starts on for a `gopay.demo.baseUrl` value. */
+internal fun demoInitialEnvironment(baseUrl: String): DemoEnvironment =
+    when (demoBaseUrlEnvironment(baseUrl)) {
+        Environment.SANDBOX -> DemoEnvironment.SANDBOX
+        Environment.PRODUCTION -> DemoEnvironment.PRODUCTION
+        else -> DemoEnvironment.DEVELOPMENT
+    }
 
 /**
  * Merchant values used by both the SDK config (`clientId`/`shareableKey`) and the simulated
@@ -71,13 +85,16 @@ object DemoConfig {
     /** Return URL the SDK's 3DS WebView intercepts to detect flow completion. */
     const val CHARGE_RETURN_URL = "cz.gopay.sdk://payment/return"
 
-    /** Development is offered only when `gopay.demo.baseUrl` names a gateway. */
+    /** Where the badge starts: the built-in environment `gopay.demo.baseUrl` names, or Development. */
+    private val initialEnvironment: DemoEnvironment = demoInitialEnvironment(developmentBaseUrl)
+
+    /** Development is offered only when `gopay.demo.baseUrl` names a custom gateway. */
     val availableEnvironments: List<DemoEnvironment> = DemoEnvironment.entries.filter {
-        it != DemoEnvironment.DEVELOPMENT || developmentBaseUrl.isNotBlank()
+        it != DemoEnvironment.DEVELOPMENT || initialEnvironment == DemoEnvironment.DEVELOPMENT
     }
 
     /** Backed by Compose snapshot state, so the environment badge recomposes on [select]. */
-    var environment by mutableStateOf(availableEnvironments.first())
+    var environment by mutableStateOf(initialEnvironment)
         private set
 
     /**

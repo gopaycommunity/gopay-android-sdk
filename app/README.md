@@ -45,9 +45,10 @@ gopay.demo.clientSecret=
 gopay.demo.goid=
 ```
 
-Leave `gopay.demo.baseUrl` empty to use the SDK's sandbox host. A value makes **Development** the
-initial selection and adds it to the environment badge. A value runs to the end of the line, so no
-trailing `# comment`.
+Leave `gopay.demo.baseUrl` empty to use the SDK's sandbox host. The sandbox or production gateway
+URL starts the badge on **Sandbox** or **Production**; any other URL makes **Development** the
+initial selection and adds it to the badge. A value runs to the end of the line, so no trailing
+`# comment`.
 
 Gateway hosts: sandbox `https://gw.sandbox.gopay.com/gp-gw/api/4.0/`, production
 `https://gate.gopay.com/gp-gw/api/4.0/`.
@@ -63,8 +64,8 @@ never carries one.
 The screen is split into four numbered sections. Sections 3 and 4 appear once a session is live.
 
 1. Tap **Developer sandbox** on the main screen.
-2. **1. Merchant backend (simulated)** — tap **Create payment on "server"**. Creates a 1000 CZK
-   payment and fills in the `payment_id` / `payment_secret` fields.
+2. **1. Merchant backend (simulated)** — tap **Create payment on "server"**. Creates a 1 CZK
+   payment (amount `100`, in minor units) and fills in the `payment_id` / `payment_secret` fields.
 3. **2. Payment session** — tap **Start session**. Auth happens eagerly, so bad credentials fail
    here. A "Session live: …" row with a **Close** button appears.
 4. **3. Operations** —

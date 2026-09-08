@@ -132,10 +132,11 @@ fun SDKTestScreen() {
             )
             DemoButton("Create payment on \"server\"", enabled = !isBusy) {
                 run("Create payment") {
-                    val created = MerchantBackendSimulator.createPayment(amount = 1000, currency = "CZK")
+                    // Amount is in minor units: 100 = 1 CZK.
+                    val created = MerchantBackendSimulator.createPayment(amount = 100, currency = "CZK")
                     paymentId = created.paymentId
                     paymentSecret = created.paymentSecret
-                    log("// merchant backend created a payment\npayment_id: ${created.paymentId}\npayment_secret: ${created.paymentSecret}")
+                    log("// merchant backend created a 1 CZK payment\npayment_id: ${created.paymentId}\npayment_secret: ${created.paymentSecret}")
                 }
             }
             LabeledField("payment_id", paymentId, enabled = !isBusy) { paymentId = it }
