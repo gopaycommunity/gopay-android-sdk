@@ -46,15 +46,14 @@ gopay.demo.goid=
 ```
 
 Leave `gopay.demo.baseUrl` empty to use the SDK's sandbox host. The sandbox or production gateway
-URL starts the badge on **Sandbox** or **Production**; any other URL makes **Development** the
-initial selection and adds it to the badge. A value runs to the end of the line, so no trailing
-`# comment`.
+URL makes the badge read **Sandbox** or **Production**; any other URL reads as **Development**.
+A value runs to the end of the line, so no trailing `# comment`.
 
 Gateway hosts: sandbox `https://gw.sandbox.gopay.com/gp-gw/api/4.0/`, production
 `https://gate.gopay.com/gp-gw/api/4.0/`.
 
-Switching environments from the badge closes any live session and re-initializes the SDK; the
-choice isn't persisted.
+The badge is a read-only indicator. The environment is fixed for the whole run, so point the demo
+somewhere else by editing `local.properties` and launching again.
 
 `gopay.demo.clientSecret` is a merchant secret, used only by the simulated backend. A real app
 never carries one.

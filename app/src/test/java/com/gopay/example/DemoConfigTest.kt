@@ -44,13 +44,7 @@ class DemoConfigTest {
 
     /** Holds whatever local.properties says, so it is safe to run either way. */
     @Test
-    fun `the badge offers Development exactly when a custom gateway is configured`() {
-        assertTrue(DemoEnvironment.SANDBOX in DemoConfig.availableEnvironments)
-        assertTrue(DemoEnvironment.PRODUCTION in DemoConfig.availableEnvironments)
-        assertEquals(
-            demoInitialEnvironment(DemoConfig.developmentBaseUrl) == DemoEnvironment.DEVELOPMENT,
-            DemoEnvironment.DEVELOPMENT in DemoConfig.availableEnvironments
-        )
+    fun `the badge reads the environment the configured gateway names`() {
         assertEquals(demoInitialEnvironment(DemoConfig.developmentBaseUrl), DemoConfig.environment)
     }
 }

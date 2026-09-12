@@ -24,23 +24,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -136,12 +131,12 @@ fun MainMenuScreen() {
 }
 
 /**
- * Which gateway both demo surfaces are pointed at, and a tap target to switch it. Reads
- * [DemoConfig.environment], the same state [DemoConfig.select] updates.
+ * Which gateway both demo surfaces are pointed at. Read-only: the environment comes from
+ * `gopay.demo.baseUrl` and is fixed for the life of the process, so the label can never claim one
+ * gateway while the SDK talks to another.
  */
 @Composable
 private fun EnvironmentBadge() {
-    var expanded by remember { mutableStateOf(false) }
     val environment = DemoConfig.environment
 
     val name = when (environment) {
@@ -156,45 +151,26 @@ private fun EnvironmentBadge() {
     }
     val host = runCatching { java.net.URI(environment.sdkEnvironment.apiBaseUrl).host }.getOrNull()
 
-    Box {
-        Row(
-            modifier = Modifier
-                .background(tint.copy(alpha = 0.12f), CircleShape)
-                .clickable { expanded = true }
-                .padding(horizontal = 11.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(modifier = Modifier.size(7.dp).background(tint, CircleShape))
-            Spacer(Modifier.width(7.dp))
-            Text(text = name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = tint)
-            if (host != null) {
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = host,
-                    fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = CheckoutTheme.inkMuted
-                )
-            }
+    Row(
+        modifier = Modifier
+            .background(tint.copy(alpha = 0.12f), CircleShape)
+            .padding(horizontal = 11.dp, vertical = 7.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Gateway: $name" + if (host != null) ", $host" else ""
+            },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.size(7.dp).background(tint, CircleShape))
+        Spacer(Modifier.width(7.dp))
+        Text(text = name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = tint)
+        if (host != null) {
             Spacer(Modifier.width(6.dp))
-            Icon(
-                Icons.Filled.ArrowDropDown,
-                contentDescription = "Switch environment",
-                tint = CheckoutTheme.inkMuted,
-                modifier = Modifier.size(16.dp)
+            Text(
+                text = host,
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                color = CheckoutTheme.inkMuted
             )
-        }
-
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DemoConfig.availableEnvironments.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option.title) },
-                    onClick = {
-                        DemoConfig.select(option)
-                        expanded = false
-                    }
-                )
-            }
         }
     }
 }

@@ -1,21 +1,17 @@
 package com.gopay.example
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.config.Environment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.locales.GopayLocales
 
 /**
- * Which gateway the demo talks to. Selectable from `MainActivity`'s environment badge; the
- * selection is not persisted across launches.
+ * Which gateway the demo talks to. Decided by `gopay.demo.baseUrl` at build time and shown by
+ * `MainActivity`'s environment badge.
  */
-enum class DemoEnvironment(val title: String) {
-    DEVELOPMENT("Development"),
-    SANDBOX("Sandbox"),
-    PRODUCTION("Production");
+enum class DemoEnvironment {
+    DEVELOPMENT,
+    SANDBOX,
+    PRODUCTION;
 
     /** The SDK [Environment] this maps to. */
     val sdkEnvironment: Environment
@@ -61,9 +57,9 @@ data class DemoCredentials(
 /**
  * DEMO ONLY.
  *
- * Holds the demo's currently-selected environment and builds the SDK config for it. Both
- * [ExampleApplication] (at launch) and the environment badge (at runtime) go through here, so the
- * SDK and the badge always agree on what is active.
+ * Holds the environment the demo runs against and builds the SDK config for it. The environment
+ * is decided once, by `gopay.demo.baseUrl`, and never changes while the app runs: point the demo
+ * somewhere else by editing `local.properties` and launching again.
  *
  * The gateway URL and merchant values come from `local.properties` in the repo root through
  * `BuildConfig`; see `app/README.md`.
@@ -85,34 +81,12 @@ object DemoConfig {
     /** Return URL the SDK's 3DS WebView intercepts to detect flow completion. */
     const val CHARGE_RETURN_URL = "cz.gopay.sdk://payment/return"
 
-    /** Where the badge starts: the built-in environment `gopay.demo.baseUrl` names, or Development. */
-    private val initialEnvironment: DemoEnvironment = demoInitialEnvironment(developmentBaseUrl)
-
-    /** Development is offered only when `gopay.demo.baseUrl` names a custom gateway. */
-    val availableEnvironments: List<DemoEnvironment> = DemoEnvironment.entries.filter {
-        it != DemoEnvironment.DEVELOPMENT || initialEnvironment == DemoEnvironment.DEVELOPMENT
-    }
-
-    /** Backed by Compose snapshot state, so the environment badge recomposes on [select]. */
-    var environment by mutableStateOf(initialEnvironment)
-        private set
+    /** What the badge reads: the built-in environment `gopay.demo.baseUrl` names, or Development. */
+    val environment: DemoEnvironment = demoInitialEnvironment(developmentBaseUrl)
 
     /**
-     * Closes any live payment session, since each one captures its own API client at creation,
-     * then re-initializes the SDK against [newEnvironment].
-     */
-    fun select(newEnvironment: DemoEnvironment) {
-        if (newEnvironment == environment) return
-        if (GopaySDK.isInitialized()) {
-            GopaySDK.getInstance().closeAllPaymentSessions()
-        }
-        GopaySDK.initialize(buildConfig(newEnvironment))
-        environment = newEnvironment
-    }
-
-    /**
-     * Builds the SDK config for [environment], reproducing every setting from app launch exactly
-     * (custom locale, debug flag, timeout, error callback).
+     * Builds the SDK config for [environment]: the custom locale, debug flag, timeout and error
+     * callback the app registers at launch.
      */
     fun buildConfig(environment: DemoEnvironment): GopayConfig = GopayConfig(
         environment = environment.sdkEnvironment,

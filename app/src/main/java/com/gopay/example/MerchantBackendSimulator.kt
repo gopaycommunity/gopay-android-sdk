@@ -92,8 +92,8 @@ object MerchantBackendSimulator {
 
     /**
      * Reads the base URL straight from the live SDK config rather than from [DemoConfig] directly,
-     * so this simulator can never disagree with the SDK about which gateway is active after an
-     * environment switch. The blank fallback only matters before [GopaySDK.initialize], where the
+     * so this simulator can never disagree with the SDK about which gateway is active.
+     * The blank fallback only matters before [GopaySDK.initialize], where the
      * `check` turns the misuse into a clear message instead of a `MalformedURLException`.
      */
     private fun openConnection(path: String): HttpURLConnection {
