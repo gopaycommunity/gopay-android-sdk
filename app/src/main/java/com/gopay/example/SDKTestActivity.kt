@@ -43,7 +43,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.gopay.example.ui.theme.ExampleAppTheme
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopaySDKException
@@ -54,7 +53,6 @@ import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.ui.CardEncryptionResult
 import cz.gopay.sdk.ui.PaymentCardForm
-import cz.gopay.sdk.ui.PaymentCardFormTheme
 import cz.gopay.sdk.ui.PaymentFormInputs
 import kotlinx.coroutines.launch
 
@@ -452,33 +450,31 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
         cvv = baseInputs.cvv.copy(hasError = cvvError != null, errorText = cvvError)
     )
 
-    // Exercises the cc-v4 theme parameters the SDK gained in 2.0: uppercase labels with their own
-    // weight and tracking, a focus gradient and ring, and a reserved error line.
-    val theme = PaymentCardFormTheme(
-        labelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-        labelFontSize = MaterialTheme.typography.labelSmall.fontSize,
-        labelFontWeight = 600,
-        labelUppercase = true,
-        labelLetterSpacing = 0.6.sp,
-        inputTextColor = MaterialTheme.colorScheme.onSurface,
-        inputFontSize = MaterialTheme.typography.bodyLarge.fontSize,
-        helperTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-        helperFontSize = MaterialTheme.typography.bodySmall.fontSize,
-        errorTextColor = MaterialTheme.colorScheme.error,
-        errorFontSize = MaterialTheme.typography.bodySmall.fontSize,
-        errorMinHeight = 16.dp,
-        inputBorderColor = MaterialTheme.colorScheme.outline,
-        inputErrorBorderColor = MaterialTheme.colorScheme.error,
-        inputBackgroundColor = MaterialTheme.colorScheme.surface,
-        inputBorderRadius = 8.dp,
-        inputBorderWidth = 1.dp,
-        focusGradientStart = MaterialTheme.colorScheme.primary,
-        focusGradientEnd = MaterialTheme.colorScheme.tertiary,
-        focusRingWidth = 2.dp,
-        focusRingColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
-    )
+    // Themes the form from a JSON document, the way a host would apply one its backend sent.
+    // The same documents ship with the iOS demo, so a parameter can be compared side by side.
+    val context = LocalContext.current
+    val showcase = remember(context) { ThemeShowcase.load(context) }
+    var themeName by remember { mutableStateOf(showcase.names.firstOrNull() ?: "Default") }
+    var themeMenuExpanded by remember { mutableStateOf(false) }
+    val theme = remember(themeName) { showcase.theme(themeName) }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Theme selector — apply one of the demo's JSON theme documents to the form.
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Theme:", style = MaterialTheme.typography.bodyMedium)
+            Box {
+                OutlinedButton(onClick = { themeMenuExpanded = true }) { Text(themeName) }
+                DropdownMenu(expanded = themeMenuExpanded, onDismissRequest = { themeMenuExpanded = false }) {
+                    showcase.names.forEach { name ->
+                        DropdownMenuItem(
+                            text = { Text(name) },
+                            onClick = { themeName = name; themeMenuExpanded = false }
+                        )
+                    }
+                }
+            }
+        }
+
         // Locale selector — switch the language of the form labels/placeholders live.
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Locale:", style = MaterialTheme.typography.bodyMedium)
@@ -523,10 +519,11 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
             },
             inputFields = inputFields,
             theme = theme,
-            // Placed straight into the section card, the way the iOS example sits in its grey box:
-            // the card's own 16dp content padding keeps the fields 32dp from the screen edge and
-            // leaves room for the focus ring, which is drawn outside the fields and would be
-            // clipped by a container hugging the form.
+            // Placed straight into the section card, the way the iOS example sits in its grey box.
+            // The screen's 16dp, the card's 16dp and the form's own 16dp formPadding put the fields
+            // 48dp from the screen edge, and that form padding is what leaves room for the focus
+            // ring, which is drawn outside the fields and would be clipped by a container hugging
+            // the form.
             modifier = Modifier.fillMaxWidth()
         )
 

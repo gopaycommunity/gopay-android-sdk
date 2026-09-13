@@ -79,9 +79,17 @@ The screen is split into four numbered sections. Sections 3 and 4 appear once a 
      the managed WebView.
    - **Get charge state** to read the final state.
    - **Get QR payment info** for the bank-transfer/QR variant.
-5. **4. Card form → JWE** — pick a form language from the **Locale** dropdown, fill in the card,
-   and tap **Encrypt card → JWE**. Then **Charge with encrypted card (JWE)**.
+5. **4. Card form → JWE** — pick a theme from the **Theme** dropdown and a form language from the
+   **Locale** dropdown, fill in the card, and tap **Encrypt card → JWE**. Then **Charge with
+   encrypted card (JWE)**.
 6. Tap **Close** in section 2 when done.
+
+The **Theme** dropdown applies one of the JSON theme documents in
+[`assets/theme-showcase.json`](src/main/assets/theme-showcase.json), the way a host would apply a
+theme its own backend sent down. The documents use the web card form's parameter names, and the
+iOS demo ships the same file, so one document can be compared across Android, iOS and the web.
+`Dark` and `Red` are the two presets the web card form ships with, written out key for key;
+`Default` is an empty document and renders the SDK defaults.
 
 Every step logs its result, or a structured `GopaySDKException`, into the **Response** card.
 
