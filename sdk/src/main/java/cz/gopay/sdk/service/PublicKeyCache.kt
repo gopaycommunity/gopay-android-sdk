@@ -2,7 +2,7 @@ package cz.gopay.sdk.service
 
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.modules.network.PublicApi
-import cz.gopay.sdk.modules.network.unwrap
+import cz.gopay.sdk.modules.network.apiCall
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -28,7 +28,7 @@ internal class PublicKeyCache(
             if (!forceRefresh) {
                 cached?.let { return@withLock it }
             }
-            val jwk = publicApi.getPublicKey().unwrap("fetch public key")
+            val jwk = apiCall("fetch public key") { publicApi.getPublicKey() }
             cached = jwk
             jwk
         }

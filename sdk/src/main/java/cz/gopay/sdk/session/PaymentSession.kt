@@ -18,7 +18,7 @@ import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.SessionTokenProvider
-import cz.gopay.sdk.modules.network.unwrap
+import cz.gopay.sdk.modules.network.apiCall
 import cz.gopay.sdk.service.GooglePayHelper
 import cz.gopay.sdk.ui.GooglePayBridge
 import cz.gopay.sdk.ui.GooglePayLauncherActivity
@@ -99,11 +99,13 @@ class PaymentSession internal constructor(
                 message = "PaymentSession for $paymentId is closed"
             )
             val response = try {
-                authApi.token(
-                    authorization = Base64Utils.basicAuthHeader(paymentId, secret),
-                    grantType = GRANT_TYPE_PAYMENT_CREDENTIALS,
-                    scope = scope
-                ).unwrap("acquire payment-scoped token")
+                apiCall("acquire payment-scoped token") {
+                    authApi.token(
+                        authorization = Base64Utils.basicAuthHeader(paymentId, secret),
+                        grantType = GRANT_TYPE_PAYMENT_CREDENTIALS,
+                        scope = scope
+                    )
+                }
             } catch (e: GopaySDKException) {
                 // Retag NETWORK_CLIENT_ERROR from unwrap as AUTH_PAYMENT_CREDENTIALS_INVALID,
                 // keeping the HttpErrorContext for diagnostics.
@@ -131,23 +133,23 @@ class PaymentSession internal constructor(
 
     /** GET /payments/{payment_id} */
     suspend fun getStatus(): PaymentCreateResponse =
-        paymentApi.getPaymentStatus(paymentId).unwrap("get payment status")
+        apiCall("get payment status") { paymentApi.getPaymentStatus(paymentId) }
 
     /** POST /payments/{payment_id}/charge */
     suspend fun charge(request: ChargePaymentRequest): ChargePaymentResponse =
-        paymentApi.chargePayment(paymentId, request).unwrap("charge payment")
+        apiCall("charge payment") { paymentApi.chargePayment(paymentId, request) }
 
     /** GET /payments/{payment_id}/charge */
     suspend fun getChargeState(): ChargePaymentResponse =
-        paymentApi.getChargeState(paymentId).unwrap("get charge state")
+        apiCall("get charge state") { paymentApi.getChargeState(paymentId) }
 
     /** GET /payments/{payment_id}/qr-payment/info */
     suspend fun getQrPaymentInfo(format: QrCodeFormat? = null): QrPaymentDetails =
-        paymentApi.getQrPaymentInfo(paymentId, format?.name?.lowercase()).unwrap("get QR payment info")
+        apiCall("get QR payment info") { paymentApi.getQrPaymentInfo(paymentId, format?.name?.lowercase()) }
 
     /** GET /payments/{payment_id}/google-pay/info */
     suspend fun getGooglePayInfo(): GooglePayInfoResponse =
-        paymentApi.getGooglePayInfo(paymentId).unwrap("get Google Pay info")
+        apiCall("get Google Pay info") { paymentApi.getGooglePayInfo(paymentId) }
 
     /**
      * Managed Google Pay flow: fetches Google Pay config for this payment, launches the Google
