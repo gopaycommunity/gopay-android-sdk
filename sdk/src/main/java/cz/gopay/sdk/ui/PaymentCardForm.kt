@@ -25,7 +25,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.locales.GopayLocaleStrings
 import cz.gopay.sdk.locales.GopayLocales
@@ -164,7 +163,6 @@ fun PaymentCardForm(
     var expirationDateDigits by remember { mutableStateOf("") }
     var cvv by remember { mutableStateOf("") }
     var isCardNumberFocused by remember { mutableStateOf(false) }
-    var isExpirationFocused by remember { mutableStateOf(false) }
     var isCvvFocused by remember { mutableStateOf(false) }
     val isCardNumberValid = CardValidator.validateCardNumber(cardNumberDigits).isValid
 
@@ -174,7 +172,6 @@ fun PaymentCardForm(
         expirationDateDigits = ""
         cvv = ""
         isCardNumberFocused = false
-        isExpirationFocused = false
         isCvvFocused = false
     }
 
@@ -262,19 +259,9 @@ fun PaymentCardForm(
             ),
             theme = theme
         )
-        // Expiration Date and CVV Row. The row is lifted above the card number while one of its
-        // fields is in a state, so that field's focus ring is not covered by the card number.
-        // Ranked like a single field: focus above error, so a focused card number above an invalid
-        // row keeps its own colour on the line the two share.
-        val bottomRowElevation = when {
-            isExpirationFocused || isCvvFocused -> 2f
-            fields.expirationDate.errorText != null || fields.cvv.errorText != null -> 1f
-            else -> 0f
-        }
+        // Expiration Date and CVV Row
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .zIndex(bottomRowElevation),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(theme.groupSpacing.coerceAtLeast(0.dp))
         ) {
             // Expiration Date
@@ -298,7 +285,6 @@ fun PaymentCardForm(
                     visualTransformation = ExpirationDateVisualTransformation(),
                     textFieldModifier = Modifier
                         .focusRequester(expirationFocusRequester)
-                        .onFocusChanged { isExpirationFocused = it.isFocused }
                 ),
                 modifier = Modifier.weight(1f),
                 theme = theme

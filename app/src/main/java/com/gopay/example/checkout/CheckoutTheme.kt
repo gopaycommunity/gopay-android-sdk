@@ -90,8 +90,6 @@ object CheckoutTheme {
             inputBorderRadius = controlRadius,
             inputPaddingVertical = 14.dp,
             inputPaddingHorizontal = 14.dp,
-            focusGradientStart = accent,
-            focusGradientEnd = accent,
             fieldSpacing = 4.dp,
             groupSpacing = 14.dp
         )

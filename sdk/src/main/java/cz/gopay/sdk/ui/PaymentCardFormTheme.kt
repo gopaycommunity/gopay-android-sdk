@@ -24,7 +24,7 @@ enum class InputBorderStyle {
     /** Full border around the field, rounded by [PaymentCardFormTheme.inputBorderRadius]. */
     BOXED,
 
-    /** Bottom line only; on focus it is drawn as a gradient from start to end color. */
+    /** Bottom line only. */
     UNDERLINE
 }
 
@@ -40,11 +40,11 @@ enum class InputBorderStyle {
  * paddings, type sizes, spacings and reserved error line, so a form nobody themed is laid out the
  * same on all three channels and a theme document only has to carry what it actually changes.
  * **Colors are the exception and follow the platform**, so the form stays readable on a dark
- * background; the focus gradient is the hosted form's, because the platform has no equivalent for
- * it. A host that wants the hosted form's exact palette sets those colors in its theme. The README
- * carries the parity table and the 1.x to 2.0 migration map.
+ * background. A host that wants the hosted form's exact palette sets those colors in its theme.
+ * The README carries the parity table and the 1.x to 2.0 migration map.
  *
- * Eight keys of the hosted form are deliberately absent: the seven `submit*` keys (the mobile SDK
+ * Keys of the hosted form that the mobile SDK does not carry are deliberately absent: the seven
+ * `submit*` keys (the mobile SDK
  * never renders a submit button — it is the permanent equivalent of the web's
  * `submitMode: 'external'`, where the host supplies the button) and `errorHidden` (the mobile form
  * only ever draws errors the host passes in through [InputFieldConfig.errorText]). Both are
@@ -80,15 +80,6 @@ enum class InputBorderStyle {
  * @property inputPaddingHorizontal Horizontal padding inside the inputs.
  * @property inputBorderRadius Corner radius of the inputs. Replaces the arbitrary `Shape` of 1.x;
  *   the hosted form has no equivalent of a general shape either.
- * @property focusRingWidth Width of a ring drawn outside the border of the focused input. Needs
- *   [focusRingColor] as well; `null` in either draws no ring. The ring never shifts the layout, so
- *   a host that clips the form to its bounds (a `Card`, for instance) needs [formPadding] or its
- *   own padding of at least this width, or the ring is cut off at the edge of the form.
- * @property focusRingColor Color of the focus ring, paired with [focusRingWidth].
- * @property focusGradientStart Primary focus color: the solid border color of a focused
- *   [InputBorderStyle.BOXED] input, and the left end of the focused underline gradient.
- * @property focusGradientEnd Right end of the focused underline gradient. Has no effect on
- *   [InputBorderStyle.BOXED] inputs, matching the hosted form.
  * @property inputErrorBorderColor Border color of an input in an error state.
  * @property errorTextColor Color of the error text below an input.
  * @property errorFontSize Font size of the error text.
@@ -137,12 +128,6 @@ data class PaymentCardFormTheme(
     val inputPaddingVertical: Dp = 6.dp,
     val inputPaddingHorizontal: Dp = 0.dp,
     val inputBorderRadius: Dp = 0.dp,
-
-    // Focus
-    val focusRingWidth: Dp? = null,
-    val focusRingColor: Color? = null,
-    val focusGradientStart: Color = Color(0xFF19C7D6),
-    val focusGradientEnd: Color = Color(0xFF1899D6),
 
     // Validation errors
     val inputErrorBorderColor: Color = Color.Red,

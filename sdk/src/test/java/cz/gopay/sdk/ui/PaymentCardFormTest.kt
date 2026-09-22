@@ -59,10 +59,6 @@ class PaymentCardFormTest {
         assertEquals("Default vertical padding should be 6dp, as on the web", 6.dp, theme.inputPaddingVertical)
         assertEquals("Default horizontal padding should be 0dp, as on the web", 0.dp, theme.inputPaddingHorizontal)
 
-        // Focus
-        assertNull("Default focus ring width should be unset", theme.focusRingWidth)
-        assertNull("Default focus ring color should be unset", theme.focusRingColor)
-
         // Errors
         assertEquals("Default error color should be Red", Color.Red, theme.errorTextColor)
         assertEquals("Default error font size should be 11sp, as on the web", 11.sp, theme.errorFontSize)

@@ -147,55 +147,6 @@ class PaymentCardFormThemeTest {
     }
 
     @Test
-    fun borderColor_prefersFocusOverError() {
-        val theme = PaymentCardFormTheme(
-            inputBorderColor = Color.Gray,
-            inputErrorBorderColor = Color.Red,
-            focusGradientStart = Color.Blue
-        )
-
-        assertEquals(
-            "A resting valid field shows the plain border",
-            Color.Gray,
-            theme.borderColorFor(isFocused = false, hasError = false)
-        )
-        assertEquals(
-            "An unfocused invalid field shows the error border",
-            Color.Red,
-            theme.borderColorFor(isFocused = false, hasError = true)
-        )
-        assertEquals(
-            "A focused field shows the focus color",
-            Color.Blue,
-            theme.borderColorFor(isFocused = true, hasError = false)
-        )
-        assertEquals(
-            "Focus wins over an error on the active field",
-            Color.Blue,
-            theme.borderColorFor(isFocused = true, hasError = true)
-        )
-    }
-
-    @Test
-    fun focusGradient_mirrorsWithTheLayoutDirection() {
-        val theme = PaymentCardFormTheme(
-            focusGradientStart = Color.Red,
-            focusGradientEnd = Color.Blue
-        )
-
-        assertEquals(
-            "Left to right starts with the start color",
-            listOf(Color.Red, Color.Blue),
-            focusGradientColors(theme, LayoutDirection.Ltr)
-        )
-        assertEquals(
-            "Right to left puts the start color on the leading, right-hand edge",
-            listOf(Color.Blue, Color.Red),
-            focusGradientColors(theme, LayoutDirection.Rtl)
-        )
-    }
-
-    @Test
     fun themeDocument_roundTripsThroughJson() {
         // Every parameter the document can carry is set to a non-default value on purpose: the
         // two mappers are hand-written, one line per parameter, and a forgotten line would
@@ -223,10 +174,6 @@ class PaymentCardFormThemeTest {
             inputPaddingVertical = 6.dp,
             inputPaddingHorizontal = 3.dp,
             inputBorderRadius = 7.dp,
-            focusRingWidth = 4.dp,
-            focusRingColor = Color(0xFF19C7D6),
-            focusGradientStart = Color(0xFF19C7D6),
-            focusGradientEnd = Color(0xFF1899D6),
             inputErrorBorderColor = Color(0xFFEA3C55),
             errorTextColor = Color(0xFFCC0000),
             errorFontSize = 11.sp,
@@ -439,15 +386,5 @@ class PaymentCardFormThemeTest {
 
         assertEquals(1, warnings.size)
         assertTrue(warnings.single().contains("could not be read"))
-    }
-
-    @Test
-    fun underline_followsTheBottomCornersInsideTheStroke() {
-        val field = Size(width = 300f, height = 48f)
-
-        assertEquals("Concentric with the corner, half a stroke inside", 7f, underlineArcRadius(field, 2f, 8f), 0f)
-        assertEquals("A square corner keeps a straight line", 0f, underlineArcRadius(field, 2f, 0f), 0f)
-        assertEquals("A corner smaller than the stroke stays square", 0f, underlineArcRadius(field, 4f, 1f), 0f)
-        assertEquals("A pill radius is clamped to half the height", 23f, underlineArcRadius(field, 2f, 999f), 0f)
     }
 }
