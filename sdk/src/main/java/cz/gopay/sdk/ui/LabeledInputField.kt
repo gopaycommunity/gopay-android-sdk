@@ -31,7 +31,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.VisualTransformation
@@ -64,20 +63,9 @@ internal fun LabeledInputField(
     config: LabeledInputFieldConfig,
     modifier: Modifier = Modifier,
     singleLine: Boolean = true,
-    theme: PaymentCardFormTheme = PaymentCardFormTheme(),
-    collapsed: CollapsedBorderCell? = null
+    theme: PaymentCardFormTheme = PaymentCardFormTheme()
 ) {
-    // Collapsing only makes sense for a full border; an underline has nothing to share. Which edges
-    // are actually shared follows from the cell: see CollapsedBorderCell.
-    val collapsedEdges = collapsed
-        ?.takeIf { theme.inputBorderCollapse && theme.inputBorderStyle == InputBorderStyle.BOXED }
-        ?.let { collapsedBorderEdges(it, LocalLayoutDirection.current) }
-    val radius = theme.inputBorderRadius.coerceAtLeast(0.dp)
-    val shape = if (collapsedEdges != null) {
-        CollapsedCellShape(collapsedEdges, radius)
-    } else {
-        RoundedCornerShape(radius)
-    }
+    val shape = RoundedCornerShape(theme.inputBorderRadius.coerceAtLeast(0.dp))
     var isFocused by remember { mutableStateOf(false) }
     val hasError = config.error != null
     // A field in a state is lifted above its siblings, so the focus ring, which is drawn outside
@@ -104,13 +92,12 @@ internal fun LabeledInputField(
                 .onFocusChanged { isFocused = it.isFocused }
                 .semanticsLabel(theme, config.label)
                 .background(color = theme.inputBackgroundColor, shape = shape)
-                .focusRing(theme, isFocused, collapsedEdges)
+                .focusRing(theme, isFocused)
                 .inputBorder(
                     theme = theme,
                     shape = shape,
                     isFocused = isFocused,
-                    hasError = hasError,
-                    collapsedEdges = collapsedEdges
+                    hasError = hasError
                 )
                 .let {
                     // A minimum, not a fixed height: at a large font scale a hard height would
@@ -168,13 +155,6 @@ private fun Modifier.semanticsLabel(theme: PaymentCardFormTheme, label: String):
  *
  * A zero [PaymentCardFormTheme.inputBorderWidth] means no border at all, as on the web.
  *
- * A collapsed field draws only the edges it does not share with a neighbour, so adjacent fields
- * read as one block; see [CollapsedBorderCell]. A focused or invalid cell is the exception: it
- * strokes its whole outline, painting the shared edges in the state color exactly where the
- * neighbour draws them, so the state reads as one closed box inside the block with a single line
- * on every side, which is what the hosted form does. The cell is lifted above its neighbours (see
- * [LabeledInputField]) so that outline is drawn on top of theirs.
- *
  * [InputBorderStyle.UNDERLINE] draws only the bottom line, following the rounded bottom corners
  * of the field when there is an [PaymentCardFormTheme.inputBorderRadius], the way a CSS
  * `border-bottom` follows a `border-radius`; the background keeps all four corners rounded. While
@@ -188,21 +168,10 @@ private fun Modifier.inputBorder(
     theme: PaymentCardFormTheme,
     shape: Shape,
     isFocused: Boolean,
-    hasError: Boolean,
-    collapsedEdges: CollapsedBorderEdges?
+    hasError: Boolean
 ): Modifier {
     if (theme.inputBorderWidth <= 0.dp) return this
     return when {
-        collapsedEdges != null -> drawBehind {
-            drawCollapsedBorder(
-                color = theme.borderColorFor(isFocused = isFocused, hasError = hasError),
-                strokeWidth = theme.inputBorderWidth.toPx(),
-                radius = theme.inputBorderRadius.coerceAtLeast(0.dp).toPx(),
-                edges = collapsedEdges,
-                fullOutline = isFocused || hasError
-            )
-        }
-
         theme.inputBorderStyle == InputBorderStyle.BOXED -> border(
             width = theme.inputBorderWidth,
             color = theme.borderColorFor(isFocused = isFocused, hasError = hasError),
@@ -301,12 +270,10 @@ internal fun PaymentCardFormTheme.borderColorFor(isFocused: Boolean, hasError: B
 /**
  * Draws the focus ring just outside the border of a focused field. It needs both a positive width
  * and a color, and it draws rather than measures, so it never shifts the surrounding layout.
- * Inside a collapsed block the ring rounds only the outer corners of the block, like the field.
  */
 private fun Modifier.focusRing(
     theme: PaymentCardFormTheme,
-    isFocused: Boolean,
-    collapsedEdges: CollapsedBorderEdges?
+    isFocused: Boolean
 ): Modifier {
     val width = theme.focusRingWidth
     val color = theme.focusRingColor
@@ -317,8 +284,7 @@ private fun Modifier.focusRing(
         val outline = focusRingOutline(
             fieldSize = size,
             strokeWidth = stroke,
-            cornerRadius = theme.inputBorderRadius.coerceAtLeast(0.dp).toPx(),
-            collapsedEdges = collapsedEdges
+            cornerRadius = theme.inputBorderRadius.coerceAtLeast(0.dp).toPx()
         )
         drawPath(Path().apply { addRoundRect(outline) }, color = color, style = Stroke(width = stroke))
     }
@@ -326,26 +292,25 @@ private fun Modifier.focusRing(
 
 /**
  * The outline the focus ring is stroked along. It runs half a stroke outside the field on every
- * side, so the whole ring lies outside the field and follows its corners; inside a collapsed block
- * only the corners the field itself rounds, so the ring stays square where two cells meet.
+ * side, so the whole ring lies outside the field and follows its corners.
  */
 internal fun focusRingOutline(
     fieldSize: Size,
     strokeWidth: Float,
-    cornerRadius: Float,
-    collapsedEdges: CollapsedBorderEdges? = null
+    cornerRadius: Float
 ): RoundRect {
     val inset = strokeWidth / 2f
-    val corner = collapsedCornerRadius(cornerRadius, fieldSize)
-    fun radiusIf(round: Boolean) = CornerRadius(if (round) corner + inset else inset)
+    // Clamped the way a browser clamps an oversized border-radius, to half the shorter side.
+    val corner = cornerRadius.coerceIn(0f, fieldSize.minDimension / 2f)
+    val radius = CornerRadius(corner + inset)
     return RoundRect(
         left = -inset,
         top = -inset,
         right = fieldSize.width + inset,
         bottom = fieldSize.height + inset,
-        topLeftCornerRadius = radiusIf(collapsedEdges?.roundTopLeft ?: true),
-        topRightCornerRadius = radiusIf(collapsedEdges?.roundTopRight ?: true),
-        bottomRightCornerRadius = radiusIf(collapsedEdges?.roundBottomRight ?: true),
-        bottomLeftCornerRadius = radiusIf(collapsedEdges?.roundBottomLeft ?: true)
+        topLeftCornerRadius = radius,
+        topRightCornerRadius = radius,
+        bottomRightCornerRadius = radius,
+        bottomLeftCornerRadius = radius
     )
 }

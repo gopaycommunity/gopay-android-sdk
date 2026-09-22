@@ -223,7 +223,6 @@ class PaymentCardFormThemeTest {
             inputPaddingVertical = 6.dp,
             inputPaddingHorizontal = 3.dp,
             inputBorderRadius = 7.dp,
-            inputBorderCollapse = true,
             focusRingWidth = 4.dp,
             focusRingColor = Color(0xFF19C7D6),
             focusGradientStart = Color(0xFF19C7D6),

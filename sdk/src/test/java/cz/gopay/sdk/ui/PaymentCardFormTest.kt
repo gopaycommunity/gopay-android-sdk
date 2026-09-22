@@ -58,7 +58,6 @@ class PaymentCardFormTest {
         assertEquals("Default border radius should be 0dp, as on the web", 0.dp, theme.inputBorderRadius)
         assertEquals("Default vertical padding should be 6dp, as on the web", 6.dp, theme.inputPaddingVertical)
         assertEquals("Default horizontal padding should be 0dp, as on the web", 0.dp, theme.inputPaddingHorizontal)
-        assertFalse("Borders should not collapse by default", theme.inputBorderCollapse)
 
         // Focus
         assertNull("Default focus ring width should be unset", theme.focusRingWidth)

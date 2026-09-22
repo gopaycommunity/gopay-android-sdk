@@ -230,12 +230,6 @@ fun PaymentCardForm(
         onDispose { resetForm() }
     }
 
-    // Where the collapsed block's fields actually touch, resolved from what is rendered between
-    // them right now: an error or helper line under the card number separates the rows too.
-    val cardNumberHasFooter = fields.cardNumber.errorText != null || fields.cardNumber.helperText != null
-    val rowsTouch = theme.collapsedRowsTouch(topRowHasFooter = cardNumberHasFooter)
-    val bottomRowTouches = theme.collapsedBottomRowTouches
-
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -266,8 +260,7 @@ fun PaymentCardForm(
                     .focusRequester(cardNumberFocusRequester)
                     .onFocusChanged { isCardNumberFocused = it.isFocused }
             ),
-            theme = theme,
-            collapsed = CollapsedBorderCell(CollapsedBorderPosition.TOP, rowsTouch, bottomRowTouches)
+            theme = theme
         )
         // Expiration Date and CVV Row. The row is lifted above the card number while one of its
         // fields is in a state, so that field's focus ring is not covered by the card number.
@@ -308,8 +301,7 @@ fun PaymentCardForm(
                         .onFocusChanged { isExpirationFocused = it.isFocused }
                 ),
                 modifier = Modifier.weight(1f),
-                theme = theme,
-                collapsed = CollapsedBorderCell(CollapsedBorderPosition.BOTTOM_START, rowsTouch, bottomRowTouches)
+                theme = theme
             )
             // CVV Input
             LabeledInputField(
@@ -331,8 +323,7 @@ fun PaymentCardForm(
                         .onFocusChanged { isCvvFocused = it.isFocused }
                 ),
                 modifier = Modifier.weight(1f),
-                theme = theme,
-                collapsed = CollapsedBorderCell(CollapsedBorderPosition.BOTTOM_END, rowsTouch, bottomRowTouches)
+                theme = theme
             )
         }
     }
