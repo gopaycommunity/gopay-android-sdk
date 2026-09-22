@@ -43,12 +43,16 @@ enum class InputBorderStyle {
  * background. A host that wants the hosted form's exact palette sets those colors in its theme.
  * The README carries the parity table and the 1.x to 2.0 migration map.
  *
- * Keys of the hosted form that the mobile SDK does not carry are deliberately absent: the seven
- * `submit*` keys (the mobile SDK
+ * The mobile theme is a subset of the hosted form's: it carries what a native input and the layout
+ * around it can be told to do, and nothing that would mean painting the field by hand. Fifteen of
+ * the hosted form's keys are therefore absent. The seven `submit*` keys, because the mobile SDK
  * never renders a submit button — it is the permanent equivalent of the web's
- * `submitMode: 'external'`, where the host supplies the button) and `errorHidden` (the mobile form
- * only ever draws errors the host passes in through [InputFieldConfig.errorText]). Both are
- * accepted and ignored when a theme arrives as JSON, so one theme document can drive all channels.
+ * `submitMode: 'external'`, where the host supplies the button. `errorHidden`, because the mobile
+ * form only ever draws errors the host passes in through [InputFieldConfig.errorText]. And seven
+ * that the web can only express by drawing: `inputBorderCollapse`, `focusRingWidth`,
+ * `focusRingColor`, `focusGradientStart`, `focusGradientEnd`, `inputLetterSpacing` and
+ * `inputLineHeight`. All of them are accepted and ignored when a theme arrives as JSON, so one
+ * theme document can still drive all three channels.
  *
  * @property fontFamily Font used for labels, input text, placeholders and error text. `null` uses
  *   the platform font. Fonts are resolved by the host application; the theme carries no font files.
@@ -63,10 +67,6 @@ enum class InputBorderStyle {
  * @property inputTextColor Color of the entered text.
  * @property inputFontSize Font size of the entered text.
  * @property inputFontWeight CSS font weight of the entered text, 100..900. `null` means regular.
- * @property inputLineHeight Accepted for theme portability and otherwise ignored: on Android the
- *   field height follows deterministically from the font, the padding and [inputHeight], so the
- *   web's reason for this key (line box height varying per browser engine) does not exist here.
- * @property inputLetterSpacing Letter spacing of the entered text. `null` means none.
  * @property inputHeight Height of the input, taken as a minimum so a large font scale can still
  *   grow the field rather than overflow it. Takes precedence over the vertical padding.
  *   `null` derives the height from the font and the padding.
@@ -115,8 +115,6 @@ data class PaymentCardFormTheme(
     val inputTextColor: Color = Color.Unspecified,
     val inputFontSize: TextUnit = 14.sp,
     val inputFontWeight: Int? = null,
-    val inputLineHeight: TextUnit? = null,
-    val inputLetterSpacing: TextUnit? = null,
     val inputHeight: Dp? = null,
     val placeholderColor: Color? = null,
 
@@ -185,7 +183,6 @@ internal fun PaymentCardFormTheme.inputTextStyle(): TextStyle = TextStyle(
     fontSize = inputFontSize,
     fontWeight = inputFontWeight?.let(::cssFontWeight),
     fontFamily = fontFamily,
-    letterSpacing = inputLetterSpacing ?: TextUnit.Unspecified,
     textDirection = TextDirection.Ltr
 )
 

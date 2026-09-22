@@ -113,7 +113,6 @@ class PaymentCardFormThemeTest {
             labelLineHeight = 16.sp,
             labelLetterSpacing = 0.66.sp,
             inputFontWeight = 500,
-            inputLetterSpacing = 0.5.sp,
             placeholderColor = Color.Magenta
         )
 
@@ -125,7 +124,6 @@ class PaymentCardFormThemeTest {
 
         val input = theme.inputTextStyle()
         assertEquals(FontWeight.Medium, input.fontWeight)
-        assertEquals(0.5.sp, input.letterSpacing)
 
         assertEquals(Color.Magenta, theme.placeholderTextStyle().color)
         assertEquals(FontFamily.Monospace, theme.errorTextStyle().fontFamily)
@@ -141,7 +139,6 @@ class PaymentCardFormThemeTest {
 
         assertEquals(TextUnit.Unspecified, theme.labelTextStyle().lineHeight)
         assertEquals(TextUnit.Unspecified, theme.labelTextStyle().letterSpacing)
-        assertEquals(TextUnit.Unspecified, theme.inputTextStyle().letterSpacing)
         assertNull("An unset weight stays unset", theme.inputTextStyle().fontWeight)
         assertEquals(Color.LightGray, theme.placeholderTextStyle().color)
     }
@@ -163,8 +160,6 @@ class PaymentCardFormThemeTest {
             inputTextColor = Color(0xFF223344),
             inputFontSize = 14.sp,
             inputFontWeight = 500,
-            inputLineHeight = 18.sp,
-            inputLetterSpacing = 0.5.sp,
             inputHeight = 44.dp,
             placeholderColor = Color(0xFF99AABB),
             inputBorderStyle = InputBorderStyle.UNDERLINE,
@@ -206,6 +201,13 @@ class PaymentCardFormThemeTest {
               "submitBackgroundColor": "#1899d6",
               "submitHoverBackgroundColor": "#1482ba",
               "submitBorderRadius": 4,
+              "inputBorderCollapse": true,
+              "focusRingWidth": 2,
+              "focusRingColor": "#19c7d6",
+              "focusGradientStart": "#19c7d6",
+              "focusGradientEnd": "#1899d6",
+              "inputLetterSpacing": 0.5,
+              "inputLineHeight": 18,
               "aKeyFromSomeFutureRelease": 42
             }
         """.trimIndent()
@@ -222,6 +224,18 @@ class PaymentCardFormThemeTest {
             "Omitted keys should keep the base theme value",
             PaymentCardFormTheme().inputBorderColor,
             theme.inputBorderColor
+        )
+        assertEquals(
+            "The keys the form would have to paint by hand are ignored like any other",
+            PaymentCardFormTheme(
+                labelColor = Color(0xFF4B5E68),
+                labelFontSize = 11.sp,
+                labelFontWeight = 600,
+                labelUppercase = true,
+                inputBackgroundColor = Color.Transparent,
+                inputBorderStyle = InputBorderStyle.UNDERLINE
+            ),
+            theme
         )
     }
 
@@ -310,11 +324,10 @@ class PaymentCardFormThemeTest {
     @Test
     fun negativeLetterSpacing_isKeptAsATypographicChoice() {
         val theme = PaymentCardFormThemeJson
-            .parse("""{"labelLetterSpacing": -0.5, "inputLetterSpacing": -0.25}""")
+            .parse("""{"labelLetterSpacing": -0.5}""")
             .toTheme()
 
         assertEquals((-0.5).sp, theme.labelLetterSpacing)
-        assertEquals((-0.25).sp, theme.inputLetterSpacing)
     }
 
     @Test

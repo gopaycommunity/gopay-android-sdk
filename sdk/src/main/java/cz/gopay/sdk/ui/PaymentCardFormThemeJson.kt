@@ -22,9 +22,11 @@ import kotlin.math.abs
  * are CSS-style hex strings (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`) or the literal `transparent`, sizes
  * and font sizes are plain numbers in pixels that map 1:1 to `dp` and `sp`.
  *
- * Keys the mobile SDK does not implement — the seven `submit*` keys and `errorHidden` — are
- * accepted and ignored, as is any other unknown key, so one theme document can be shared with the
- * web integration unchanged.
+ * Keys the mobile SDK does not implement are accepted and ignored, as is any other unknown key,
+ * so one theme document can be shared with the web integration unchanged. Those are the seven
+ * `submit*` keys, `errorHidden`, and the seven the mobile form would have to paint by hand rather
+ * than ask a native input for: `inputBorderCollapse`, `focusRingWidth`, `focusRingColor`,
+ * `focusGradientStart`, `focusGradientEnd`, `inputLetterSpacing` and `inputLineHeight`.
  *
  * The document is untrusted input, so it is read defensively, key by key: a value of the wrong
  * type drops only that key, and the rest of the document still applies. A document that cannot
@@ -50,8 +52,6 @@ data class PaymentCardFormThemeJson(
     val inputTextColor: String? = null,
     val inputFontSize: Float? = null,
     val inputFontWeight: Int? = null,
-    val inputLineHeight: Float? = null,
-    val inputLetterSpacing: Float? = null,
     val inputHeight: Float? = null,
     val placeholderColor: String? = null,
     val inputBorderStyle: String? = null,
@@ -97,8 +97,6 @@ data class PaymentCardFormThemeJson(
         inputTextColor = inputTextColor.toColorOr(base.inputTextColor, "inputTextColor"),
         inputFontSize = inputFontSize.toSizeOrNull() ?: base.inputFontSize,
         inputFontWeight = inputFontWeight ?: base.inputFontWeight,
-        inputLineHeight = inputLineHeight.toSizeOrNull() ?: base.inputLineHeight,
-        inputLetterSpacing = inputLetterSpacing.toSpacingOrNull() ?: base.inputLetterSpacing,
         inputHeight = inputHeight.toLengthOrNull() ?: base.inputHeight,
         placeholderColor = placeholderColor.toOptionalColorOr(base.placeholderColor, "placeholderColor"),
         inputBorderStyle = inputBorderStyle?.toBorderStyle("inputBorderStyle") ?: base.inputBorderStyle,
@@ -158,8 +156,6 @@ data class PaymentCardFormThemeJson(
                 inputTextColor = values.string("inputTextColor"),
                 inputFontSize = values.number("inputFontSize"),
                 inputFontWeight = values.fontWeight("inputFontWeight"),
-                inputLineHeight = values.number("inputLineHeight"),
-                inputLetterSpacing = values.number("inputLetterSpacing", allowNegative = true),
                 inputHeight = values.number("inputHeight"),
                 placeholderColor = values.string("placeholderColor"),
                 inputBorderStyle = values.string("inputBorderStyle"),
@@ -203,8 +199,6 @@ fun PaymentCardFormTheme.toJsonModel(): PaymentCardFormThemeJson = PaymentCardFo
     inputTextColor = inputTextColor.toHexStringOrNull(),
     inputFontSize = inputFontSize.jsonValueOrNull(),
     inputFontWeight = inputFontWeight,
-    inputLineHeight = inputLineHeight?.jsonValueOrNull(),
-    inputLetterSpacing = inputLetterSpacing?.jsonValueOrNull(),
     inputHeight = inputHeight?.jsonValueOrNull(),
     placeholderColor = placeholderColor?.toHexStringOrNull(),
     inputBorderStyle = inputBorderStyle.name.lowercase(),
