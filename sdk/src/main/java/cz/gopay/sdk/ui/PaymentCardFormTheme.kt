@@ -255,8 +255,7 @@ internal fun PaymentCardFormTheme.helperTextStyle(): TextStyle = TextStyle(
  * focused one is left to the platform, because the theme carries no focus color of its own.
  *
  * The placeholder is not among them: its color rides on the text style, so the slots here would
- * never win. Only the error slot is pinned, to the resting color, so an invalid field does not
- * repaint its placeholder in Material's error palette.
+ * never win.
  */
 @Composable
 internal fun PaymentCardFormTheme.filledFieldColors(): TextFieldColors =
@@ -266,7 +265,7 @@ internal fun PaymentCardFormTheme.filledFieldColors(): TextFieldColors =
         errorContainerColor = inputBackgroundColor,
         unfocusedIndicatorColor = inputBorderColor,
         errorIndicatorColor = inputErrorBorderColor
-    ).restingPlaceholderInError()
+    )
 
 /** The same for a Material outlined field. */
 @Composable
@@ -277,10 +276,7 @@ internal fun PaymentCardFormTheme.outlinedFieldColors(): TextFieldColors =
         errorContainerColor = inputBackgroundColor,
         unfocusedBorderColor = inputBorderColor,
         errorBorderColor = inputErrorBorderColor
-    ).restingPlaceholderInError()
-
-private fun TextFieldColors.restingPlaceholderInError(): TextFieldColors =
-    copy(errorPlaceholderColor = unfocusedPlaceholderColor)
+    )
 
 /**
  * Color of the entered text, resolved the way Material resolves it for its own fields: what the

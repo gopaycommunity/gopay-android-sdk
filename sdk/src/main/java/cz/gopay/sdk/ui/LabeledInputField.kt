@@ -113,99 +113,100 @@ internal fun LabeledInputField(
             )
         }
         CompositionLocalProvider(LocalTextSelectionColors provides colors.textSelectionColors) {
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            keyboardOptions = config.keyboardOptions,
-            visualTransformation = config.visualTransformation,
-            interactionSource = interactionSource,
-            modifier = config.textFieldModifier
-                .fillMaxWidth()
-                .semanticsLabel(theme, config.label)
-                .let {
-                    // A minimum, not a fixed height: at a large font scale a hard height would
-                    // leave the text drawing over the field below it.
-                    val height = theme.inputHeight?.coerceAtLeast(0.dp)
-                    if (height != null) it.heightIn(min = height) else it
-                },
-            singleLine = singleLine,
-            textStyle = textStyle,
-            cursorBrush = SolidColor(cursorColor),
-            decorationBox = { innerTextField ->
-                // Clipped to the field: a border thicker than the field is tall would otherwise
-                // paint over the content and over whatever sits above the form.
-                //
-                // The minimum constraints have to be passed on. A Box drops them by default, and
-                // Material's decoration then sizes itself to its content, which leaves the
-                // underline as wide as the text instead of as wide as the field.
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clipToBounds(),
-                    propagateMinConstraints = true
-                ) {
-                when (theme.inputBorderStyle) {
-                    InputBorderStyle.UNDERLINE -> TextFieldDefaults.DecorationBox(
-                        value = value,
-                        innerTextField = innerTextField,
-                        enabled = true,
-                        singleLine = singleLine,
-                        visualTransformation = config.visualTransformation,
-                        interactionSource = interactionSource,
-                        isError = hasError,
-                        placeholder = placeholder,
-                        shape = shape,
-                        colors = colors,
-                        contentPadding = contentPadding,
-                        container = {
-                            if (drawsBorder) {
-                                TextFieldDefaults.Container(
-                                    enabled = true,
-                                    isError = hasError,
-                                    interactionSource = interactionSource,
-                                    colors = colors,
-                                    shape = shape,
-                                    // Only the resting thickness: Material thickens the line of
-                                    // the focused field on its own, and that is the focus mark.
-                                    unfocusedIndicatorLineThickness = borderWidth
-                                )
-                            } else {
-                                Box(Modifier.fillMaxSize().background(theme.inputBackgroundColor, shape))
-                            }
-                        }
-                    )
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                keyboardOptions = config.keyboardOptions,
+                visualTransformation = config.visualTransformation,
+                interactionSource = interactionSource,
+                modifier = config.textFieldModifier
+                    .fillMaxWidth()
+                    .semanticsLabel(theme, config.label)
+                    .let {
+                        // A minimum, not a fixed height: at a large font scale a hard height would
+                        // leave the text drawing over the field below it.
+                        val height = theme.inputHeight?.coerceAtLeast(0.dp)
+                        if (height != null) it.heightIn(min = height) else it
+                    },
+                singleLine = singleLine,
+                textStyle = textStyle,
+                cursorBrush = SolidColor(cursorColor),
+                decorationBox = { innerTextField ->
+                    // Clipped to the field, so an oversized border width stays inside it instead
+                    // of spilling over whatever sits above the form. It still paints over the
+                    // field's own content; that is what an oversized border does.
+                    //
+                    // The minimum constraints have to be passed on. A Box drops them by default,
+                    // and Material's decoration then sizes itself to its content, which left the
+                    // underline as wide as the text instead of as wide as the field.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clipToBounds(),
+                        propagateMinConstraints = true
+                    ) {
+                        when (theme.inputBorderStyle) {
+                            InputBorderStyle.UNDERLINE -> TextFieldDefaults.DecorationBox(
+                                value = value,
+                                innerTextField = innerTextField,
+                                enabled = true,
+                                singleLine = singleLine,
+                                visualTransformation = config.visualTransformation,
+                                interactionSource = interactionSource,
+                                isError = hasError,
+                                placeholder = placeholder,
+                                shape = shape,
+                                colors = colors,
+                                contentPadding = contentPadding,
+                                container = {
+                                    if (drawsBorder) {
+                                        TextFieldDefaults.Container(
+                                            enabled = true,
+                                            isError = hasError,
+                                            interactionSource = interactionSource,
+                                            colors = colors,
+                                            shape = shape,
+                                            // Only the resting thickness: Material thickens the line of
+                                            // the focused field on its own, and that is the focus mark.
+                                            unfocusedIndicatorLineThickness = borderWidth
+                                        )
+                                    } else {
+                                        Box(Modifier.fillMaxSize().background(theme.inputBackgroundColor, shape))
+                                    }
+                                }
+                            )
 
-                    InputBorderStyle.BOXED -> OutlinedTextFieldDefaults.DecorationBox(
-                        value = value,
-                        innerTextField = innerTextField,
-                        enabled = true,
-                        singleLine = singleLine,
-                        visualTransformation = config.visualTransformation,
-                        interactionSource = interactionSource,
-                        isError = hasError,
-                        placeholder = placeholder,
-                        colors = colors,
-                        contentPadding = contentPadding,
-                        container = {
-                            if (drawsBorder) {
-                                OutlinedTextFieldDefaults.Container(
-                                    enabled = true,
-                                    isError = hasError,
-                                    interactionSource = interactionSource,
-                                    colors = colors,
-                                    shape = shape,
-                                    // Resting only, as above.
-                                    unfocusedBorderThickness = borderWidth
-                                )
-                            } else {
-                                Box(Modifier.fillMaxSize().background(theme.inputBackgroundColor, shape))
-                            }
+                            InputBorderStyle.BOXED -> OutlinedTextFieldDefaults.DecorationBox(
+                                value = value,
+                                innerTextField = innerTextField,
+                                enabled = true,
+                                singleLine = singleLine,
+                                visualTransformation = config.visualTransformation,
+                                interactionSource = interactionSource,
+                                isError = hasError,
+                                placeholder = placeholder,
+                                colors = colors,
+                                contentPadding = contentPadding,
+                                container = {
+                                    if (drawsBorder) {
+                                        OutlinedTextFieldDefaults.Container(
+                                            enabled = true,
+                                            isError = hasError,
+                                            interactionSource = interactionSource,
+                                            colors = colors,
+                                            shape = shape,
+                                            // Resting only, as above.
+                                            unfocusedBorderThickness = borderWidth
+                                        )
+                                    } else {
+                                        Box(Modifier.fillMaxSize().background(theme.inputBackgroundColor, shape))
+                                    }
+                                }
+                            )
                         }
-                    )
+                    }
                 }
-                }
-            }
-        )
+            )
         }
         HelperText(error = config.error, helperText = config.helperText, theme = theme)
     }
