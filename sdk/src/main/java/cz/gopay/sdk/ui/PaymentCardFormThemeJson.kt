@@ -126,6 +126,21 @@ data class PaymentCardFormThemeJson(
     }
 
     companion object {
+        /**
+         * Keys the hosted card form renders by painting the field, which this SDK does not do.
+         * They are known rather than unknown, so a document that carries them is reported instead
+         * of passing silently; see the parity table in the README.
+         */
+        private val RENDERED_BY_PAINTING = setOf(
+            "inputBorderCollapse",
+            "focusRingWidth",
+            "focusRingColor",
+            "focusGradientStart",
+            "focusGradientEnd",
+            "inputLetterSpacing",
+            "inputLineHeight"
+        )
+
         private const val EMPTY_DOCUMENT = "{}"
 
         /**
@@ -136,6 +151,8 @@ data class PaymentCardFormThemeJson(
          * (malformed JSON, a literal `null`, an array) is read as an empty document. Either way a
          * bad document leaves the base theme untouched instead of failing the form, and a key
          * whose value cannot be read is reported as a warning under the `GopaySDK` Logcat tag.
+         * The keys this platform does not support are reported the same way, so an integrator
+         * sees which parts of a shared document did not apply.
          */
         fun parse(document: String): PaymentCardFormThemeJson {
             val raw = JsonUtils.fromJson<Map<String, Any?>>(document)
@@ -144,6 +161,9 @@ data class PaymentCardFormThemeJson(
                 return PaymentCardFormThemeJson()
             }
             val values = ThemeDocumentValues(raw)
+            raw.keys.filter { it in RENDERED_BY_PAINTING }.forEach {
+                SdkLog.w("Theme key \"$it\" is not supported on this platform and was ignored")
+            }
             return PaymentCardFormThemeJson(
                 fontFamily = values.string("fontFamily"),
                 labelColor = values.string("labelColor"),

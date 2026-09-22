@@ -244,6 +244,40 @@ class PaymentCardFormThemeTest {
     }
 
     @Test
+    fun keysThisPlatformCannotRender_areReportedNotSwallowed() {
+        val document = """
+            {
+              "labelColor": "#4b5e68",
+              "inputBorderCollapse": true,
+              "focusRingWidth": 2,
+              "focusGradientStart": "#19c7d6",
+              "inputLetterSpacing": 0.5,
+              "inputLineHeight": 18,
+              "submitBorderRadius": 4,
+              "aKeyFromSomeFutureRelease": 42
+            }
+        """.trimIndent()
+
+        PaymentCardFormThemeJson.parse(document)
+
+        val reported = warnings.filter { it.contains("not supported") }
+        assertEquals("One warning per unsupported key", 5, reported.size)
+        listOf(
+            "inputBorderCollapse",
+            "focusRingWidth",
+            "focusGradientStart",
+            "inputLetterSpacing",
+            "inputLineHeight"
+        ).forEach { key ->
+            assertTrue("$key should be reported", reported.any { it.contains(key) })
+        }
+        assertTrue(
+            "A web-only or unknown key stays silent",
+            reported.none { it.contains("submit") || it.contains("FutureRelease") }
+        )
+    }
+
+    @Test
     fun themeDocument_appliesOnTopOfABaseTheme() {
         val base = PaymentCardFormTheme(inputBorderColor = Color.Magenta, groupSpacing = 24.dp)
 
