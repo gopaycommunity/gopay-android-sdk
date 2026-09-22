@@ -1,5 +1,9 @@
 package cz.gopay.sdk.ui
 
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.TextFieldColors
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -232,3 +236,33 @@ internal fun PaymentCardFormTheme.helperTextStyle(): TextStyle = TextStyle(
     fontSize = helperFontSize,
     fontFamily = fontFamily
 )
+
+/**
+ * Colors for a Material underline field. The theme states the resting and error colors; the
+ * focused one is left to the platform, because the theme carries no focus color of its own.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun PaymentCardFormTheme.filledFieldColors(): TextFieldColors = TextFieldDefaults.colors(
+    focusedContainerColor = inputBackgroundColor,
+    unfocusedContainerColor = inputBackgroundColor,
+    errorContainerColor = inputBackgroundColor,
+    unfocusedIndicatorColor = inputBorderColor,
+    errorIndicatorColor = inputErrorBorderColor,
+    focusedPlaceholderColor = placeholderColor ?: Color.LightGray,
+    unfocusedPlaceholderColor = placeholderColor ?: Color.LightGray
+)
+
+/** The same for a Material outlined field. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun PaymentCardFormTheme.outlinedFieldColors(): TextFieldColors =
+    OutlinedTextFieldDefaults.colors(
+        focusedContainerColor = inputBackgroundColor,
+        unfocusedContainerColor = inputBackgroundColor,
+        errorContainerColor = inputBackgroundColor,
+        unfocusedBorderColor = inputBorderColor,
+        errorBorderColor = inputErrorBorderColor,
+        focusedPlaceholderColor = placeholderColor ?: Color.LightGray,
+        unfocusedPlaceholderColor = placeholderColor ?: Color.LightGray
+    )

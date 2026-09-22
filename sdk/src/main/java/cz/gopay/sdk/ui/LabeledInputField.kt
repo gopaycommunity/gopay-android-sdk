@@ -1,10 +1,8 @@
 package cz.gopay.sdk.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -12,8 +10,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -38,10 +39,14 @@ internal data class LabeledInputFieldConfig(
 /**
  * A reusable input field with label, error/helper text, and a BasicTextField.
  *
- * The field is a plain Compose text field dressed with stock modifiers — a background, a border,
- * padding — and nothing about it is painted by hand. The theme can only ask for what a text field
- * and the layout around it already do; see [PaymentCardFormTheme].
+ * The field itself is decorated by Material, through the same decoration box Material's own text
+ * fields are built from, so the underline, the outline and the way they react to focus and to an
+ * error are the platform's. The SDK paints no part of it. The label above the field and the error
+ * line below it stay the form's own, because the theme places them with [PaymentCardFormTheme
+ * .fieldSpacing] and [PaymentCardFormTheme.errorSpacing], which Material's built-in slots have no
+ * equivalent for.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun LabeledInputField(
     value: String,
@@ -52,12 +57,33 @@ internal fun LabeledInputField(
     theme: PaymentCardFormTheme = PaymentCardFormTheme()
 ) {
     val shape = RoundedCornerShape(theme.inputBorderRadius.coerceAtLeast(0.dp))
+    val hasError = config.error != null
+    val interactionSource = remember { MutableInteractionSource() }
+    val borderWidth = theme.inputBorderWidth.coerceAtLeast(0.dp)
+    val contentPadding = PaddingValues(
+        horizontal = theme.inputPaddingHorizontal.coerceAtLeast(0.dp),
+        vertical = theme.inputPaddingVertical.coerceAtLeast(0.dp)
+    )
+    val placeholder: (@Composable () -> Unit)? = config.placeholder?.let { text ->
+        {
+            // One line, like the field itself: at a large font scale a wrapping placeholder would
+            // make the empty field taller than a filled one.
+            BasicText(
+                text = text,
+                style = theme.placeholderTextStyle(),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip
+            )
+        }
+    }
+
     Column(modifier = modifier) {
         if (!theme.labelHidden) {
             BasicText(
                 text = theme.renderedLabel(config.label),
-                // The label keeps its own color in an error state; only the border and the
-                // error line change, matching the hosted card form.
+                // The label keeps its own color in an error state; only the field and the error
+                // line change, matching the hosted card form.
                 style = theme.labelTextStyle(),
                 modifier = Modifier.padding(bottom = theme.fieldSpacing.coerceAtLeast(0.dp))
             )
@@ -67,62 +93,68 @@ internal fun LabeledInputField(
             onValueChange = onValueChange,
             keyboardOptions = config.keyboardOptions,
             visualTransformation = config.visualTransformation,
+            interactionSource = interactionSource,
             modifier = config.textFieldModifier
                 .fillMaxWidth()
                 .semanticsLabel(theme, config.label)
-                .background(color = theme.inputBackgroundColor, shape = shape)
-                // A zero width means no border at all, as on the web.
-                .let {
-                    if (theme.inputBorderWidth > 0.dp) {
-                        it.border(
-                            width = theme.inputBorderWidth,
-                            color = if (config.error != null) {
-                                theme.inputErrorBorderColor
-                            } else {
-                                theme.inputBorderColor
-                            },
-                            shape = shape
-                        )
-                    } else {
-                        it
-                    }
-                }
                 .let {
                     // A minimum, not a fixed height: at a large font scale a hard height would
                     // leave the text drawing over the field below it.
                     val height = theme.inputHeight?.coerceAtLeast(0.dp)
                     if (height != null) it.heightIn(min = height) else it
-                }
-                .padding(
-                    horizontal = theme.inputPaddingHorizontal.coerceAtLeast(0.dp),
-                    // A set height takes precedence over the vertical padding, as on the web.
-                    vertical = if (theme.inputHeight != null) {
-                        0.dp
-                    } else {
-                        theme.inputPaddingVertical.coerceAtLeast(0.dp)
-                    }
-                ),
+                },
             singleLine = singleLine,
             textStyle = theme.inputTextStyle(),
             decorationBox = { innerTextField ->
-                val content = @Composable {
-                    if (value.isEmpty() && config.placeholder != null) {
-                        // One line, like the field itself: at a large font scale a wrapping
-                        // placeholder would make the empty field taller than a filled one.
-                        BasicText(
-                            text = config.placeholder,
-                            style = theme.placeholderTextStyle(),
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Clip
-                        )
-                    }
-                    innerTextField()
-                }
-                if (theme.inputHeight != null) {
-                    Box(Modifier.fillMaxHeight(), contentAlignment = Alignment.CenterStart) { content() }
-                } else {
-                    content()
+                when (theme.inputBorderStyle) {
+                    InputBorderStyle.UNDERLINE -> TextFieldDefaults.DecorationBox(
+                        value = value,
+                        innerTextField = innerTextField,
+                        enabled = true,
+                        singleLine = singleLine,
+                        visualTransformation = config.visualTransformation,
+                        interactionSource = interactionSource,
+                        isError = hasError,
+                        placeholder = placeholder,
+                        shape = shape,
+                        colors = theme.filledFieldColors(),
+                        contentPadding = contentPadding,
+                        container = {
+                            TextFieldDefaults.Container(
+                                enabled = true,
+                                isError = hasError,
+                                interactionSource = interactionSource,
+                                colors = theme.filledFieldColors(),
+                                shape = shape,
+                                focusedIndicatorLineThickness = borderWidth,
+                                unfocusedIndicatorLineThickness = borderWidth
+                            )
+                        }
+                    )
+
+                    InputBorderStyle.BOXED -> OutlinedTextFieldDefaults.DecorationBox(
+                        value = value,
+                        innerTextField = innerTextField,
+                        enabled = true,
+                        singleLine = singleLine,
+                        visualTransformation = config.visualTransformation,
+                        interactionSource = interactionSource,
+                        isError = hasError,
+                        placeholder = placeholder,
+                        colors = theme.outlinedFieldColors(),
+                        contentPadding = contentPadding,
+                        container = {
+                            OutlinedTextFieldDefaults.Container(
+                                enabled = true,
+                                isError = hasError,
+                                interactionSource = interactionSource,
+                                colors = theme.outlinedFieldColors(),
+                                shape = shape,
+                                focusedBorderThickness = borderWidth,
+                                unfocusedBorderThickness = borderWidth
+                            )
+                        }
+                    )
                 }
             }
         )

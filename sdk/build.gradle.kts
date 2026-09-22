@@ -170,7 +170,7 @@ dependencies {
     
     implementation(libs.androidx.foundation.android)
 
-    // Compose dependencies - foundation only
+    // Compose dependencies - foundation, plus Material3 for the native text field decoration
     val composeBom = platform("androidx.compose:compose-bom:2025.02.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -179,6 +179,9 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.runtime:runtime")
+    // The card form dresses its fields with Material's own decoration box, so the underline and
+    // the outline are the platform's and nothing is drawn by the SDK.
+    implementation(libs.androidx.material3)
     testImplementation("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.compose.ui:ui-test")
 
