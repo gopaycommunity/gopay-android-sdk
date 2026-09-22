@@ -36,12 +36,12 @@ enum class InputBorderStyle {
  * web's pixels 1:1 to `dp` (sizes) and `sp` (font sizes, spacing, line heights); font weights are
  * CSS numbers in the 100..900 range.
  *
- * **The default shape is the hosted form's**: the underline border, square corners, the same
- * paddings, type sizes, spacings and reserved error line, so a form nobody themed is laid out the
- * same on all three channels and a theme document only has to carry what it actually changes.
- * **Colors are the exception and follow the platform**, so the form stays readable on a dark
- * background. A host that wants the hosted form's exact palette sets those colors in its theme.
- * The README carries the parity table and the 1.x to 2.0 migration map.
+ * **Nothing is styled by default.** A form the host does not theme looks like any other form on
+ * the screen it sits in: the platform's type sizes and colors, an ordinary field, labels in the
+ * case they were written in, and the host's own padding around it. That is the difference from the
+ * hosted card form, which is a page of its own and can afford a look; here the form is one part of
+ * the merchant's screen. Theming is fully available, it is just a choice rather than the starting
+ * point. The README carries the parity table and the 1.x to 2.0 migration map.
  *
  * The mobile theme is a subset of the hosted form's: it carries what a native input and the layout
  * around it can be told to do, and nothing that would mean painting the field by hand. Fifteen of
@@ -84,15 +84,16 @@ enum class InputBorderStyle {
  * @property errorTextColor Color of the error text below an input.
  * @property errorFontSize Font size of the error text.
  * @property errorMinHeight Vertical space reserved for the error line, so the layout does not
- *   shift when a message appears. The slot is shared with the helper text.
+ *   shift when a message appears. The slot is shared with the helper text. Zero, the default,
+ *   reserves nothing and lets the form grow when a message appears, as an unstyled form does.
  * @property errorSpacing Distance from the input to the error line. `null` uses [fieldSpacing].
  * @property groupSpacing Gap between the field rows, and between the expiry and CVV fields.
  *   In 1.x this parameter meant the horizontal gap only, and the gap between rows was
  *   `fieldSpacing`; see the migration map in the README.
  * @property fieldSpacing Gap between a label and its input. In 1.x this parameter meant the gap
  *   between the field rows.
- * @property formPadding Padding around the whole form. 16 as on the hosted form; set it to zero
- *   when the host lays the form out itself.
+ * @property formPadding Padding around the whole form. Zero by default, because the host lays the
+ *   form out on its own screen; the hosted card form uses 16 inside its iframe.
  * @property formBackgroundColor Background color of the form container.
  * @property helperTextColor Color of the helper text. Mobile-only extension: the hosted form has
  *   no helper text.
@@ -104,16 +105,16 @@ data class PaymentCardFormTheme(
 
     // Labels
     val labelColor: Color = Color.Gray,
-    val labelFontSize: TextUnit = 11.sp,
-    val labelFontWeight: Int = 600,
+    val labelFontSize: TextUnit = 14.sp,
+    val labelFontWeight: Int = 400,
     val labelLineHeight: TextUnit? = null,
-    val labelUppercase: Boolean = true,
+    val labelUppercase: Boolean = false,
     val labelLetterSpacing: TextUnit? = null,
     val labelHidden: Boolean = false,
 
     // Input text
     val inputTextColor: Color = Color.Unspecified,
-    val inputFontSize: TextUnit = 14.sp,
+    val inputFontSize: TextUnit = 16.sp,
     val inputFontWeight: Int? = null,
     val inputHeight: Dp? = null,
     val placeholderColor: Color? = null,
@@ -123,21 +124,21 @@ data class PaymentCardFormTheme(
     val inputBorderColor: Color = Color.Gray,
     val inputBorderWidth: Dp = 1.dp,
     val inputBackgroundColor: Color = Color.Transparent,
-    val inputPaddingVertical: Dp = 6.dp,
-    val inputPaddingHorizontal: Dp = 0.dp,
-    val inputBorderRadius: Dp = 0.dp,
+    val inputPaddingVertical: Dp = 12.dp,
+    val inputPaddingHorizontal: Dp = 12.dp,
+    val inputBorderRadius: Dp = 4.dp,
 
     // Validation errors
     val inputErrorBorderColor: Color = Color.Red,
     val errorTextColor: Color = Color.Red,
-    val errorFontSize: TextUnit = 11.sp,
-    val errorMinHeight: Dp = 14.dp,
+    val errorFontSize: TextUnit = 12.sp,
+    val errorMinHeight: Dp = 0.dp,
     val errorSpacing: Dp? = null,
 
     // Layout
     val groupSpacing: Dp = 16.dp,
     val fieldSpacing: Dp = 4.dp,
-    val formPadding: Dp = 16.dp,
+    val formPadding: Dp = 0.dp,
     val formBackgroundColor: Color = Color.Transparent,
 
     // Mobile-only extensions
