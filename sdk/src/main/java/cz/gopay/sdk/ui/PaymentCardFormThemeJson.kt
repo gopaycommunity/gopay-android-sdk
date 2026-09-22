@@ -258,8 +258,8 @@ private fun Dp.jsonValueOrNull(): Float? = value.takeIf { it.isFinite() }
  * Ceiling for any length or type metric read from a document, in dp or sp.
  *
  * Well past any real design value, but low enough that what the value feeds stays buildable: an
- * unbounded height throws out of the layout pass, an unbounded border width inverts the collapsed
- * outline. Mirrors the iOS `GopayCardFormTheme.lengthLimit`.
+ * unbounded height throws out of the layout pass. Mirrors the iOS
+ * `GopayCardFormTheme.lengthLimit`.
  */
 private const val LENGTH_LIMIT = 10_000f
 
@@ -295,9 +295,11 @@ private class ThemeDocumentValues(private val raw: Map<String, Any?>) {
     fun boolean(key: String): Boolean? = read(key, "true or false") { it as? Boolean }
 
     /** A CSS font weight: a number in the 100..900 range, or the keywords `bold` and `normal`. */
-    fun fontWeight(key: String): Int? = read(key, "a number or the keyword bold or normal") {
+    fun fontWeight(key: String): Int? = read(key, "a weight from 100 to 900, or bold or normal") {
         when (it) {
-            is Number -> it.toInt()
+            // Out of range is a value the document got wrong, so it drops and is reported rather
+            // than being silently clamped into something the document never asked for.
+            is Number -> it.toInt().takeIf { weight -> weight in 100..900 }
             is String -> when (it.trim().lowercase()) {
                 "bold" -> 700
                 "normal" -> 400

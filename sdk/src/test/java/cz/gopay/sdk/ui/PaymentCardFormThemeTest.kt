@@ -1,11 +1,9 @@
 package cz.gopay.sdk.ui
 
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -241,6 +239,39 @@ class PaymentCardFormThemeTest {
             ),
             theme
         )
+    }
+
+    @Test
+    fun borderStyle_readsBothOfTheWebsValues() {
+        assertEquals(
+            InputBorderStyle.BOXED,
+            PaymentCardFormThemeJson.parse("""{"inputBorderStyle": "boxed"}""").toTheme().inputBorderStyle
+        )
+        assertEquals(
+            "The keyword is matched regardless of case",
+            InputBorderStyle.BOXED,
+            PaymentCardFormThemeJson.parse("""{"inputBorderStyle": "BOXED"}""").toTheme().inputBorderStyle
+        )
+        assertEquals(
+            InputBorderStyle.UNDERLINE,
+            PaymentCardFormThemeJson.parse("""{"inputBorderStyle": "underline"}""").toTheme().inputBorderStyle
+        )
+        assertEquals(
+            "An unknown style keeps the base theme's",
+            PaymentCardFormTheme().inputBorderStyle,
+            PaymentCardFormThemeJson.parse("""{"inputBorderStyle": "dotted"}""").toTheme().inputBorderStyle
+        )
+    }
+
+    @Test
+    fun fontWeight_outsideTheCssRange_dropsAndIsReported() {
+        val theme = PaymentCardFormThemeJson
+            .parse("""{"labelFontWeight": 1200, "inputFontWeight": 0}""")
+            .toTheme()
+
+        assertEquals("The base weight is kept", PaymentCardFormTheme().labelFontWeight, theme.labelFontWeight)
+        assertNull("And an unset one stays unset", theme.inputFontWeight)
+        assertEquals("Both are reported", 2, warnings.count { it.contains("FontWeight") })
     }
 
     @Test
