@@ -1,6 +1,5 @@
 package cz.gopay.sdk.ui
 
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.TextFieldColors
@@ -254,21 +253,22 @@ internal fun PaymentCardFormTheme.helperTextStyle(): TextStyle = TextStyle(
 /**
  * Colors for a Material underline field. The theme states the resting and error colors; the
  * focused one is left to the platform, because the theme carries no focus color of its own.
+ *
+ * The placeholder is not among them: its color rides on the text style, so the slots here would
+ * never win. Only the error slot is pinned, to the resting color, so an invalid field does not
+ * repaint its placeholder in Material's error palette.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun PaymentCardFormTheme.filledFieldColors(): TextFieldColors = TextFieldDefaults.colors(
-    focusedContainerColor = inputBackgroundColor,
-    unfocusedContainerColor = inputBackgroundColor,
-    errorContainerColor = inputBackgroundColor,
-    unfocusedIndicatorColor = inputBorderColor,
-    errorIndicatorColor = inputErrorBorderColor,
-    focusedPlaceholderColor = placeholderColor ?: Color.Unspecified,
-    unfocusedPlaceholderColor = placeholderColor ?: Color.Unspecified
-)
+internal fun PaymentCardFormTheme.filledFieldColors(): TextFieldColors =
+    TextFieldDefaults.colors(
+        focusedContainerColor = inputBackgroundColor,
+        unfocusedContainerColor = inputBackgroundColor,
+        errorContainerColor = inputBackgroundColor,
+        unfocusedIndicatorColor = inputBorderColor,
+        errorIndicatorColor = inputErrorBorderColor
+    ).restingPlaceholderInError()
 
 /** The same for a Material outlined field. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PaymentCardFormTheme.outlinedFieldColors(): TextFieldColors =
     OutlinedTextFieldDefaults.colors(
@@ -276,10 +276,29 @@ internal fun PaymentCardFormTheme.outlinedFieldColors(): TextFieldColors =
         unfocusedContainerColor = inputBackgroundColor,
         errorContainerColor = inputBackgroundColor,
         unfocusedBorderColor = inputBorderColor,
-        errorBorderColor = inputErrorBorderColor,
-        focusedPlaceholderColor = placeholderColor ?: Color.Unspecified,
-        unfocusedPlaceholderColor = placeholderColor ?: Color.Unspecified
-    )
+        errorBorderColor = inputErrorBorderColor
+    ).restingPlaceholderInError()
+
+private fun TextFieldColors.restingPlaceholderInError(): TextFieldColors =
+    copy(errorPlaceholderColor = unfocusedPlaceholderColor)
+
+/**
+ * Color of the entered text, resolved the way Material resolves it for its own fields: what the
+ * theme states wins, and an unset color falls back to the state's color from [colors]. Compose
+ * paints unspecified text black rather than asking the color scheme, so without this the card
+ * number would stay black on a dark host.
+ */
+internal fun PaymentCardFormTheme.inputTextColor(
+    colors: TextFieldColors,
+    isFocused: Boolean,
+    hasError: Boolean
+): Color = inputTextColor.takeOrElse {
+    when {
+        hasError -> colors.errorTextColor
+        isFocused -> colors.focusedTextColor
+        else -> colors.unfocusedTextColor
+    }
+}
 
 /**
  * Color of the field labels, with an unset one taken from the color scheme.

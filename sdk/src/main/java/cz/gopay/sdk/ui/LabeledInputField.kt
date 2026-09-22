@@ -1,7 +1,11 @@
 package cz.gopay.sdk.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -14,9 +18,14 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.VisualTransformation
@@ -60,7 +69,19 @@ internal fun LabeledInputField(
     val shape = RoundedCornerShape(theme.inputBorderRadius.coerceAtLeast(0.dp))
     val hasError = config.error != null
     val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
     val borderWidth = theme.inputBorderWidth.coerceAtLeast(0.dp)
+    // Zero means no border at all, the way a zero errorMinHeight means no reserved line: Material
+    // would draw a hairline for it, because that is what a zero-width line is to a canvas.
+    val drawsBorder = borderWidth > 0.dp
+    val colors = when (theme.inputBorderStyle) {
+        InputBorderStyle.UNDERLINE -> theme.filledFieldColors()
+        InputBorderStyle.BOXED -> theme.outlinedFieldColors()
+    }
+    val textStyle = theme.inputTextStyle().copy(
+        color = theme.inputTextColor(colors, isFocused = isFocused, hasError = hasError)
+    )
+    val cursorColor = if (hasError) colors.errorCursorColor else colors.cursorColor
     val contentPadding = PaddingValues(
         horizontal = theme.inputPaddingHorizontal.coerceAtLeast(0.dp),
         vertical = theme.inputPaddingVertical.coerceAtLeast(0.dp)
@@ -91,6 +112,7 @@ internal fun LabeledInputField(
                 modifier = Modifier.padding(bottom = theme.fieldSpacing.coerceAtLeast(0.dp))
             )
         }
+        CompositionLocalProvider(LocalTextSelectionColors provides colors.textSelectionColors) {
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -107,8 +129,12 @@ internal fun LabeledInputField(
                     if (height != null) it.heightIn(min = height) else it
                 },
             singleLine = singleLine,
-            textStyle = theme.inputTextStyle(),
+            textStyle = textStyle,
+            cursorBrush = SolidColor(cursorColor),
             decorationBox = { innerTextField ->
+                // Clipped to the field: a border thicker than the field is tall would otherwise
+                // paint over the content and over whatever sits above the form.
+                Box(Modifier.clipToBounds()) {
                 when (theme.inputBorderStyle) {
                     InputBorderStyle.UNDERLINE -> TextFieldDefaults.DecorationBox(
                         value = value,
@@ -120,19 +146,23 @@ internal fun LabeledInputField(
                         isError = hasError,
                         placeholder = placeholder,
                         shape = shape,
-                        colors = theme.filledFieldColors(),
+                        colors = colors,
                         contentPadding = contentPadding,
                         container = {
-                            TextFieldDefaults.Container(
-                                enabled = true,
-                                isError = hasError,
-                                interactionSource = interactionSource,
-                                colors = theme.filledFieldColors(),
-                                shape = shape,
-                                // Only the resting thickness: Material thickens the line of
-                                // the focused field on its own, and that is the focus mark.
-                                unfocusedIndicatorLineThickness = borderWidth
-                            )
+                            if (drawsBorder) {
+                                TextFieldDefaults.Container(
+                                    enabled = true,
+                                    isError = hasError,
+                                    interactionSource = interactionSource,
+                                    colors = colors,
+                                    shape = shape,
+                                    // Only the resting thickness: Material thickens the line of
+                                    // the focused field on its own, and that is the focus mark.
+                                    unfocusedIndicatorLineThickness = borderWidth
+                                )
+                            } else {
+                                Box(Modifier.fillMaxSize().background(theme.inputBackgroundColor, shape))
+                            }
                         }
                     )
 
@@ -145,23 +175,29 @@ internal fun LabeledInputField(
                         interactionSource = interactionSource,
                         isError = hasError,
                         placeholder = placeholder,
-                        colors = theme.outlinedFieldColors(),
+                        colors = colors,
                         contentPadding = contentPadding,
                         container = {
-                            OutlinedTextFieldDefaults.Container(
-                                enabled = true,
-                                isError = hasError,
-                                interactionSource = interactionSource,
-                                colors = theme.outlinedFieldColors(),
-                                shape = shape,
-                                // Resting only, as above.
-                                unfocusedBorderThickness = borderWidth
-                            )
+                            if (drawsBorder) {
+                                OutlinedTextFieldDefaults.Container(
+                                    enabled = true,
+                                    isError = hasError,
+                                    interactionSource = interactionSource,
+                                    colors = colors,
+                                    shape = shape,
+                                    // Resting only, as above.
+                                    unfocusedBorderThickness = borderWidth
+                                )
+                            } else {
+                                Box(Modifier.fillMaxSize().background(theme.inputBackgroundColor, shape))
+                            }
                         }
                     )
                 }
+                }
             }
         )
+        }
         HelperText(error = config.error, helperText = config.helperText, theme = theme)
     }
 }
