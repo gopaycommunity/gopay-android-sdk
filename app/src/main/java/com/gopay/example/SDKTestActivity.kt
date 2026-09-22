@@ -520,10 +520,8 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
             inputFields = inputFields,
             theme = theme,
             // Placed straight into the section card, the way the iOS example sits in its grey box.
-            // The screen's 16dp, the card's 16dp and the form's own 16dp formPadding put the fields
-            // 48dp from the screen edge, and that form padding is what leaves room for the focus
-            // ring, which is drawn outside the fields and would be clipped by a container hugging
-            // the form.
+            // The screen's 16dp and the card's 16dp put the fields 32dp from the screen edge under
+            // the Default document, which leaves formPadding at none; Dark and Red set it to 16.
             modifier = Modifier.fillMaxWidth()
         )
 

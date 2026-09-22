@@ -154,6 +154,11 @@ class CardNumberMaskedVisualTransformation : VisualTransformation {
 
 /**
  * Visual transformation for masking CVV (e.g., 123 -> ***)
+ *
+ * How tall the CVV is next to the expiration field is settled in the row that composes the two,
+ * on both platforms. Android needs nothing there: the mask is a plain ASCII asterisk, drawn from
+ * the same font as the digits it hides, so the line keeps its metrics whether the field is masked
+ * or not and the two fields measure the same on their own.
  */
 class CvvMaskedVisualTransformation : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {

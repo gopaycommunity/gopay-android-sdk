@@ -75,10 +75,10 @@ enum class InputBorderStyle {
  * @property inputTextColor Color of the entered text.
  * @property inputFontSize Font size of the entered text.
  * @property inputFontWeight CSS font weight of the entered text, 100..900. `null` means regular.
- * @property inputHeight Smallest height of the input. It is a minimum, not a fixed height, so a
- *   large font scale can still grow the field rather than overflow it, and the vertical padding is
- *   added inside it rather than replaced by it. `null` derives the height from the font and the
- *   padding alone. The iOS SDK reads it the same way.
+ * @property inputHeight Smallest height of the input, with the vertical padding inside it rather
+ *   than on top of it. It is a minimum, not a fixed height, so a large font scale can still grow
+ *   the field rather than overflow it. `null` derives the height from the font and the padding
+ *   alone. The iOS SDK reads it the same way.
  * @property placeholderColor Color of the placeholder text. `null` uses the platform's own
  *   placeholder color. That color follows the system's appearance, not the theme's, so a theme
  *   that paints the field dark should set this as well, or the placeholder can end up dark on

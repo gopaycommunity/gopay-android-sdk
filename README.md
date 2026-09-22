@@ -254,8 +254,22 @@ also offers `onFormReady { submitFn -> … }` for external submit triggers and
 
 `PaymentCardFormTheme` is a flat set of parameters named 1:1 after the theme keys of the GoPay
 hosted card form (cc-v4), so the same design tokens describe the form on the web, on iOS and on
-Android. Web pixels map 1:1 to `dp` (sizes) and `sp` (font sizes, spacing, line heights); font
-weights are CSS numbers in the 100..900 range.
+Android. Web pixels map 1:1 to `dp` (sizes) and `sp` (font sizes and spacing); font weights are CSS
+numbers in the 100..900 range.
+
+Two things are worth knowing before reading the table.
+
+**The theme is a subset of the hosted form's set.** The field is the platform's own text field,
+decorated by the platform, and the SDK paints no part of it, so the theme carries what a native
+input can be told to do and nothing else. Fifteen of the hosted form's keys are therefore absent;
+they are listed below and are ignored when they arrive in a document.
+
+**Nothing is styled by default.** An unthemed form looks like any other form on the screen it sits
+in — the platform's type and colors, an ordinary field, labels in the case they were written in,
+and the host's own padding around it. The hosted card form is a page of its own and can afford a
+look; here the form is one part of the merchant's screen. Theming is fully available, it is just a
+choice rather than the starting point, and a theme document that wants the hosted form's look
+states it key by key.
 
 ```kotlin
 PaymentCardForm(
@@ -265,9 +279,7 @@ PaymentCardForm(
         labelFontSize = 11.sp,
         labelFontWeight = 600,
         labelUppercase = true,
-        inputBorderStyle = InputBorderStyle.UNDERLINE,
-        focusGradientStart = Color(0xFF19C7D6),
-        focusGradientEnd = Color(0xFF1899D6),
+        inputBorderColor = Color(0xFF698492),
         errorMinHeight = 14.dp
     )
 )
@@ -308,7 +320,7 @@ All 44 keys of the hosted form, and what this SDK does with them.
 | `fontFamily` | `fontFamily: FontFamily?` | Resolved by the host; the theme carries no font files |
 | `labelColor` | `labelColor` | |
 | `labelFontSize` | `labelFontSize` | |
-| `labelFontWeight` | `labelFontWeight: Int` | CSS number; in a JSON document `"bold"` and `"normal"` read as 700 and 400. Android keeps the exact value, so variable fonts resolve weights such as 450; the iOS SDK quantizes to the nearest hundred |
+| `labelFontWeight` | `labelFontWeight: Int` | CSS number; in a JSON document `"bold"` and `"normal"` read as 700 and 400. Android keeps the exact value, so variable fonts resolve weights such as 450; the iOS SDK quantizes to the nearest hundred. A weight outside 100..900 is dropped and reported when it comes from a document, and clamped into range when it comes from Kotlin: a document is untrusted input, a call site is the integrator's own code |
 | `labelLineHeight` | `labelLineHeight` | `null` uses the font metrics |
 | `labelUppercase` | `labelUppercase` | Uppercased with the device locale |
 | `labelLetterSpacing` | `labelLetterSpacing` | `null` means none; the web's `em` fallback is not computed |
@@ -316,23 +328,23 @@ All 44 keys of the hosted form, and what this SDK does with them.
 | `inputTextColor` | `inputTextColor` | |
 | `inputFontSize` | `inputFontSize` | |
 | `inputFontWeight` | `inputFontWeight: Int?` | Exact value as above |
-| `inputLineHeight` | accepted, ignored | Field height follows the font, the padding and `inputHeight` |
-| `inputLetterSpacing` | `inputLetterSpacing` | Adds to the grouping spaces of a formatted card number |
-| `inputHeight` | `inputHeight` | Takes precedence over the vertical padding |
-| `placeholderColor` | `placeholderColor` | |
-| `inputBorderStyle` | `inputBorderStyle: InputBorderStyle` | `BOXED` or `UNDERLINE`; the underline follows the rounded bottom corners of `inputBorderRadius`, like a CSS `border-bottom` with a `border-radius` |
+| `inputLineHeight` | not supported | A single-line field takes its height from the font, the padding and `inputHeight` |
+| `inputLetterSpacing` | not supported | Dropped for parity: the iOS field would have to be measured by hand for it |
+| `inputHeight` | `inputHeight` | A minimum height, with the vertical padding inside it; iOS reads it the same way |
+| `placeholderColor` | `placeholderColor` | `null` uses the platform's own placeholder color, which follows the system appearance rather than the theme |
+| `inputBorderStyle` | `inputBorderStyle: InputBorderStyle` | `BOXED` or `UNDERLINE`, both from Material. **Android only**: the iOS SDK has no native underline and renders both as a box |
 | `inputBorderColor` | `inputBorderColor` | |
-| `inputBorderWidth` | `inputBorderWidth` | |
+| `inputBorderWidth` | `inputBorderWidth` | The resting thickness; the focused field takes the thicker of this and Material's own |
 | `inputBackgroundColor` | `inputBackgroundColor` | |
 | `inputPaddingVertical` | `inputPaddingVertical` | |
 | `inputPaddingHorizontal` | `inputPaddingHorizontal` | |
 | `inputBorderRadius` | `inputBorderRadius: Dp` | Replaces the arbitrary `Shape` of 1.x |
-| `inputBorderCollapse` | `inputBorderCollapse` | Boxed style only, and only where the fields touch — see below |
-| `focusRingWidth` | `focusRingWidth` | Needs `focusRingColor` too |
-| `focusRingColor` | `focusRingColor` | |
-| `focusGradientStart` | `focusGradientStart` | Solid border color of a focused boxed field |
-| `focusGradientEnd` | `focusGradientEnd` | Underline only, as on the web |
-| `inputErrorBorderColor` | `inputErrorBorderColor` | Shown on an unfocused invalid field |
+| `inputBorderCollapse` | not supported | Merging the borders of neighbouring fields means painting them |
+| `focusRingWidth` | not supported | A ring outside the field has no native equivalent |
+| `focusRingColor` | not supported | Paired with `focusRingWidth` |
+| `focusGradientStart` | not supported | Marking the focused field is left to the platform, see below |
+| `focusGradientEnd` | not supported | Paired with `focusGradientStart` |
+| `inputErrorBorderColor` | `inputErrorBorderColor` | Shown while the field is invalid |
 | `errorTextColor` | `errorTextColor` | |
 | `errorFontSize` | `errorFontSize` | |
 | `errorMinHeight` | `errorMinHeight` | Reserves the shared error / helper slot |
@@ -350,47 +362,73 @@ All 44 keys of the hosted form, and what this SDK does with them.
 | `submitBorderRadius` | web-only | |
 | `submitFontSize` | web-only | |
 
-The eight web-only keys are the seven `submit*` keys and `errorHidden`. The mobile form never
-renders a submit button — it is the permanent equivalent of the web's `submitMode: 'external'`,
-where the iframe hides its button and the host submits — so there is nothing for the `submit*`
-keys to style.
+Fifteen keys are not supported. The seven `submit*` keys, because the mobile form never renders a
+submit button — it is the permanent equivalent of the web's `submitMode: 'external'`, where the
+iframe hides its button and the host submits, so there is nothing for them to style. `errorHidden`,
+which the mobile form already does by default. And seven the browser can only honour by painting
+the field: the collapsed borders, the focus ring, the focus gradient, and the letter spacing and
+line height of the input. A document that carries any of them still applies the rest of itself.
 
-Two parameters have no counterpart on the web and are documented as mobile-only extensions:
-`helperTextColor` and `helperFontSize`, which style the optional helper line under a field.
+The two groups are reported differently. The seven that would need painting are named in a warning
+under the `GopaySDK` Logcat tag, so it is clear which parts of a shared document this platform
+turned down. The `submit*` keys and `errorHidden` pass in silence, like any key the SDK does not
+know: they describe a button and a mode that do not exist here at all, so there is nothing an
+integrator would act on.
 
-`inputBorderCollapse` merges only the edges the fields actually share, resolved from what is
-rendered between them: the expiration and the CVV share a line when `groupSpacing` is `0.dp`, and
-the card number shares its bottom line with that row when, in addition, `labelHidden` is on,
-`errorMinHeight` is zero and no error or helper text is shown under the card number. Anywhere else
-each field keeps its own full frame, as on the web, so a field is never left without a side; an
-error appearing under the card number gives the bottom row its own top line while it is shown.
-Both SDKs resolve this the same way. A focused or invalid field always strokes its whole outline
-in the state color, painted over the shared lines as a single line, so the state reads as one
-closed box inside the block. Hence the recipe for a fully merged block: `inputBorderStyle =
-InputBorderStyle.BOXED` and `inputBorderCollapse = true`, with `groupSpacing` and `fieldSpacing` at
-zero, `labelHidden` on and `errorMinHeight` at zero. Collapsing has no effect on the default
-underline style.
+Two parameters have no counterpart on the web and are documented as Android-only extensions:
+`helperTextColor` and `helperFontSize`, which style the optional helper line under a field. The
+iOS SDK has no helper line, so a document carrying them applies only here.
 
 #### Default values
 
-Defaults are the hosted form's own, so a form nobody themed is laid out the same on all three
-channels and a theme document only has to carry what it actually changes. **Colors are the
-exception**: they stay on the platform's palette so the form keeps working on a dark background,
-and only the focus gradient is taken from the hosted form, because the platform has no equivalent
-for it. The table lists the colors that therefore still differ.
+The defaults are the platform's, not the hosted form's: an unthemed form is meant to disappear into
+the merchant's screen rather than announce itself. In practice that means the Android type sizes,
+an ordinary Material field, no uppercasing, and no padding around the form, since the host lays it
+out.
+
+**Every color but the two backgrounds is unset by default and comes from the ambient
+`MaterialTheme.colorScheme`**, so the form follows the host's palette and its light or dark mode
+without being told. `inputBackgroundColor` and `formBackgroundColor` are transparent instead, so
+the host's own surface shows through, and `placeholderColor` is unset in the sense of leaving the
+field's placeholder to Material. A host that sets up no Material theme at all still gets a scheme,
+Material's own light one, so the form is readable either way.
+
+One thing a dark theme has to say out loud: a theme that paints the field dark should set
+`placeholderColor` too. The platform's placeholder color follows the *system's* light or dark
+setting, not the theme's, so a dark field under a light system leaves the placeholder dark on dark.
 
 | Parameter | Android default | Hosted form default |
 |---|---|---|
-| `labelColor` | `Color.Gray` | `#4b5e68` |
-| `inputTextColor` | unspecified (the platform's own) | `#4b5e68` |
-| `inputBorderColor` | `Color.Gray` | `#698492` |
-| `inputErrorBorderColor` | `Color.Red` | `#ea3c55` |
-| `errorTextColor` | `Color.Red` | `#cc0000` |
+| `labelColor` | unset, the scheme's `onSurfaceVariant` | `#4b5e68` |
+| `labelFontSize` | `14.sp` | `11` |
+| `labelFontWeight` | `400` | `600` |
+| `labelUppercase` | `false` | `true` |
 | `labelLetterSpacing` | `null` (none) | unset, historically `0.06em` |
+| `inputTextColor` | unset, the field's own text color | `#4b5e68` |
+| `inputFontSize` | `16.sp` | `14` |
+| `inputBorderColor` | unset, the color the platform gives a field | `#698492` |
+| `inputBackgroundColor` | `Color.Transparent` | transparent |
+| `inputBorderRadius` | `4.dp` | `0` |
+| `inputPaddingVertical` | `12.dp` | `6` |
+| `inputPaddingHorizontal` | `12.dp` | `0` |
+| `inputErrorBorderColor` | unset, the scheme's `error` | `#ea3c55` |
+| `errorTextColor` | unset, the scheme's `error` | `#cc0000` |
+| `errorFontSize` | `12.sp` | `11` |
+| `errorMinHeight` | `0.dp` (the form grows) | `14` |
+| `formPadding` | `0.dp` (the host pads) | `16` |
 
-Everything else matches: the underline border, square corners, `6.dp` and `0.dp` input padding,
-`11.sp` labels in uppercase at weight 600, `14.sp` input text, `11.sp` error text over a `14.dp`
-reserved line, `16.dp` between groups and `16.dp` around the form.
+`inputBorderStyle` is the one place the two agree by accident: both default to the underline, which
+is also the ordinary Android field. `groupSpacing`, `fieldSpacing`, `inputBackgroundColor` and
+`formBackgroundColor` match the hosted form as well.
+
+Whatever the theme leaves unset, the platform fills in. **Marking the focused field is one of those
+things, and it is native on each platform, so it differs between them**: on Android Material colors
+the border of the field the keyboard is on and thickens it, while on iOS the native field marks
+nothing, so there the form shows no focus state at all. The theme carries no focus color to even it
+out; that was deliberate, because any such color would have to be painted by the SDK.
+`inputBorderWidth` sets the resting thickness only. The focused field keeps Material's own
+thickness, or the resting one where that is already thicker, so a heavy border never reads as
+thinner once the field is focused.
 
 One layout note: the expiry and CVV fields sit side by side, each with its own label above it, so
 the two line up as long as both labels take the same number of lines. The shipped labels fit on one
@@ -407,10 +445,10 @@ two parameters kept their names and changed their meaning.
 | 1.x | 2.0 |
 |---|---|
 | `labelTextStyle` | `labelColor` + `labelFontSize` + `labelFontWeight` (+ `fontFamily`) |
-| `inputTextStyle` | `inputTextColor` + `inputFontSize` + `inputFontWeight` + `inputLetterSpacing` |
+| `inputTextStyle` | `inputTextColor` + `inputFontSize` + `inputFontWeight` |
 | `errorTextStyle` | `errorTextColor` + `errorFontSize` |
 | `helperTextStyle` | `helperTextColor` + `helperFontSize` |
-| `placeholderTextStyle` | `placeholderColor` — only the colour survives; the placeholder now inherits the rest of the input typography |
+| `placeholderTextStyle` | `placeholderColor` — only the color survives, and unset now means the platform's; the placeholder inherits the rest of the input typography |
 | `loadingTextStyle` | removed without replacement; it was never rendered |
 | `inputShape` | `inputBorderRadius: Dp` |
 | `inputPadding` | `inputPaddingVertical` + `inputPaddingHorizontal` |
@@ -420,38 +458,37 @@ two parameters kept their names and changed their meaning.
 | `groupSpacing` (gap between expiry and CVV) | `groupSpacing` — one value now covers both gaps |
 | the hard-coded `4.dp` under a label | `fieldSpacing` — **the name is reused for a new meaning** |
 
-**The default form looks different in 2.0.** That is the point of the release: the defaults are the
-hosted form's, so the same theme document renders the same form on the web, on iOS and here. An
-integration that wants the 1.x appearance back passes it explicitly, most of it in these parameters:
+Seven parameters that 2.0 carried in an earlier preview are gone again, because rendering them
+would mean painting the field rather than asking the platform for it. Nothing replaces them, and a
+theme document carrying them is accepted with a warning:
+
+| Removed | What it did |
+|---|---|
+| `inputBorderCollapse` | Merged the borders of neighbouring fields into one block |
+| `focusRingWidth`, `focusRingColor` | Drew a ring outside the focused field |
+| `focusGradientStart`, `focusGradientEnd` | Colored the focused field; Material now marks it |
+| `inputLetterSpacing` | Tracking of the entered text, dropped for parity with iOS |
+| `inputLineHeight` | Never did anything on a single-line field |
+
+The default form is close to the 1.x one, because both are simply the platform look: the same type
+sizes and the same `12.dp` padding. Three things differ:
 
 ```kotlin
 PaymentCardFormTheme(
+    // 1.x drew a box; the field is now an ordinary Material one, underlined
     inputBorderStyle = InputBorderStyle.BOXED,
-    inputBorderRadius = 4.dp,
-    inputPaddingVertical = 12.dp,
-    inputPaddingHorizontal = 12.dp,
-    inputBackgroundColor = Color.White,
-    labelFontSize = 14.sp,
-    labelFontWeight = 400,
-    labelUppercase = false,
-    inputFontSize = 16.sp,
-    errorFontSize = 12.sp,
-    errorMinHeight = 0.dp,
-    formPadding = 0.dp
+    // 1.x painted the field white, which broke on a dark background
+    inputBackgroundColor = Color.White
 )
 ```
 
-Two further changes are not about default values:
+The third is not a value: `groupSpacing` is one parameter for both gaps, so it cannot hold the old
+pair (`2.dp` between the rows, `16.dp` between expiry and CVV). It keeps `16.dp`, so the gap between
+the rows grows from `2.dp` to `16.dp`.
 
-1. `groupSpacing` is one value for both gaps, so it cannot hold the old pair (`2.dp` between the
-   rows, `16.dp` between expiry and CVV). It keeps `16.dp`, and the gap between the rows grows
-   from `2.dp` to `16.dp`.
-2. A focused field now shows a focus border, which the form never had. This is the point of
-   sharing one state model with the web and the iOS SDK.
-
-Two more behaviours change with them: the label of an invalid field stays in `labelColor` instead
-of turning red (the hosted form does not recolor it either), and a focused field shows the focus
-color even while invalid.
+Two behaviours change as well. The label of an invalid field stays in `labelColor` instead of
+turning red, which is what the hosted form does too. And the focused field is now marked, by
+Material rather than by the theme — see the note on focus above.
 
 ### Localizing the form
 
