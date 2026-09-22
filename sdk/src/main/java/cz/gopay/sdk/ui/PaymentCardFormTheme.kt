@@ -80,7 +80,9 @@ enum class InputBorderStyle {
  *   added inside it rather than replaced by it. `null` derives the height from the font and the
  *   padding alone. The iOS SDK reads it the same way.
  * @property placeholderColor Color of the placeholder text. `null` uses the platform's own
- *   placeholder color, which follows the light or dark background the form sits on.
+ *   placeholder color. That color follows the system's appearance, not the theme's, so a theme
+ *   that paints the field dark should set this as well, or the placeholder can end up dark on
+ *   dark while the system is in light mode.
  * @property inputBorderStyle Border treatment of the inputs, see [InputBorderStyle].
  * @property inputBorderColor Border color of an unfocused, valid input. Unset takes the color
  *   the platform gives an ordinary field.
