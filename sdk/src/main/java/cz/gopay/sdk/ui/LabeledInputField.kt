@@ -134,7 +134,16 @@ internal fun LabeledInputField(
             decorationBox = { innerTextField ->
                 // Clipped to the field: a border thicker than the field is tall would otherwise
                 // paint over the content and over whatever sits above the form.
-                Box(Modifier.clipToBounds()) {
+                //
+                // The minimum constraints have to be passed on. A Box drops them by default, and
+                // Material's decoration then sizes itself to its content, which leaves the
+                // underline as wide as the text instead of as wide as the field.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clipToBounds(),
+                    propagateMinConstraints = true
+                ) {
                 when (theme.inputBorderStyle) {
                     InputBorderStyle.UNDERLINE -> TextFieldDefaults.DecorationBox(
                         value = value,
