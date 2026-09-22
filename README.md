@@ -392,6 +392,12 @@ Everything else matches: the underline border, square corners, `6.dp` and `0.dp`
 `11.sp` labels in uppercase at weight 600, `14.sp` input text, `11.sp` error text over a `14.dp`
 reserved line, `16.dp` between groups and `16.dp` around the form.
 
+One layout note: the expiry and CVV fields sit side by side, each with its own label above it, so
+the two line up as long as both labels take the same number of lines. The shipped labels fit on one
+line at the default font size, but at a very large system font scale a long one can still wrap in
+one field and not the other, and the pair is then a line out of step. That is left as it is — the
+label is not clipped to avoid it, and the field is not measured into place.
+
 #### Migrating from 1.x
 
 `PaymentCardFormTheme` in 2.0 is a new set of parameters. The composed `TextStyle` values are gone,
