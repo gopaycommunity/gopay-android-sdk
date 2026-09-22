@@ -140,7 +140,11 @@ class PaymentCardFormThemeTest {
         assertEquals(TextUnit.Unspecified, theme.labelTextStyle().lineHeight)
         assertEquals(TextUnit.Unspecified, theme.labelTextStyle().letterSpacing)
         assertNull("An unset weight stays unset", theme.inputTextStyle().fontWeight)
-        assertEquals(Color.LightGray, theme.placeholderTextStyle().color)
+        assertEquals(
+            "An unset placeholder color is left to the platform",
+            Color.Unspecified,
+            theme.placeholderTextStyle().color
+        )
     }
 
     @Test

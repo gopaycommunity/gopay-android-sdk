@@ -1,11 +1,13 @@
 package cz.gopay.sdk.ui
 
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -41,8 +43,11 @@ enum class InputBorderStyle {
  * CSS numbers in the 100..900 range.
  *
  * **Nothing is styled by default.** A form the host does not theme looks like any other form on
- * the screen it sits in: the platform's type sizes and colors, an ordinary field, labels in the
- * case they were written in, and the host's own padding around it. That is the difference from the
+ * the screen it sits in: the platform's type sizes, an ordinary field, labels in the case they
+ * were written in, and the host's own padding around it. Colors the theme leaves unset come from
+ * the ambient `MaterialTheme.colorScheme`, so the form follows the host's palette and its light
+ * or dark mode. A host that sets up no Material theme gets Material's own light scheme, which is
+ * what `LocalColorScheme` defaults to. That is the difference from the
  * hosted card form, which is a page of its own and can afford a look; here the form is one part of
  * the merchant's screen. Theming is fully available, it is just a choice rather than the starting
  * point. The README carries the parity table and the 1.x to 2.0 migration map.
@@ -60,7 +65,7 @@ enum class InputBorderStyle {
  *
  * @property fontFamily Font used for labels, input text, placeholders and error text. `null` uses
  *   the platform font. Fonts are resolved by the host application; the theme carries no font files.
- * @property labelColor Color of the field labels.
+ * @property labelColor Color of the field labels. Unset takes the color scheme's `onSurfaceVariant`.
  * @property labelFontSize Font size of the field labels.
  * @property labelFontWeight CSS font weight of the field labels, 100..900.
  * @property labelLineHeight Line height of the field labels. `null` uses the font metrics.
@@ -71,21 +76,26 @@ enum class InputBorderStyle {
  * @property inputTextColor Color of the entered text.
  * @property inputFontSize Font size of the entered text.
  * @property inputFontWeight CSS font weight of the entered text, 100..900. `null` means regular.
- * @property inputHeight Height of the input, taken as a minimum so a large font scale can still
- *   grow the field rather than overflow it. Takes precedence over the vertical padding.
- *   `null` derives the height from the font and the padding.
- * @property placeholderColor Color of the placeholder text. `null` keeps the historical default,
- *   the input text tinted `LightGray`, which reads as real input on a dark form — set it there.
+ * @property inputHeight Smallest height of the input. It is a minimum, not a fixed height, so a
+ *   large font scale can still grow the field rather than overflow it, and the vertical padding is
+ *   added inside it rather than replaced by it. `null` derives the height from the font and the
+ *   padding alone. The iOS SDK reads it the same way.
+ * @property placeholderColor Color of the placeholder text. `null` uses the platform's own
+ *   placeholder color, which follows the light or dark background the form sits on.
  * @property inputBorderStyle Border treatment of the inputs, see [InputBorderStyle].
- * @property inputBorderColor Border color of an unfocused, valid input.
- * @property inputBorderWidth Border width of the inputs.
+ * @property inputBorderColor Border color of an unfocused, valid input. Unset takes the color
+ *   the platform gives an ordinary field.
+ * @property inputBorderWidth Border width of a resting input. The platform thickens the border
+ *   of the focused one on its own, so this does not set that.
  * @property inputBackgroundColor Background color of the input area.
  * @property inputPaddingVertical Vertical padding inside the inputs.
  * @property inputPaddingHorizontal Horizontal padding inside the inputs.
  * @property inputBorderRadius Corner radius of the inputs. Replaces the arbitrary `Shape` of 1.x;
  *   the hosted form has no equivalent of a general shape either.
- * @property inputErrorBorderColor Border color of an input in an error state.
- * @property errorTextColor Color of the error text below an input.
+ * @property inputErrorBorderColor Border color of an input in an error state. Unset takes the
+ *   color scheme's `error`.
+ * @property errorTextColor Color of the error text below an input. Unset takes the color
+ *   scheme's `error`.
  * @property errorFontSize Font size of the error text.
  * @property errorMinHeight Vertical space reserved for the error line, so the layout does not
  *   shift when a message appears. The slot is shared with the helper text. Zero, the default,
@@ -99,16 +109,17 @@ enum class InputBorderStyle {
  * @property formPadding Padding around the whole form. Zero by default, because the host lays the
  *   form out on its own screen; the hosted card form uses 16 inside its iframe.
  * @property formBackgroundColor Background color of the form container.
- * @property helperTextColor Color of the helper text. Mobile-only extension: the hosted form has
+ * @property helperTextColor Color of the helper text, `onSurfaceVariant` when unset.
+ *   Android-only extension: the hosted form has
  *   no helper text.
- * @property helperFontSize Font size of the helper text. Mobile-only extension.
+ * @property helperFontSize Font size of the helper text. Android-only extension.
  */
 data class PaymentCardFormTheme(
     // Typography
     val fontFamily: FontFamily? = null,
 
     // Labels
-    val labelColor: Color = Color.Gray,
+    val labelColor: Color = Color.Unspecified,
     val labelFontSize: TextUnit = 14.sp,
     val labelFontWeight: Int = 400,
     val labelLineHeight: TextUnit? = null,
@@ -125,7 +136,7 @@ data class PaymentCardFormTheme(
 
     // Input border
     val inputBorderStyle: InputBorderStyle = InputBorderStyle.UNDERLINE,
-    val inputBorderColor: Color = Color.Gray,
+    val inputBorderColor: Color = Color.Unspecified,
     val inputBorderWidth: Dp = 1.dp,
     val inputBackgroundColor: Color = Color.Transparent,
     val inputPaddingVertical: Dp = 12.dp,
@@ -133,8 +144,8 @@ data class PaymentCardFormTheme(
     val inputBorderRadius: Dp = 4.dp,
 
     // Validation errors
-    val inputErrorBorderColor: Color = Color.Red,
-    val errorTextColor: Color = Color.Red,
+    val inputErrorBorderColor: Color = Color.Unspecified,
+    val errorTextColor: Color = Color.Unspecified,
     val errorFontSize: TextUnit = 12.sp,
     val errorMinHeight: Dp = 0.dp,
     val errorSpacing: Dp? = null,
@@ -145,8 +156,8 @@ data class PaymentCardFormTheme(
     val formPadding: Dp = 0.dp,
     val formBackgroundColor: Color = Color.Transparent,
 
-    // Mobile-only extensions
-    val helperTextColor: Color = Color.Gray,
+    // Android-only extensions
+    val helperTextColor: Color = Color.Unspecified,
     val helperFontSize: TextUnit = 12.sp
 )
 
@@ -191,9 +202,12 @@ internal fun PaymentCardFormTheme.inputTextStyle(): TextStyle = TextStyle(
     textDirection = TextDirection.Ltr
 )
 
-/** Text style of the placeholder shown in an empty field. */
+/**
+ * Text style of the placeholder shown in an empty field. An unset color is left unspecified on
+ * purpose: the platform then colors the placeholder the way it colors every other one.
+ */
 internal fun PaymentCardFormTheme.placeholderTextStyle(): TextStyle =
-    inputTextStyle().copy(color = placeholderColor ?: Color.LightGray)
+    inputTextStyle().copy(color = placeholderColor ?: Color.Unspecified)
 
 /** How much taller a rendered line is than the font size that names it, for the default family. */
 private const val ERROR_LINE_HEIGHT_FACTOR = 1.2f
@@ -249,8 +263,8 @@ internal fun PaymentCardFormTheme.filledFieldColors(): TextFieldColors = TextFie
     errorContainerColor = inputBackgroundColor,
     unfocusedIndicatorColor = inputBorderColor,
     errorIndicatorColor = inputErrorBorderColor,
-    focusedPlaceholderColor = placeholderColor ?: Color.LightGray,
-    unfocusedPlaceholderColor = placeholderColor ?: Color.LightGray
+    focusedPlaceholderColor = placeholderColor ?: Color.Unspecified,
+    unfocusedPlaceholderColor = placeholderColor ?: Color.Unspecified
 )
 
 /** The same for a Material outlined field. */
@@ -263,6 +277,26 @@ internal fun PaymentCardFormTheme.outlinedFieldColors(): TextFieldColors =
         errorContainerColor = inputBackgroundColor,
         unfocusedBorderColor = inputBorderColor,
         errorBorderColor = inputErrorBorderColor,
-        focusedPlaceholderColor = placeholderColor ?: Color.LightGray,
-        unfocusedPlaceholderColor = placeholderColor ?: Color.LightGray
+        focusedPlaceholderColor = placeholderColor ?: Color.Unspecified,
+        unfocusedPlaceholderColor = placeholderColor ?: Color.Unspecified
     )
+
+/**
+ * Color of the field labels, with an unset one taken from the color scheme.
+ *
+ * `BasicText` paints an unspecified color black rather than asking the scheme, so every text the
+ * form draws itself resolves its color here first.
+ */
+@Composable
+internal fun PaymentCardFormTheme.resolvedLabelColor(): Color =
+    labelColor.takeOrElse { MaterialTheme.colorScheme.onSurfaceVariant }
+
+/** Color of the error line, the color scheme's `error` when unset. */
+@Composable
+internal fun PaymentCardFormTheme.resolvedErrorTextColor(): Color =
+    errorTextColor.takeOrElse { MaterialTheme.colorScheme.error }
+
+/** Color of the helper line, `onSurfaceVariant` when unset. */
+@Composable
+internal fun PaymentCardFormTheme.resolvedHelperTextColor(): Color =
+    helperTextColor.takeOrElse { MaterialTheme.colorScheme.onSurfaceVariant }

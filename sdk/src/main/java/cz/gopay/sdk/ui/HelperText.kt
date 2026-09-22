@@ -27,7 +27,11 @@ fun HelperText(error: String?, helperText: String?, theme: PaymentCardFormTheme)
         if (text != null) {
             BasicText(
                 text = text,
-                style = if (error != null) theme.errorTextStyle() else theme.helperTextStyle()
+                style = if (error != null) {
+                    theme.errorTextStyle().copy(color = theme.resolvedErrorTextColor())
+                } else {
+                    theme.helperTextStyle().copy(color = theme.resolvedHelperTextColor())
+                }
             )
         }
     }

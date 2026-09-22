@@ -35,13 +35,14 @@ class PaymentCardFormTest {
 
     @Test
     fun paymentCardFormTheme_defaultValues_areCorrect() {
-        // An unthemed form is deliberately unstyled: it takes the platform's own type and colors
-        // and leaves the padding around it to the host, because it sits on the merchant's screen
-        // rather than on a page of its own like the hosted card form.
+        // An unthemed form is deliberately unstyled: it takes the platform's own type sizes, the
+        // host's color scheme for every color it leaves unspecified, and leaves the padding around
+        // it to the host, because it sits on the merchant's screen rather than on a page of its
+        // own like the hosted card form.
         val theme = PaymentCardFormTheme()
 
         // Labels
-        assertEquals("Default label color should be Gray", Color.Gray, theme.labelColor)
+        assertEquals("The label color is left to the color scheme", Color.Unspecified, theme.labelColor)
         assertEquals("Default label font size should be 14sp", 14.sp, theme.labelFontSize)
         assertEquals("Default label weight should be regular", 400, theme.labelFontWeight)
         assertFalse("Labels should keep the case they were written in", theme.labelUppercase)
@@ -55,15 +56,17 @@ class PaymentCardFormTest {
 
         // Border
         assertEquals("Default border style should be underline, as on the platform", InputBorderStyle.UNDERLINE, theme.inputBorderStyle)
-        assertEquals("Default border color should be Gray", Color.Gray, theme.inputBorderColor)
+        assertEquals("So is the border color", Color.Unspecified, theme.inputBorderColor)
         assertEquals("Default background should be transparent, so the host's shows through", Color.Transparent, theme.inputBackgroundColor)
         assertEquals("Default border width should be 1dp", 1.dp, theme.inputBorderWidth)
         assertEquals("Default border radius should be 4dp", 4.dp, theme.inputBorderRadius)
         assertEquals("Default vertical padding should be 12dp", 12.dp, theme.inputPaddingVertical)
         assertEquals("Default horizontal padding should be 12dp", 12.dp, theme.inputPaddingHorizontal)
 
+        assertEquals("And the error border color", Color.Unspecified, theme.inputErrorBorderColor)
+
         // Errors
-        assertEquals("Default error color should be Red", Color.Red, theme.errorTextColor)
+        assertEquals("And the error color", Color.Unspecified, theme.errorTextColor)
         assertEquals("Default error font size should be 12sp", 12.sp, theme.errorFontSize)
         assertEquals("Nothing is reserved for the error line by default", 0.dp, theme.errorMinHeight)
         assertNull("Default error spacing should fall back to fieldSpacing", theme.errorSpacing)
@@ -75,7 +78,7 @@ class PaymentCardFormTest {
         assertEquals("Default form background should be transparent", Color.Transparent, theme.formBackgroundColor)
 
         // Mobile-only helper text
-        assertEquals("Default helper color should be Gray", Color.Gray, theme.helperTextColor)
+        assertEquals("And the helper color", Color.Unspecified, theme.helperTextColor)
         assertEquals("Default helper font size should be 12sp", 12.sp, theme.helperFontSize)
     }
 

@@ -12,6 +12,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -66,9 +67,11 @@ internal fun LabeledInputField(
     )
     val placeholder: (@Composable () -> Unit)? = config.placeholder?.let { text ->
         {
-            // One line, like the field itself: at a large font scale a wrapping placeholder would
-            // make the empty field taller than a filled one.
-            BasicText(
+            // Material's Text, not BasicText: with no color in the theme the style leaves the
+            // color unspecified, and only Text falls back to the placeholder color the decoration
+            // box provides. One line, like the field itself, so a large font scale cannot make an
+            // empty field taller than a filled one.
+            Text(
                 text = text,
                 style = theme.placeholderTextStyle(),
                 maxLines = 1,
@@ -84,7 +87,7 @@ internal fun LabeledInputField(
                 text = theme.renderedLabel(config.label),
                 // The label keeps its own color in an error state; only the field and the error
                 // line change, matching the hosted card form.
-                style = theme.labelTextStyle(),
+                style = theme.labelTextStyle().copy(color = theme.resolvedLabelColor()),
                 modifier = Modifier.padding(bottom = theme.fieldSpacing.coerceAtLeast(0.dp))
             )
         }
@@ -126,7 +129,8 @@ internal fun LabeledInputField(
                                 interactionSource = interactionSource,
                                 colors = theme.filledFieldColors(),
                                 shape = shape,
-                                focusedIndicatorLineThickness = borderWidth,
+                                // Only the resting thickness: Material thickens the line of
+                                // the focused field on its own, and that is the focus mark.
                                 unfocusedIndicatorLineThickness = borderWidth
                             )
                         }
@@ -150,7 +154,7 @@ internal fun LabeledInputField(
                                 interactionSource = interactionSource,
                                 colors = theme.outlinedFieldColors(),
                                 shape = shape,
-                                focusedBorderThickness = borderWidth,
+                                // Resting only, as above.
                                 unfocusedBorderThickness = borderWidth
                             )
                         }
