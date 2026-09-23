@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -165,6 +166,15 @@ data class PaymentCardFormTheme(
     val helperFontSize: TextUnit = 12.sp
 )
 
+/**
+ * A length the theme states, read as none when it is negative or unspecified.
+ *
+ * `Dp.Unspecified` is `Dp(NaN)` and slips through `coerceAtLeast`, so a theme that leaves a length
+ * unspecified would reach the layout pass and fail it — "Padding must be non-negative", or a round
+ * of NaN. The typed theme is the only way in now, so it is the place to catch it.
+ */
+internal fun Dp.orZero(): Dp = if (isSpecified) coerceAtLeast(0.dp) else 0.dp
+
 /** Label text as rendered, with [PaymentCardFormTheme.labelUppercase] applied. */
 internal fun PaymentCardFormTheme.renderedLabel(label: String): String =
     if (labelUppercase) label.uppercase(Locale.getDefault()) else label
@@ -226,7 +236,7 @@ private const val ERROR_LINE_HEIGHT_FACTOR = 1.2f
  */
 @Composable
 internal fun PaymentCardFormTheme.reservedErrorHeight(): Dp {
-    val requested = errorMinHeight.coerceAtLeast(0.dp)
+    val requested = errorMinHeight.orZero()
     if (requested <= 0.dp) return 0.dp
     // A rendered line is about a fifth taller than the font size that names it, so reserving the
     // bare size still lets the form jump when a message appears. `toDp` accepts only `sp`, and

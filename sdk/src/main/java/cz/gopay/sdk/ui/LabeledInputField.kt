@@ -117,7 +117,7 @@ private fun FieldLabel(theme: PaymentCardFormTheme, label: String) {
         // The label keeps its own color in an error state; only the field and the error
         // line change, matching the hosted card form.
         style = theme.labelTextStyle().copy(color = theme.resolvedLabelColor()),
-        modifier = Modifier.padding(bottom = theme.fieldSpacing.coerceAtLeast(0.dp))
+        modifier = Modifier.padding(bottom = theme.fieldSpacing.orZero())
     )
 }
 
@@ -126,7 +126,7 @@ private fun FieldLabel(theme: PaymentCardFormTheme, label: String) {
  * over the field below it.
  */
 private fun Modifier.minimumInputHeight(theme: PaymentCardFormTheme): Modifier {
-    val height = theme.inputHeight?.coerceAtLeast(0.dp) ?: return this
+    val height = theme.inputHeight?.orZero() ?: return this
     return heightIn(min = height)
 }
 
@@ -180,8 +180,8 @@ private class FieldDecoration(
     val visualTransformation: VisualTransformation,
     val placeholder: (@Composable () -> Unit)?
 ) {
-    val shape = RoundedCornerShape(theme.inputBorderRadius.coerceAtLeast(0.dp))
-    val borderWidth = theme.inputBorderWidth.coerceAtLeast(0.dp)
+    val shape = RoundedCornerShape(theme.inputBorderRadius.orZero())
+    val borderWidth = theme.inputBorderWidth.orZero()
 
     /**
      * Zero means no border at all, the way a zero errorMinHeight means no reserved line: Material
@@ -190,8 +190,8 @@ private class FieldDecoration(
     val drawsBorder = borderWidth > 0.dp
 
     val contentPadding = PaddingValues(
-        horizontal = theme.inputPaddingHorizontal.coerceAtLeast(0.dp),
-        vertical = theme.inputPaddingVertical.coerceAtLeast(0.dp)
+        horizontal = theme.inputPaddingHorizontal.orZero(),
+        vertical = theme.inputPaddingVertical.orZero()
     )
 }
 
@@ -253,8 +253,13 @@ private fun UnderlinedField(
                     interactionSource = decoration.interactionSource,
                     colors = decoration.colors,
                     shape = decoration.shape,
-                    // Only the resting thickness: Material thickens the line of
-                    // the focused field on its own, and that is the focus mark.
+                    // Material swaps the thickness on focus rather than taking the larger of
+                    // the two, so a theme asking for a thick resting line would see it get
+                    // thinner when the field is focused. The focused line is never the thinner.
+                    focusedIndicatorLineThickness = maxOf(
+                        decoration.borderWidth,
+                        TextFieldDefaults.FocusedIndicatorThickness
+                    ),
                     unfocusedIndicatorLineThickness = decoration.borderWidth
                 )
             } else {
@@ -291,7 +296,11 @@ private fun BoxedField(
                     interactionSource = decoration.interactionSource,
                     colors = decoration.colors,
                     shape = decoration.shape,
-                    // Resting only, as above.
+                    // Never the thinner when focused, as above.
+                    focusedBorderThickness = maxOf(
+                        decoration.borderWidth,
+                        OutlinedTextFieldDefaults.FocusedBorderThickness
+                    ),
                     unfocusedBorderThickness = decoration.borderWidth
                 )
             } else {
@@ -317,3 +326,4 @@ private fun BareBackground(decoration: FieldDecoration) {
  */
 private fun Modifier.semanticsLabel(theme: PaymentCardFormTheme, label: String): Modifier =
     if (theme.labelHidden) semantics { contentDescription = label } else this
+

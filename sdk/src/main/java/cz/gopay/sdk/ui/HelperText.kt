@@ -21,7 +21,7 @@ fun HelperText(error: String?, helperText: String?, theme: PaymentCardFormTheme)
     if (text == null && theme.errorMinHeight <= 0.dp) return
     Box(
         modifier = Modifier
-            .padding(top = (theme.errorSpacing ?: theme.fieldSpacing).coerceAtLeast(0.dp))
+            .padding(top = (theme.errorSpacing ?: theme.fieldSpacing).orZero())
             .defaultMinSize(minHeight = theme.reservedErrorHeight())
     ) {
         if (text != null) {

@@ -231,8 +231,8 @@ fun PaymentCardForm(
         modifier = modifier
             .fillMaxWidth()
             .background(theme.formBackgroundColor)
-            .padding(theme.formPadding.coerceAtLeast(0.dp)),
-        verticalArrangement = Arrangement.spacedBy(theme.groupSpacing.coerceAtLeast(0.dp))
+            .padding(theme.formPadding.orZero()),
+        verticalArrangement = Arrangement.spacedBy(theme.groupSpacing.orZero())
     ) {
         // Card Number Input
         LabeledInputField(
@@ -262,7 +262,7 @@ fun PaymentCardForm(
         // Expiration Date and CVV Row
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(theme.groupSpacing.coerceAtLeast(0.dp))
+            horizontalArrangement = Arrangement.spacedBy(theme.groupSpacing.orZero())
         ) {
             // Expiration Date
             LabeledInputField(
@@ -312,6 +312,7 @@ fun PaymentCardForm(
                 theme = theme
             )
         }
+
     }
 }
 

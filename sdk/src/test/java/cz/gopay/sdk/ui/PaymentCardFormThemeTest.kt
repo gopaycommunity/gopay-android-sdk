@@ -4,7 +4,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -100,5 +102,15 @@ class PaymentCardFormThemeTest {
             Color.Unspecified,
             theme.placeholderTextStyle().color
         )
+    }
+
+    @Test
+    fun unspecifiedLengths_readAsNone() {
+        // Dp.Unspecified is Dp(NaN) and slips through a plain coerceAtLeast, which would reach
+        // the layout pass as a negative padding or a round of NaN.
+        assertEquals(0.dp, Dp.Unspecified.orZero())
+        assertEquals(0.dp, (-8).dp.orZero())
+        assertEquals(8.dp, 8.dp.orZero())
+        assertEquals(0.dp, 0.dp.orZero())
     }
 }
