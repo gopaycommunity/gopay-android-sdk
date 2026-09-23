@@ -431,10 +431,11 @@ thickness, or the resting one where that is already thicker, so a heavy border n
 thinner once the field is focused.
 
 One layout note: the expiry and CVV fields sit side by side, each with its own label above it, so
-the two line up as long as both labels take the same number of lines. The shipped labels fit on one
-line at the default font size, but at a very large system font scale a long one can still wrap in
-one field and not the other, and the pair is then a line out of step. That is left as it is — the
-label is not clipped to avoid it, and the field is not measured into place.
+the two line up as long as both labels take the same number of lines. The labels are the ones GoPay
+translates, not ones picked to fit, so in the longer languages, or at a large system font scale,
+the expiry label can wrap where the CVV one does not and leave the pair a line out of step. That is
+left as it is — the label is not clipped to avoid it, and the field is not measured into place, and
+the hosted form and the iOS SDK behave the same way.
 
 #### Migrating from 1.x
 

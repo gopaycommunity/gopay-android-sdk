@@ -13,7 +13,7 @@ class PaymentFormInputsMappingTest {
 
         assertEquals("Card number", inputs.cardNumber.label)
         assertEquals("1234 5678 9012 3456", inputs.cardNumber.placeholder)
-        assertEquals("Expiry date", inputs.expirationDate.label)
+        assertEquals("Expiration date", inputs.expirationDate.label)
         assertEquals("MM/YY", inputs.expirationDate.placeholder)
         assertEquals("CVV", inputs.cvv.label)
         assertEquals("123", inputs.cvv.placeholder)

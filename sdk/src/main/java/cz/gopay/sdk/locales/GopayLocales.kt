@@ -38,7 +38,7 @@ object GopayLocales {
     val EN = GopayLocaleStrings(
         panLabel = "Card number",
         panPlaceholder = PAN_PLACEHOLDER,
-        expLabel = "Expiry date",
+        expLabel = "Expiration date",
         expPlaceholder = "MM/YY",
         cvvLabel = CVV_LABEL,
         cvvPlaceholder = CVV_PLACEHOLDER,
@@ -68,7 +68,7 @@ object GopayLocales {
     val ES = GopayLocaleStrings(
         panLabel = "Número de Tarjeta",
         panPlaceholder = PAN_PLACEHOLDER,
-        expLabel = "Caducidad",
+        expLabel = "Fecha de vencimiento",
         expPlaceholder = "MM/AA",
         cvvLabel = CVV_LABEL,
         cvvPlaceholder = CVV_PLACEHOLDER,
@@ -143,7 +143,7 @@ object GopayLocales {
     val PT = GopayLocaleStrings(
         panLabel = "Número do cartão",
         panPlaceholder = PAN_PLACEHOLDER,
-        expLabel = "Validade",
+        expLabel = "Data de validade",
         expPlaceholder = "MM/AA",
         cvvLabel = CVV_LABEL,
         cvvPlaceholder = CVV_PLACEHOLDER,
@@ -188,7 +188,7 @@ object GopayLocales {
     val RU = GopayLocaleStrings(
         panLabel = "Номер карты",
         panPlaceholder = PAN_PLACEHOLDER,
-        expLabel = "Годен до",
+        expLabel = "Срок действия",
         expPlaceholder = "ММ/ГГ",
         cvvLabel = CVV_LABEL,
         cvvPlaceholder = CVV_PLACEHOLDER,
@@ -248,7 +248,7 @@ object GopayLocales {
     val LT = GopayLocaleStrings(
         panLabel = "Kortelės numeris",
         panPlaceholder = PAN_PLACEHOLDER,
-        expLabel = "Galioja iki",
+        expLabel = "Galiojimo data",
         expPlaceholder = "MM/YY",
         cvvLabel = CVV_LABEL,
         cvvPlaceholder = CVV_PLACEHOLDER,
@@ -263,7 +263,7 @@ object GopayLocales {
     val LV = GopayLocaleStrings(
         panLabel = "Kartes numurs",
         panPlaceholder = PAN_PLACEHOLDER,
-        expLabel = "Derīgs līdz",
+        expLabel = "Derīguma termiņš",
         expPlaceholder = "MM/GG",
         cvvLabel = CVV_LABEL,
         cvvPlaceholder = CVV_PLACEHOLDER,
