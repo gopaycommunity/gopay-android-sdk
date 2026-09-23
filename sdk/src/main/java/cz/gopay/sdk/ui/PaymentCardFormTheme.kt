@@ -1,12 +1,13 @@
 package cz.gopay.sdk.ui
 
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.TextFieldColors
-import androidx.compose.material3.TextFieldDefaults
+import android.util.TypedValue
+import androidx.annotation.AttrRes
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -18,20 +19,22 @@ import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import java.util.Locale
 
 /**
  * Border treatment of the input fields.
  *
- * Mirrors the `inputBorderStyle` key of the GoPay hosted card form, [UNDERLINE] included: that is
- * what the hosted form uses when a theme does not say otherwise, and what an ordinary Android
- * field looks like.
+ * Mirrors the `inputBorderStyle` key of the GoPay hosted card form, so a theme written for the
+ * hosted form can state either value. On mobile both draw the same border: a bottom line alone is
+ * something the platform does not offer either here or on iOS, and drawing one by hand is not what
+ * this SDK does.
  */
 enum class InputBorderStyle {
     /** Full border around the field, rounded by [PaymentCardFormTheme.inputBorderRadius]. */
     BOXED,
 
-    /** Bottom line only. */
+    /** The hosted form's bottom line. Drawn as a full border on mobile, the same as [BOXED]. */
     UNDERLINE
 }
 
@@ -46,9 +49,9 @@ enum class InputBorderStyle {
  * **Nothing is styled by default.** A form the host does not theme looks like any other form on
  * the screen it sits in: the platform's type sizes, an ordinary field, labels in the case they
  * were written in, and the host's own padding around it. Colors the theme leaves unset come from
- * the ambient `MaterialTheme.colorScheme`, so the form follows the host's palette and its light
- * or dark mode. A host that sets up no Material theme gets Material's own light scheme, which is
- * what `LocalColorScheme` defaults to. That is the difference from the
+ * the host's own theme attributes — `textColorPrimary` and its siblings, the ones an ordinary
+ * Android widget reads — so the form follows the host's palette and its dark variant. The iOS SDK
+ * resolves the same parameters to the equivalent system colors. That is the difference from the
  * hosted card form, which is a page of its own and can afford a look; here the form is one part of
  * the merchant's screen. Theming is fully available, it is just a choice rather than the starting
  * point. The README carries the parity table and the 1.x to 2.0 migration map.
@@ -66,41 +69,40 @@ enum class InputBorderStyle {
  *
  * @property fontFamily Font used for labels, input text, placeholders and error text. `null` uses
  *   the platform font. Fonts are resolved by the host application; the theme carries no font files.
- * @property labelColor Color of the field labels. Unset takes the color scheme's `onSurfaceVariant`.
- * @property labelFontSize Font size of the field labels. The default is `12.sp`, the size of
- *   Material's `bodySmall`, which is what its own text field gives a label above the input. It is
- *   a literal, not a lookup: a host with its own type scale still gets 12 unless it says otherwise.
+ * @property labelColor Color of the field labels. Unset takes the host theme's `textColorPrimary`.
+ * @property labelFontSize Font size of the field labels. The default is `12.sp`, the same size the
+ *   iOS SDK gives a label. It is a literal, not a lookup: a host with its own type scale still gets
+ *   12 unless it says otherwise.
  * @property labelFontWeight CSS font weight of the field labels, 100..900.
  * @property labelLineHeight Line height of the field labels. `null` uses the font metrics.
  * @property labelUppercase Whether the labels are uppercased before rendering.
  * @property labelLetterSpacing Letter spacing of the field labels. `null` means none.
  * @property labelHidden Hides the labels visually. The label text stays available to screen
  *   readers as the content description of the field, and takes up no vertical space.
- * @property inputTextColor Color of the entered text.
+ * @property inputTextColor Color of the entered text. Unset takes the host theme's
+ *   `textColorPrimary`, which is also what the caret follows.
  * @property inputFontSize Font size of the entered text.
  * @property inputFontWeight CSS font weight of the entered text, 100..900. `null` means regular.
  * @property inputHeight Smallest height of the input, with the vertical padding inside it rather
  *   than on top of it. It is a minimum, not a fixed height, so a large font scale can still grow
  *   the field rather than overflow it. `null` derives the height from the font and the padding
  *   alone. The iOS SDK reads it the same way.
- * @property placeholderColor Color of the placeholder text. `null` uses the platform's own
- *   placeholder color. That color follows the system's appearance, not the theme's, so a theme
- *   that paints the field dark should set this as well, or the placeholder can end up dark on
- *   dark while the system is in light mode.
+ * @property placeholderColor Color of the placeholder text. `null` takes the host theme's
+ *   `textColorHint`, so an unstyled placeholder is the same muted color the host gives its own
+ *   fields. A theme that paints the field a color of its own should state this as well.
  * @property inputBorderStyle Border treatment of the inputs, see [InputBorderStyle].
- * @property inputBorderColor Border color of an unfocused, valid input. Unset takes the color
- *   the platform gives an ordinary field.
- * @property inputBorderWidth Border width of a resting input. The platform thickens the border
- *   of the focused one on its own, so this does not set that.
+ * @property inputBorderColor Border color of a valid input. Unset takes the host theme's
+ *   `colorControlNormal`, the color the platform gives an ordinary control.
+ * @property inputBorderWidth Border width of the inputs. Zero draws no border. It is the only
+ *   width there is: the field does not change when it takes focus, on either platform.
  * @property inputBackgroundColor Background color of the input area.
  * @property inputPaddingVertical Vertical padding inside the inputs.
  * @property inputPaddingHorizontal Horizontal padding inside the inputs.
  * @property inputBorderRadius Corner radius of the inputs. Replaces the arbitrary `Shape` of 1.x;
  *   the hosted form has no equivalent of a general shape either.
  * @property inputErrorBorderColor Border color of an input in an error state. Unset takes the
- *   color scheme's `error`.
- * @property errorTextColor Color of the error text below an input. Unset takes the color
- *   scheme's `error`.
+ *   same fixed red the iOS SDK uses.
+ * @property errorTextColor Color of the error text below an input. Unset takes that same red.
  * @property errorFontSize Font size of the error text.
  * @property errorMinHeight Vertical space reserved for the error line, so the layout does not
  *   shift when a message appears. The slot is shared with the helper text. Zero, the default,
@@ -114,9 +116,8 @@ enum class InputBorderStyle {
  * @property formPadding Padding around the whole form. Zero by default, because the host lays the
  *   form out on its own screen; the hosted card form uses 16 inside its iframe.
  * @property formBackgroundColor Background color of the form container.
- * @property helperTextColor Color of the helper text, `onSurfaceVariant` when unset.
- *   Android-only extension: the hosted form has
- *   no helper text.
+ * @property helperTextColor Color of the helper text, the host theme's `textColorSecondary` when
+ *   unset. Android-only extension: the hosted form has no helper text.
  * @property helperFontSize Font size of the helper text. Android-only extension.
  */
 data class PaymentCardFormTheme(
@@ -266,67 +267,93 @@ internal fun PaymentCardFormTheme.helperTextStyle(): TextStyle = TextStyle(
 )
 
 /**
- * Colors for a Material underline field. The theme states the resting and error colors; the
- * focused one is left to the platform, because the theme carries no focus color of its own.
+ * A color from the host's own theme, or `null` when the theme does not carry it.
  *
- * The placeholder is not among them: its color rides on the text style, so the slots here would
- * never win.
+ * These are the platform's theming attributes, not Material's: `textColorPrimary` and its siblings
+ * are what an ordinary Android widget reads, they have existed far below `minSdk = 24`, and they
+ * follow the host's theme, its dark variant included. It is the closest Android has to the semantic
+ * system colors the iOS SDK resolves to, and the form reads them for the same reason: a theme that
+ * states nothing should look like the screen it sits in.
+ *
+ * An attribute can be a literal color or a color state list, and a host theme need not define it at
+ * all, so all three cases are handled and the caller decides what an absent one falls back to.
  */
 @Composable
-internal fun PaymentCardFormTheme.filledFieldColors(): TextFieldColors =
-    TextFieldDefaults.colors(
-        focusedContainerColor = inputBackgroundColor,
-        unfocusedContainerColor = inputBackgroundColor,
-        errorContainerColor = inputBackgroundColor,
-        unfocusedIndicatorColor = inputBorderColor,
-        errorIndicatorColor = inputErrorBorderColor
-    )
-
-/** The same for a Material outlined field. */
-@Composable
-internal fun PaymentCardFormTheme.outlinedFieldColors(): TextFieldColors =
-    OutlinedTextFieldDefaults.colors(
-        focusedContainerColor = inputBackgroundColor,
-        unfocusedContainerColor = inputBackgroundColor,
-        errorContainerColor = inputBackgroundColor,
-        unfocusedBorderColor = inputBorderColor,
-        errorBorderColor = inputErrorBorderColor
-    )
-
-/**
- * Color of the entered text, resolved the way Material resolves it for its own fields: what the
- * theme states wins, and an unset color falls back to the state's color from [colors]. Compose
- * paints unspecified text black rather than asking the color scheme, so without this the card
- * number would stay black on a dark host.
- */
-internal fun PaymentCardFormTheme.inputTextColor(
-    colors: TextFieldColors,
-    isFocused: Boolean,
-    hasError: Boolean
-): Color = inputTextColor.takeOrElse {
-    when {
-        hasError -> colors.errorTextColor
-        isFocused -> colors.focusedTextColor
-        else -> colors.unfocusedTextColor
+private fun hostThemeColor(@AttrRes attr: Int): Color? {
+    val context = LocalContext.current
+    return remember(context.theme, attr) {
+        val resolved = TypedValue()
+        if (!context.theme.resolveAttribute(attr, resolved, true)) {
+            null
+        } else if (resolved.type in TypedValue.TYPE_FIRST_COLOR_INT..TypedValue.TYPE_LAST_COLOR_INT) {
+            Color(resolved.data)
+        } else if (resolved.resourceId != 0) {
+            ContextCompat.getColorStateList(context, resolved.resourceId)?.defaultColor?.let(::Color)
+        } else {
+            null
+        }
     }
 }
 
 /**
- * Color of the field labels, with an unset one taken from the color scheme.
+ * The host attribute, or a neutral of the right lightness when the host theme does not carry it.
  *
- * `BasicText` paints an unspecified color black rather than asking the scheme, so every text the
- * form draws itself resolves its color here first.
+ * The fallback reads the system setting rather than the host's theme, which is why it is only a
+ * fallback: a host whose theme is light while the system is dark would get the system's answer.
  */
 @Composable
-internal fun PaymentCardFormTheme.resolvedLabelColor(): Color =
-    labelColor.takeOrElse { MaterialTheme.colorScheme.onSurfaceVariant }
+private fun hostColor(@AttrRes attr: Int, dark: Color, light: Color): Color =
+    hostThemeColor(attr) ?: if (isSystemInDarkTheme()) dark else light
 
-/** Color of the error line, the color scheme's `error` when unset. */
+/** Red of an error, fixed rather than themed, and the same red the iOS SDK uses. */
+private val ErrorRed = Color(0xFFFF3B30)
+
+private val NeutralTextDark = Color(0xFFE6E6E6)
+private val NeutralTextLight = Color(0xFF1B1B1B)
+private val NeutralMutedDark = Color(0xFF9E9E9E)
+private val NeutralMutedLight = Color(0xFF6B6B6B)
+
+/**
+ * Color of the field labels, with an unset one taken from the host's theme.
+ *
+ * `BasicText` paints an unspecified color black rather than asking anything, so every text the form
+ * draws resolves its color here first.
+ */
+@Composable
+internal fun PaymentCardFormTheme.resolvedLabelColor(): Color = labelColor.takeOrElse {
+    hostColor(android.R.attr.textColorPrimary, NeutralTextDark, NeutralTextLight)
+}
+
+/** Color of the entered text, the host's primary text color when unset. */
+@Composable
+internal fun PaymentCardFormTheme.resolvedInputTextColor(): Color = inputTextColor.takeOrElse {
+    hostColor(android.R.attr.textColorPrimary, NeutralTextDark, NeutralTextLight)
+}
+
+/** Color of the placeholder in an empty field, the host's hint color when unset. */
+@Composable
+internal fun PaymentCardFormTheme.resolvedPlaceholderColor(): Color = placeholderColor
+    ?: hostColor(android.R.attr.textColorHint, NeutralMutedDark, NeutralMutedLight)
+
+/**
+ * Border color of a field. An error wins over the resting color, the way the hosted form draws it.
+ */
+@Composable
+internal fun PaymentCardFormTheme.resolvedBorderColor(hasError: Boolean): Color = if (hasError) {
+    inputErrorBorderColor.takeOrElse { ErrorRed }
+} else {
+    inputBorderColor.takeOrElse {
+        hostColor(android.R.attr.colorControlNormal, NeutralMutedDark, NeutralMutedLight)
+    }
+}
+
+/** Color of the error line. */
 @Composable
 internal fun PaymentCardFormTheme.resolvedErrorTextColor(): Color =
-    errorTextColor.takeOrElse { MaterialTheme.colorScheme.error }
+    errorTextColor.takeOrElse { ErrorRed }
 
-/** Color of the helper line, `onSurfaceVariant` when unset. */
+/** Color of the helper line, the host's secondary text color when unset. */
 @Composable
-internal fun PaymentCardFormTheme.resolvedHelperTextColor(): Color =
-    helperTextColor.takeOrElse { MaterialTheme.colorScheme.onSurfaceVariant }
+internal fun PaymentCardFormTheme.resolvedHelperTextColor(): Color = helperTextColor.takeOrElse {
+    hostColor(android.R.attr.textColorSecondary, NeutralMutedDark, NeutralMutedLight)
+}

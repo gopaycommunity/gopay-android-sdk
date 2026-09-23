@@ -42,8 +42,8 @@ class PaymentCardFormTest {
         val theme = PaymentCardFormTheme()
 
         // Labels
-        assertEquals("The label color is left to the color scheme", Color.Unspecified, theme.labelColor)
-        assertEquals("Labels take Material's bodySmall", 12.sp, theme.labelFontSize)
+        assertEquals("The label color is left to the host theme", Color.Unspecified, theme.labelColor)
+        assertEquals("Labels are 12sp, the size the iOS SDK uses", 12.sp, theme.labelFontSize)
         assertEquals("Default label weight should be regular", 400, theme.labelFontWeight)
         assertFalse("Labels should keep the case they were written in", theme.labelUppercase)
         assertFalse("Labels should be visible by default", theme.labelHidden)

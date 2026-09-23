@@ -1,12 +1,9 @@
 package cz.gopay.sdk.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -14,21 +11,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.LocalTextSelectionColors
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldColors
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -54,12 +41,12 @@ internal data class LabeledInputFieldConfig(
 /**
  * A reusable input field with label, error/helper text, and a BasicTextField.
  *
- * The field itself is decorated by Material, through the same decoration box Material's own text
- * fields are built from, so the underline, the outline and the way they react to focus and to an
- * error are the platform's. The SDK paints no part of it. The label above the field and the error
- * line below it stay the form's own, because the theme places them with [PaymentCardFormTheme
- * .fieldSpacing] and [PaymentCardFormTheme.errorSpacing], which Material's built-in slots have no
- * equivalent for.
+ * Everything around the text is built from framework primitives: a background, a border and
+ * padding. Nothing is painted onto a canvas, so the field has no underline of its own and does not
+ * mark itself when it takes focus — neither does the iOS SDK, and a payment form is not the place
+ * to invent either. The label above the field and the error line below it are laid out by the form,
+ * because the theme places them with [PaymentCardFormTheme.fieldSpacing] and
+ * [PaymentCardFormTheme.errorSpacing].
  */
 @Composable
 internal fun LabeledInputField(
@@ -71,43 +58,34 @@ internal fun LabeledInputField(
     theme: PaymentCardFormTheme = PaymentCardFormTheme(),
     labelMinHeight: Dp = 0.dp
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isFocused by interactionSource.collectIsFocusedAsState()
     val hasError = config.error != null
-    val colors = theme.fieldColors()
-    val decoration = FieldDecoration(
-        theme = theme,
-        colors = colors,
-        interactionSource = interactionSource,
-        hasError = hasError,
-        singleLine = singleLine,
-        visualTransformation = config.visualTransformation,
-        placeholder = placeholderSlot(theme, config.placeholder)
-    )
+    // The caret follows the entered text. The foundation default paints it black, which on a field
+    // the host theme draws dark is a caret nobody can see.
+    val textColor = theme.resolvedInputTextColor()
 
     Column(modifier = modifier) {
         FieldLabel(theme = theme, label = config.label, minHeight = labelMinHeight)
-        CompositionLocalProvider(LocalTextSelectionColors provides colors.textSelectionColors) {
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                keyboardOptions = config.keyboardOptions,
-                visualTransformation = config.visualTransformation,
-                interactionSource = interactionSource,
-                modifier = config.textFieldModifier
-                    .fillMaxWidth()
-                    .semanticsLabel(theme, config.label)
-                    .minimumInputHeight(theme),
-                singleLine = singleLine,
-                textStyle = theme.inputTextStyle().copy(
-                    color = theme.inputTextColor(colors, isFocused = isFocused, hasError = hasError)
-                ),
-                cursorBrush = SolidColor(colors.cursorFor(hasError)),
-                decorationBox = { innerTextField ->
-                    InputDecoration(decoration, value, innerTextField)
-                }
-            )
-        }
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            keyboardOptions = config.keyboardOptions,
+            visualTransformation = config.visualTransformation,
+            modifier = config.textFieldModifier
+                .fillMaxWidth()
+                .semanticsLabel(theme, config.label),
+            singleLine = singleLine,
+            textStyle = theme.inputTextStyle().copy(color = textColor),
+            cursorBrush = SolidColor(textColor),
+            decorationBox = { innerTextField ->
+                FieldBox(
+                    theme = theme,
+                    hasError = hasError,
+                    isEmpty = value.isEmpty(),
+                    placeholder = config.placeholder,
+                    innerTextField = innerTextField
+                )
+            }
+        )
         HelperText(error = config.error, helperText = config.helperText, theme = theme)
     }
 }
@@ -134,202 +112,66 @@ internal fun FieldLabel(theme: PaymentCardFormTheme, label: String, minHeight: D
 }
 
 /**
+ * What the field looks like around the text: the background, the border and the padding the theme
+ * asks for, and the placeholder while the field is empty.
+ *
+ * [PaymentCardFormTheme.inputHeight] is a minimum rather than a fixed height, so a large font scale
+ * grows the field instead of overflowing it, and it sits on this box rather than on the text field
+ * so the border encloses the height it asks for.
+ *
+ * A zero border width means no border at all, the way a zero `errorMinHeight` reserves nothing:
+ * a zero-width line is still a hairline to a canvas, so it has to be left out rather than drawn.
+ */
+@Composable
+private fun FieldBox(
+    theme: PaymentCardFormTheme,
+    hasError: Boolean,
+    isEmpty: Boolean,
+    placeholder: String?,
+    innerTextField: @Composable () -> Unit
+) {
+    val shape = RoundedCornerShape(theme.inputBorderRadius.orZero())
+    val borderWidth = theme.inputBorderWidth.orZero()
+    val box = Modifier
+        .fillMaxWidth()
+        .minimumInputHeight(theme)
+        .background(theme.inputBackgroundColor, shape)
+        .then(
+            if (borderWidth > 0.dp) {
+                Modifier.border(borderWidth, theme.resolvedBorderColor(hasError), shape)
+            } else {
+                Modifier
+            }
+        )
+        .padding(
+            horizontal = theme.inputPaddingHorizontal.orZero(),
+            vertical = theme.inputPaddingVertical.orZero()
+        )
+
+    Box(modifier = box, contentAlignment = Alignment.CenterStart) {
+        if (isEmpty && placeholder != null) {
+            // One line, like the field itself, so a large font scale cannot make an empty field
+            // taller than a filled one.
+            BasicText(
+                text = placeholder,
+                style = theme.placeholderTextStyle()
+                    .copy(color = theme.resolvedPlaceholderColor()),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip
+            )
+        }
+        innerTextField()
+    }
+}
+
+/**
  * A minimum, not a fixed height: at a large font scale a hard height would leave the text drawing
  * over the field below it.
  */
 private fun Modifier.minimumInputHeight(theme: PaymentCardFormTheme): Modifier {
     val height = theme.inputHeight?.orZero() ?: return this
     return heightIn(min = height)
-}
-
-/**
- * The placeholder slot Material's decoration expects, or `null` when the field has no placeholder.
- *
- * Material's [Text], not [BasicText]: with no color in the theme the style leaves the color
- * unspecified, and only [Text] falls back to the placeholder color the decoration box provides.
- * One line, like the field itself, so a large font scale cannot make an empty field taller than a
- * filled one.
- */
-private fun placeholderSlot(
-    theme: PaymentCardFormTheme,
-    placeholder: String?
-): (@Composable () -> Unit)? {
-    if (placeholder == null) return null
-    return {
-        Text(
-            text = placeholder,
-            style = theme.placeholderTextStyle(),
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Clip
-        )
-    }
-}
-
-/** The Material color set that goes with the border style the theme asks for. */
-@Composable
-private fun PaymentCardFormTheme.fieldColors(): TextFieldColors = when (inputBorderStyle) {
-    InputBorderStyle.UNDERLINE -> filledFieldColors()
-    InputBorderStyle.BOXED -> outlinedFieldColors()
-}
-
-/** Caret color, which follows the error state like the rest of the field. */
-private fun TextFieldColors.cursorFor(hasError: Boolean): Color =
-    if (hasError) errorCursorColor else cursorColor
-
-/**
- * Everything Material's decoration needs about the field that does not come from the text itself.
- *
- * Gathered in one place so the decoration can be read without the call that builds it: the
- * geometry the theme states, the color set, and the slots Material fills in.
- */
-private class FieldDecoration(
-    val theme: PaymentCardFormTheme,
-    val colors: TextFieldColors,
-    val interactionSource: MutableInteractionSource,
-    val hasError: Boolean,
-    val singleLine: Boolean,
-    val visualTransformation: VisualTransformation,
-    val placeholder: (@Composable () -> Unit)?
-) {
-    val shape = RoundedCornerShape(theme.inputBorderRadius.orZero())
-    val borderWidth = theme.inputBorderWidth.orZero()
-
-    /**
-     * Zero means no border at all, the way a zero errorMinHeight means no reserved line: Material
-     * would draw a hairline for it, because that is what a zero-width line is to a canvas.
-     */
-    val drawsBorder = borderWidth > 0.dp
-
-    val contentPadding = PaddingValues(
-        horizontal = theme.inputPaddingHorizontal.orZero(),
-        vertical = theme.inputPaddingVertical.orZero()
-    )
-}
-
-/**
- * Dresses the field in the border style the theme asks for.
- *
- * Clipped to the field, so an oversized border width stays inside it instead of spilling over
- * whatever sits above the form. It still paints over the field's own content; that is what an
- * oversized border does.
- *
- * The minimum constraints have to be passed on. A Box drops them by default, and Material's
- * decoration then sizes itself to its content, which left the underline as wide as the text
- * instead of as wide as the field.
- */
-@Composable
-private fun InputDecoration(
-    decoration: FieldDecoration,
-    value: String,
-    innerTextField: @Composable () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clipToBounds(),
-        propagateMinConstraints = true
-    ) {
-        when (decoration.theme.inputBorderStyle) {
-            InputBorderStyle.UNDERLINE -> UnderlinedField(decoration, value, innerTextField)
-            InputBorderStyle.BOXED -> BoxedField(decoration, value, innerTextField)
-        }
-    }
-}
-
-/** A Material filled field, the one with the indicator line under it. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun UnderlinedField(
-    decoration: FieldDecoration,
-    value: String,
-    innerTextField: @Composable () -> Unit
-) {
-    TextFieldDefaults.DecorationBox(
-        value = value,
-        innerTextField = innerTextField,
-        enabled = true,
-        singleLine = decoration.singleLine,
-        visualTransformation = decoration.visualTransformation,
-        interactionSource = decoration.interactionSource,
-        isError = decoration.hasError,
-        placeholder = decoration.placeholder,
-        shape = decoration.shape,
-        colors = decoration.colors,
-        contentPadding = decoration.contentPadding,
-        container = {
-            if (decoration.drawsBorder) {
-                TextFieldDefaults.Container(
-                    enabled = true,
-                    isError = decoration.hasError,
-                    interactionSource = decoration.interactionSource,
-                    colors = decoration.colors,
-                    shape = decoration.shape,
-                    // Material swaps the thickness on focus rather than taking the larger of
-                    // the two, so a theme asking for a thick resting line would see it get
-                    // thinner when the field is focused. The focused line is never the thinner.
-                    focusedIndicatorLineThickness = maxOf(
-                        decoration.borderWidth,
-                        TextFieldDefaults.FocusedIndicatorThickness
-                    ),
-                    unfocusedIndicatorLineThickness = decoration.borderWidth
-                )
-            } else {
-                BareBackground(decoration)
-            }
-        }
-    )
-}
-
-/** A Material outlined field, the one with a border all the way round. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun BoxedField(
-    decoration: FieldDecoration,
-    value: String,
-    innerTextField: @Composable () -> Unit
-) {
-    OutlinedTextFieldDefaults.DecorationBox(
-        value = value,
-        innerTextField = innerTextField,
-        enabled = true,
-        singleLine = decoration.singleLine,
-        visualTransformation = decoration.visualTransformation,
-        interactionSource = decoration.interactionSource,
-        isError = decoration.hasError,
-        placeholder = decoration.placeholder,
-        colors = decoration.colors,
-        contentPadding = decoration.contentPadding,
-        container = {
-            if (decoration.drawsBorder) {
-                OutlinedTextFieldDefaults.Container(
-                    enabled = true,
-                    isError = decoration.hasError,
-                    interactionSource = decoration.interactionSource,
-                    colors = decoration.colors,
-                    shape = decoration.shape,
-                    // Never the thinner when focused, as above.
-                    focusedBorderThickness = maxOf(
-                        decoration.borderWidth,
-                        OutlinedTextFieldDefaults.FocusedBorderThickness
-                    ),
-                    unfocusedBorderThickness = decoration.borderWidth
-                )
-            } else {
-                BareBackground(decoration)
-            }
-        }
-    )
-}
-
-/** The container of a field the theme asked to draw without a border: background and nothing else. */
-@Composable
-private fun BareBackground(decoration: FieldDecoration) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(decoration.theme.inputBackgroundColor, decoration.shape)
-    )
 }
 
 /**
