@@ -66,7 +66,9 @@ enum class InputBorderStyle {
  * @property fontFamily Font used for labels, input text, placeholders and error text. `null` uses
  *   the platform font. Fonts are resolved by the host application; the theme carries no font files.
  * @property labelColor Color of the field labels. Unset takes the color scheme's `onSurfaceVariant`.
- * @property labelFontSize Font size of the field labels.
+ * @property labelFontSize Font size of the field labels. The default is `12.sp`, the size of
+ *   Material's `bodySmall`, which is what its own text field gives a label above the input. It is
+ *   a literal, not a lookup: a host with its own type scale still gets 12 unless it says otherwise.
  * @property labelFontWeight CSS font weight of the field labels, 100..900.
  * @property labelLineHeight Line height of the field labels. `null` uses the font metrics.
  * @property labelUppercase Whether the labels are uppercased before rendering.
@@ -122,7 +124,7 @@ data class PaymentCardFormTheme(
 
     // Labels
     val labelColor: Color = Color.Unspecified,
-    val labelFontSize: TextUnit = 14.sp,
+    val labelFontSize: TextUnit = 12.sp,
     val labelFontWeight: Int = 400,
     val labelLineHeight: TextUnit? = null,
     val labelUppercase: Boolean = false,

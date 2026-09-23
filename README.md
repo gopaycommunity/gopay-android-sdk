@@ -369,7 +369,7 @@ setting, not the theme's, so a dark field under a light system leaves the placeh
 | Parameter | Android default | Hosted form default |
 |---|---|---|
 | `labelColor` | unset, the scheme's `onSurfaceVariant` | `#4b5e68` |
-| `labelFontSize` | `14.sp` | `11` |
+| `labelFontSize` | `12.sp`, the size of Material's `bodySmall` | `11` |
 | `labelFontWeight` | `400` | `600` |
 | `labelUppercase` | `false` | `true` |
 | `labelLetterSpacing` | `null` (none) | unset, historically `0.06em` |

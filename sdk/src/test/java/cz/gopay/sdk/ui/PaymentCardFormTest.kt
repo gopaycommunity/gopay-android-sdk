@@ -43,7 +43,7 @@ class PaymentCardFormTest {
 
         // Labels
         assertEquals("The label color is left to the color scheme", Color.Unspecified, theme.labelColor)
-        assertEquals("Default label font size should be 14sp", 14.sp, theme.labelFontSize)
+        assertEquals("Labels take Material's bodySmall", 12.sp, theme.labelFontSize)
         assertEquals("Default label weight should be regular", 400, theme.labelFontWeight)
         assertFalse("Labels should keep the case they were written in", theme.labelUppercase)
         assertFalse("Labels should be visible by default", theme.labelHidden)
