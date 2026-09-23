@@ -261,7 +261,7 @@ Two things are worth knowing before reading the table.
 
 **The theme is a subset of the hosted form's set.** The field is the platform's own text field,
 decorated by the platform, and the SDK paints no part of it, so the theme carries what a native
-input can be told to do and nothing else. Fifteen of the hosted form's keys are therefore absent;
+input can be told to do and nothing else. Sixteen of the hosted form's keys are therefore absent;
 they are listed below.
 
 **Nothing is styled by default.** An unthemed form looks like any other form on the screen it sits
@@ -306,7 +306,7 @@ All 44 keys of the hosted form, and what this SDK does with them.
 | `inputLetterSpacing` | not supported | Dropped for parity: the iOS field would have to be measured by hand for it |
 | `inputHeight` | `inputHeight` | A minimum height, with the vertical padding inside it; iOS reads it the same way |
 | `placeholderColor` | `placeholderColor` | `null` uses the platform's own placeholder color, which follows the system appearance rather than the theme |
-| `inputBorderStyle` | `inputBorderStyle: InputBorderStyle` | `BOXED` or `UNDERLINE`. Both render as a box: neither platform offers a bottom line on its own, and the SDK draws nothing itself |
+| `inputBorderStyle` | not supported | Neither platform offers a bottom line on its own, so `underline` would have to be painted; every field is a box |
 | `inputBorderColor` | `inputBorderColor` | |
 | `inputBorderWidth` | `inputBorderWidth` | The border thickness. There is only one: the field does not change when it takes focus |
 | `inputBackgroundColor` | `inputBackgroundColor` | |
@@ -336,12 +336,12 @@ All 44 keys of the hosted form, and what this SDK does with them.
 | `submitBorderRadius` | web-only | |
 | `submitFontSize` | web-only | |
 
-Fifteen keys are not supported. The seven `submit*` keys, because the mobile form never renders a
+Sixteen keys are not supported. The seven `submit*` keys, because the mobile form never renders a
 submit button — it is the permanent equivalent of the web's `submitMode: 'external'`, where the
 iframe hides its button and the host submits, so there is nothing for them to style. `errorHidden`,
-which the mobile form already does by default. And seven the browser can only honour by painting
-the field: the collapsed borders, the focus ring, the focus gradient, and the letter spacing and
-line height of the input. The theme is a typed Kotlin object, so an unsupported key is not
+which the mobile form already does by default. And eight the browser can only honour by painting
+the field: the border style, the collapsed borders, the focus ring, the focus gradient, and the
+letter spacing and line height of the input. The theme is a typed Kotlin object, so an unsupported key is not
 something a call site can write: the parameter simply is not there.
 
 Two parameters have no counterpart on the web and are documented as Android-only extensions:
@@ -400,10 +400,8 @@ surface shows through.
 | `errorMinHeight` | `0.dp` (the form grows) | `14` |
 | `formPadding` | `0.dp` (the host pads) | `16` |
 
-`inputBorderStyle` defaults to `BOXED` on both platforms, and `UNDERLINE` renders the same way, so a
-theme written for the hosted form still applies — it just gets a border where the browser draws a
-line. `groupSpacing`, `fieldSpacing`, `inputBackgroundColor` and `formBackgroundColor` match the
-hosted form as well.
+`groupSpacing`, `fieldSpacing`, `inputBackgroundColor` and `formBackgroundColor` match the hosted
+form's defaults as well.
 
 **Neither platform marks the field the keyboard is on.** Nothing about the field changes when it
 takes focus, and `inputBorderWidth` is the only thickness there is. That is the same rule as
@@ -440,11 +438,12 @@ two parameters kept their names and changed their meaning.
 | `groupSpacing` (gap between expiry and CVV) | `groupSpacing` — one value now covers both gaps |
 | the hard-coded `4.dp` under a label | `fieldSpacing` — **the name is reused for a new meaning** |
 
-Seven parameters that 2.0 carried in an earlier preview are gone again, because rendering them
+Eight parameters that 2.0 carried in an earlier preview are gone again, because rendering them
 would mean painting the field rather than asking the platform for it. Nothing replaces them:
 
 | Removed | What it did |
 |---|---|
+| `inputBorderStyle` | Chose a bottom line instead of a border; every field is a box now |
 | `inputBorderCollapse` | Merged the borders of neighbouring fields into one block |
 | `focusRingWidth`, `focusRingColor` | Drew a ring outside the focused field |
 | `focusGradientStart`, `focusGradientEnd` | Colored the focused field; nothing marks it now |

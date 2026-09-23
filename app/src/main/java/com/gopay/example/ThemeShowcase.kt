@@ -3,7 +3,6 @@ package com.gopay.example
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import cz.gopay.sdk.ui.InputBorderStyle
 import cz.gopay.sdk.ui.PaymentCardFormTheme
 
 /**
@@ -12,7 +11,7 @@ import cz.gopay.sdk.ui.PaymentCardFormTheme
  * `Default` is the SDK's own theme, which styles nothing and takes the colors of the host's theme.
  * `Dark` and `Red` are the two the GoPay web card form ships with, written out parameter for
  * parameter; the iOS demo carries the same two with the same values, so a parameter can be read
- * off both. `inputBorderStyle` is `UNDERLINE` in both, which renders as a box on either platform.
+ * off both.
  */
 object ThemeShowcase {
 
@@ -24,7 +23,6 @@ object ThemeShowcase {
         inputTextColor = Color(0xFFE2E8F0),
         inputFontSize = 14.sp,
         placeholderColor = Color(0xFF64748B),
-        inputBorderStyle = InputBorderStyle.UNDERLINE,
         inputBorderColor = Color(0xFF334155),
         inputBorderWidth = 1.dp,
         inputBackgroundColor = Color.Transparent,
@@ -49,7 +47,6 @@ object ThemeShowcase {
         inputTextColor = Color(0xFF4B5E68),
         inputFontSize = 14.sp,
         placeholderColor = Color(0xFF64748B),
-        inputBorderStyle = InputBorderStyle.UNDERLINE,
         inputBorderColor = Color(0xFFC8102E),
         inputBorderWidth = 1.dp,
         inputBackgroundColor = Color.Transparent,

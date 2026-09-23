@@ -55,7 +55,6 @@ class PaymentCardFormTest {
         assertNull("Default placeholder color should be unset", theme.placeholderColor)
 
         // Border
-        assertEquals("Default border style is a box, as on iOS", InputBorderStyle.BOXED, theme.inputBorderStyle)
         assertEquals("So is the border color", Color.Unspecified, theme.inputBorderColor)
         assertEquals("Default background should be transparent, so the host's shows through", Color.Transparent, theme.inputBackgroundColor)
         assertEquals("Default border width should be 1dp", 1.dp, theme.inputBorderWidth)
@@ -93,7 +92,6 @@ class PaymentCardFormTest {
             inputFontSize = 18.sp,
             errorTextColor = Color.Green,
             errorFontSize = 12.sp,
-            inputBorderStyle = InputBorderStyle.UNDERLINE,
             inputBorderColor = Color.Yellow,
             inputBackgroundColor = Color.Cyan,
             inputBorderRadius = 8.dp,
@@ -113,7 +111,6 @@ class PaymentCardFormTest {
         assertEquals("Custom error color should be Green", Color.Green, customTheme.errorTextColor)
         assertEquals("Custom error font size should be 12sp", 12.sp, customTheme.errorFontSize)
 
-        assertEquals("Custom border style should be underline", InputBorderStyle.UNDERLINE, customTheme.inputBorderStyle)
         assertEquals("Custom border color should be Yellow", Color.Yellow, customTheme.inputBorderColor)
         assertEquals("Custom background color should be Cyan", Color.Cyan, customTheme.inputBackgroundColor)
         assertEquals("Custom border width should be 2dp", 2.dp, customTheme.inputBorderWidth)

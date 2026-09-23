@@ -27,22 +27,6 @@ import cz.gopay.sdk.util.SdkLog
 import java.util.Locale
 
 /**
- * Border treatment of the input fields.
- *
- * Mirrors the `inputBorderStyle` key of the GoPay hosted card form, so a theme written for the
- * hosted form can state either value. On mobile both draw the same border: a bottom line alone is
- * something the platform does not offer either here or on iOS, and drawing one by hand is not what
- * this SDK does.
- */
-enum class InputBorderStyle {
-    /** Full border around the field, rounded by [PaymentCardFormTheme.inputBorderRadius]. */
-    BOXED,
-
-    /** The hosted form's bottom line. Drawn as a full border on mobile, the same as [BOXED]. */
-    UNDERLINE
-}
-
-/**
  * Appearance of [PaymentCardForm].
  *
  * The parameters are atomic and named 1:1 after the GoPay hosted card form (cc-v4) theme keys, so
@@ -61,13 +45,14 @@ enum class InputBorderStyle {
  * point. The README carries the parity table and the 1.x to 2.0 migration map.
  *
  * The mobile theme is a subset of the hosted form's: it carries what a native input and the layout
- * around it can be told to do, and nothing that would mean painting the field by hand. Fifteen of
+ * around it can be told to do, and nothing that would mean painting the field by hand. Sixteen of
  * the hosted form's keys are therefore absent. The seven `submit*` keys, because the mobile SDK
  * never renders a submit button — it is the permanent equivalent of the web's
  * `submitMode: 'external'`, where the host supplies the button. `errorHidden`, because the mobile
- * form only ever draws errors the host passes in through [InputFieldConfig.errorText]. And seven
- * that the web can only express by drawing: `inputBorderCollapse`, `focusRingWidth`,
- * `focusRingColor`, `focusGradientStart`, `focusGradientEnd`, `inputLetterSpacing` and
+ * form only ever draws errors the host passes in through [InputFieldConfig.errorText]. And eight
+ * that the web can only express by drawing: `inputBorderStyle`, `inputBorderCollapse`,
+ * `focusRingWidth`, `focusRingColor`, `focusGradientStart`, `focusGradientEnd`,
+ * `inputLetterSpacing` and
  * `inputLineHeight`. The theme is a typed Kotlin object, so none of them is something a call site
  * can state in the first place.
  *
@@ -94,7 +79,6 @@ enum class InputBorderStyle {
  * @property placeholderColor Color of the placeholder text. `null` takes the host theme's
  *   `textColorHint`, so an unstyled placeholder is the same muted color the host gives its own
  *   fields. A theme that paints the field a color of its own should state this as well.
- * @property inputBorderStyle Border treatment of the inputs, see [InputBorderStyle].
  * @property inputBorderColor Border color of a valid input. Unset takes the host theme's
  *   `colorControlNormal`, the color the platform gives an ordinary control.
  * @property inputBorderWidth Border width of the inputs. Zero draws no border. It is the only
@@ -145,7 +129,6 @@ data class PaymentCardFormTheme(
     val placeholderColor: Color? = null,
 
     // Input border
-    val inputBorderStyle: InputBorderStyle = InputBorderStyle.BOXED,
     val inputBorderColor: Color = Color.Unspecified,
     val inputBorderWidth: Dp = 1.dp,
     val inputBackgroundColor: Color = Color.Transparent,

@@ -88,9 +88,8 @@ The **Theme** dropdown applies one of the themes in
 [`ThemeShowcase.kt`](src/main/java/com/gopay/example/ThemeShowcase.kt). `Dark` and `Red` are the
 two presets the web card form ships with, written out parameter for parameter with the web's
 names; the iOS demo carries the same two with the same values, so a parameter can be read off both
-and checked against the web. Both set `inputBorderStyle` to `UNDERLINE`, which renders as a box on
-either platform — neither draws a bottom line of its own. `Default` is the SDK's own theme, which
-styles nothing and takes the host theme's colors.
+and checked against the web. `Default` is the SDK's own theme, which styles nothing and takes the
+host theme's colors.
 
 Every step logs its result, or a structured `GopaySDKException`, into the **Response** card.
 
