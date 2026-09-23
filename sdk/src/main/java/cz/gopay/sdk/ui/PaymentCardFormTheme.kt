@@ -141,7 +141,7 @@ data class PaymentCardFormTheme(
     val placeholderColor: Color? = null,
 
     // Input border
-    val inputBorderStyle: InputBorderStyle = InputBorderStyle.UNDERLINE,
+    val inputBorderStyle: InputBorderStyle = InputBorderStyle.BOXED,
     val inputBorderColor: Color = Color.Unspecified,
     val inputBorderWidth: Dp = 1.dp,
     val inputBackgroundColor: Color = Color.Transparent,

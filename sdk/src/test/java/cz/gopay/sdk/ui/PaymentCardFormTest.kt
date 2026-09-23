@@ -55,7 +55,7 @@ class PaymentCardFormTest {
         assertNull("Default placeholder color should be unset", theme.placeholderColor)
 
         // Border
-        assertEquals("Default border style should be underline, as on the platform", InputBorderStyle.UNDERLINE, theme.inputBorderStyle)
+        assertEquals("Default border style is a box, as on iOS", InputBorderStyle.BOXED, theme.inputBorderStyle)
         assertEquals("So is the border color", Color.Unspecified, theme.inputBorderColor)
         assertEquals("Default background should be transparent, so the host's shows through", Color.Transparent, theme.inputBackgroundColor)
         assertEquals("Default border width should be 1dp", 1.dp, theme.inputBorderWidth)
