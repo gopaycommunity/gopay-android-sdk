@@ -371,6 +371,12 @@ wants the form to follow dark mode gives its theme a night variant, as it would 
 Where the attribute is missing entirely the SDK falls back to a neutral pair chosen by the system
 setting, so the form is never unreadable.
 
+A debug build says so in Logcat under the `GopaySDK` tag when the system is in dark mode and the
+host theme still answers with dark text, and names both ways out: the night variant, or the colors
+stated in the theme. It is a warning rather than a check — it compares the colors the form resolved
+against the system setting, not against what the host's screen actually looks like — but a form
+nobody can read is easy to mistake for a bug in the SDK, so it is worth saying out loud.
+
 `inputBackgroundColor` and `formBackgroundColor` are transparent instead of unset, so the host's own
 surface shows through.
 
