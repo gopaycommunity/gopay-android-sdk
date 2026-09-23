@@ -270,14 +270,17 @@ private fun hostThemeColor(@AttrRes attr: Int): Color? {
     val context = LocalContext.current
     return remember(context.theme, attr) {
         val resolved = TypedValue()
-        if (!context.theme.resolveAttribute(attr, resolved, true)) {
-            null
-        } else if (resolved.type in TypedValue.TYPE_FIRST_COLOR_INT..TypedValue.TYPE_LAST_COLOR_INT) {
-            Color(resolved.data)
-        } else if (resolved.resourceId != 0) {
-            ContextCompat.getColorStateList(context, resolved.resourceId)?.defaultColor?.let(::Color)
-        } else {
-            null
+        when {
+            // First, and on its own: resolveAttribute is what fills `resolved`, so nothing below
+            // may be read until it has answered.
+            !context.theme.resolveAttribute(attr, resolved, true) -> null
+            resolved.type in TypedValue.TYPE_FIRST_COLOR_INT..TypedValue.TYPE_LAST_COLOR_INT ->
+                Color(resolved.data)
+            resolved.resourceId != 0 ->
+                ContextCompat.getColorStateList(context, resolved.resourceId)
+                    ?.defaultColor
+                    ?.let(::Color)
+            else -> null
         }
     }
 }
