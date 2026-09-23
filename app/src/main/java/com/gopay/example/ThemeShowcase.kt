@@ -9,11 +9,10 @@ import cz.gopay.sdk.ui.PaymentCardFormTheme
 /**
  * The themes the demo's picker offers, in the order it shows them.
  *
- * `Default` is the SDK's own theme, which styles nothing and takes the host's Material colors.
+ * `Default` is the SDK's own theme, which styles nothing and takes the colors of the host's theme.
  * `Dark` and `Red` are the two the GoPay web card form ships with, written out parameter for
  * parameter; the iOS demo carries the same two with the same values, so a parameter can be read
- * off both. The rendering still differs: `inputBorderStyle` is `UNDERLINE` in both, which draws
- * an underline here and a box on iOS, where the native field has no underline.
+ * off both. `inputBorderStyle` is `UNDERLINE` in both, which renders as a box on either platform.
  */
 object ThemeShowcase {
 
