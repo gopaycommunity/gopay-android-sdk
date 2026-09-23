@@ -13,9 +13,9 @@ import cz.gopay.sdk.GopaySDK
  * and only while the host has debug logging on, the same condition the error path uses, so a
  * release build stays quiet. The iOS SDK reports the same things the same way.
  *
- * Nothing on this branch calls it. The callers live on the 3DS work that builds on top of this
- * one — the browser data and the charge response adapter — so the channel stays, and so does the
- * test seam below, which those callers' tests use.
+ * The card form calls it when the host's theme and the system disagree about dark mode. The other
+ * callers live on the 3DS work that builds on top of this branch, the browser data and the charge
+ * response adapter, and their tests use the seam below.
  */
 internal object SdkLog {
     const val TAG = "GopaySDK"

@@ -4,8 +4,11 @@ import android.util.TypedValue
 import androidx.annotation.AttrRes
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -20,6 +23,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import cz.gopay.sdk.util.SdkLog
 import java.util.Locale
 
 /**
@@ -356,4 +360,57 @@ internal fun PaymentCardFormTheme.resolvedErrorTextColor(): Color =
 @Composable
 internal fun PaymentCardFormTheme.resolvedHelperTextColor(): Color = helperTextColor.takeOrElse {
     hostColor(android.R.attr.textColorSecondary, NeutralMutedDark, NeutralMutedLight)
+}
+
+/**
+ * What the SDK says when the host's theme and the system disagree about dark mode.
+ *
+ * Both ways out are named, because they suit different hosts: a host that themes its screens in XML
+ * adds the night variant, while a Compose-only host may never touch its XML theme and is better off
+ * stating the colors it wants.
+ */
+internal const val HOST_THEME_DARK_MODE_WARNING =
+    "PaymentCardForm: the system is in dark mode, but the host theme gives the card form dark " +
+        "text, so its labels and fields will be hard to read. Either give the host theme a night " +
+        "variant (res/values-night/themes.xml), or state labelColor and inputTextColor in " +
+        "PaymentCardFormTheme."
+
+/** Above this relative luminance a text color reads as light. */
+private const val LIGHT_TEXT_LUMINANCE = 0.5f
+
+/**
+ * Whether a resolved text color contradicts the system's dark mode.
+ *
+ * A color the theme states is the integrator's decision and never warns, however dark it is. Only
+ * an unset one, resolved from the host theme's attributes, can be the mismatch this warns about:
+ * the host draws its own screen dark while its theme still answers with a dark text color.
+ *
+ * Pure on purpose, so the rule can be tested without a device.
+ */
+internal fun contradictsDarkMode(
+    systemInDarkTheme: Boolean,
+    statedColor: Color,
+    resolvedColor: Color
+): Boolean = systemInDarkTheme &&
+    !statedColor.isSpecified &&
+    resolvedColor.isSpecified &&
+    resolvedColor.luminance() < LIGHT_TEXT_LUMINANCE
+
+/**
+ * Warns once, in a debug build, when the host theme leaves the form unreadable on a dark screen.
+ *
+ * The SDK does not second-guess the host by overriding the color: following the host's theme is the
+ * point, and a host whose theme is light on purpose is a legitimate host. It only says so out loud,
+ * because the alternative is an integrator staring at a form they cannot read.
+ */
+@Composable
+internal fun PaymentCardFormTheme.WarnWhenTheHostThemeFightsDarkMode() {
+    val systemInDarkTheme = isSystemInDarkTheme()
+    val contradicts =
+        contradictsDarkMode(systemInDarkTheme, labelColor, resolvedLabelColor()) ||
+            contradictsDarkMode(systemInDarkTheme, inputTextColor, resolvedInputTextColor())
+    // Keyed on the answer, so recomposition alone does not repeat the line.
+    LaunchedEffect(contradicts) {
+        if (contradicts) SdkLog.w(HOST_THEME_DARK_MODE_WARNING)
+    }
 }

@@ -9,6 +9,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -112,5 +114,48 @@ class PaymentCardFormThemeTest {
         assertEquals(0.dp, (-8).dp.orZero())
         assertEquals(8.dp, 8.dp.orZero())
         assertEquals(0.dp, 0.dp.orZero())
+    }
+
+    @Test
+    fun darkModeWarning_firesOnlyForAColorTheThemeDidNotState() {
+        val dark = Color(0xFF1D1D1E)
+        val light = Color.White
+
+        assertTrue(
+            "A dark text color resolved from the host theme under a dark system is the mismatch",
+            contradictsDarkMode(systemInDarkTheme = true, statedColor = Color.Unspecified, resolvedColor = dark)
+        )
+        assertFalse(
+            "A light color under a dark system is what we want, not a mismatch",
+            contradictsDarkMode(systemInDarkTheme = true, statedColor = Color.Unspecified, resolvedColor = light)
+        )
+        assertFalse(
+            "A dark color under a light system is ordinary",
+            contradictsDarkMode(systemInDarkTheme = false, statedColor = Color.Unspecified, resolvedColor = dark)
+        )
+        assertFalse(
+            "A color the integrator stated is their decision, however dark",
+            contradictsDarkMode(systemInDarkTheme = true, statedColor = dark, resolvedColor = dark)
+        )
+        assertFalse(
+            "Nothing to judge when the color did not resolve at all",
+            contradictsDarkMode(systemInDarkTheme = true, statedColor = Color.Unspecified, resolvedColor = Color.Unspecified)
+        )
+    }
+
+    @Test
+    fun darkModeWarning_namesBothWaysOut() {
+        assertTrue(
+            "The warning has to say which form it is about",
+            HOST_THEME_DARK_MODE_WARNING.contains("PaymentCardForm")
+        )
+        assertTrue(
+            "and point at the night resource folder",
+            HOST_THEME_DARK_MODE_WARNING.contains("res/values-night/themes.xml")
+        )
+        assertTrue(
+            "and at stating the colors instead",
+            HOST_THEME_DARK_MODE_WARNING.contains("PaymentCardFormTheme")
+        )
     }
 }

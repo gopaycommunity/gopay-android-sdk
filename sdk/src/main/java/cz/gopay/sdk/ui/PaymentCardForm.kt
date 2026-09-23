@@ -156,6 +156,8 @@ fun PaymentCardForm(
     inputFields: PaymentFormInputs? = null,
     theme: PaymentCardFormTheme = PaymentCardFormTheme()
 ) {
+    theme.WarnWhenTheHostThemeFightsDarkMode()
+
     val resolvedStrings = localeStrings ?: GopayLocales.resolve(locale)
     val fields = inputFields ?: PaymentFormInputs.from(resolvedStrings)
     // Store clean input values (digits only)
