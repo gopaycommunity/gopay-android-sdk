@@ -259,60 +259,69 @@ fun PaymentCardForm(
             ),
             theme = theme
         )
-        // Expiration Date and CVV Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(theme.groupSpacing.orZero())
-        ) {
-            // Expiration Date
-            LabeledInputField(
-                value = expirationDateDigits,
-                onValueChange = { newValue ->
-                    val validated = ExpirationDateInputValidator.validateInput(newValue)
-                    expirationDateDigits = validated
-                    if (validated.length == 4) {
-                        coroutineScope.launch {
-                            cvvFocusRequester.requestFocus()
+        // Expiration Date and CVV Row. The row settles how tall the label slot is for both
+        // fields, so a label that wraps in one of them cannot push its input out of line.
+        SharedLabelHeightRow(
+            theme = theme,
+            labels = listOf(fields.expirationDate.label, fields.cvv.label),
+            horizontalSpacing = theme.groupSpacing.orZero(),
+            modifier = Modifier.fillMaxWidth()
+        ) { labelMinHeight ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(theme.groupSpacing.orZero())
+            ) {
+                // Expiration Date
+                LabeledInputField(
+                    value = expirationDateDigits,
+                    onValueChange = { newValue ->
+                        val validated = ExpirationDateInputValidator.validateInput(newValue)
+                        expirationDateDigits = validated
+                        if (validated.length == 4) {
+                            coroutineScope.launch {
+                                cvvFocusRequester.requestFocus()
+                            }
                         }
-                    }
-                },
-                config = LabeledInputFieldConfig(
-                    label = fields.expirationDate.label,
-                    error = fields.expirationDate.errorText,
-                    helperText = fields.expirationDate.helperText,
-                    placeholder = fields.expirationDate.placeholder,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    visualTransformation = ExpirationDateVisualTransformation(),
-                    textFieldModifier = Modifier
-                        .focusRequester(expirationFocusRequester)
-                ),
-                modifier = Modifier.weight(1f),
-                theme = theme
-            )
-            // CVV Input
-            LabeledInputField(
-                value = cvv,
-                onValueChange = { newValue ->
-                    cvv = CvvValidator.validateInput(newValue, cvv)
-                },
-                config = LabeledInputFieldConfig(
-                    label = fields.cvv.label,
-                    error = fields.cvv.errorText,
-                    helperText = fields.cvv.helperText,
-                    placeholder = fields.cvv.placeholder,
-                    // NumberPassword: same numeric layout, but tells the IME not to cache or
-                    // learn the CVV (keyboards may retain plain Number input for suggestions).
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    visualTransformation = if (isCvvFocused) VisualTransformation.None else CvvMaskedVisualTransformation(),
-                    textFieldModifier = Modifier
-                        .focusRequester(cvvFocusRequester)
-                        .onFocusChanged { isCvvFocused = it.isFocused }
-                ),
-                modifier = Modifier.weight(1f),
-                theme = theme
-            )
+                    },
+                    config = LabeledInputFieldConfig(
+                        label = fields.expirationDate.label,
+                        error = fields.expirationDate.errorText,
+                        helperText = fields.expirationDate.helperText,
+                        placeholder = fields.expirationDate.placeholder,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        visualTransformation = ExpirationDateVisualTransformation(),
+                        textFieldModifier = Modifier
+                            .focusRequester(expirationFocusRequester)
+                    ),
+                    modifier = Modifier.weight(1f),
+                    theme = theme,
+                    labelMinHeight = labelMinHeight
+                )
+                // CVV Input
+                LabeledInputField(
+                    value = cvv,
+                    onValueChange = { newValue ->
+                        cvv = CvvValidator.validateInput(newValue, cvv)
+                    },
+                    config = LabeledInputFieldConfig(
+                        label = fields.cvv.label,
+                        error = fields.cvv.errorText,
+                        helperText = fields.cvv.helperText,
+                        placeholder = fields.cvv.placeholder,
+                        // NumberPassword: same numeric layout, but tells the IME not to cache or
+                        // learn the CVV (keyboards may retain plain Number input for suggestions).
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        visualTransformation = if (isCvvFocused) VisualTransformation.None else CvvMaskedVisualTransformation(),
+                        textFieldModifier = Modifier
+                            .focusRequester(cvvFocusRequester)
+                            .onFocusChanged { isCvvFocused = it.isFocused }
+                    ),
+                    modifier = Modifier.weight(1f),
+                    theme = theme,
+                    labelMinHeight = labelMinHeight
+                )
+            }
         }
-
     }
 }
 

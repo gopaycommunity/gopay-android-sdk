@@ -25,6 +25,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -32,6 +34,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 
@@ -65,7 +68,8 @@ internal fun LabeledInputField(
     config: LabeledInputFieldConfig,
     modifier: Modifier = Modifier,
     singleLine: Boolean = true,
-    theme: PaymentCardFormTheme = PaymentCardFormTheme()
+    theme: PaymentCardFormTheme = PaymentCardFormTheme(),
+    labelMinHeight: Dp = 0.dp
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
@@ -82,7 +86,7 @@ internal fun LabeledInputField(
     )
 
     Column(modifier = modifier) {
-        FieldLabel(theme = theme, label = config.label)
+        FieldLabel(theme = theme, label = config.label, minHeight = labelMinHeight)
         CompositionLocalProvider(LocalTextSelectionColors provides colors.textSelectionColors) {
             BasicTextField(
                 value = value,
@@ -108,16 +112,24 @@ internal fun LabeledInputField(
     }
 }
 
-/** The label above a field, unless the theme hides it. */
+/**
+ * The label above a field, unless the theme hides it.
+ *
+ * [minHeight] is the floor the parent hands down so that two fields sharing a row keep their
+ * inputs on one line even when one label wraps and the other does not; see [SharedLabelHeightRow].
+ * The label itself is never clipped or shortened for it.
+ */
 @Composable
-private fun FieldLabel(theme: PaymentCardFormTheme, label: String) {
+internal fun FieldLabel(theme: PaymentCardFormTheme, label: String, minHeight: Dp = 0.dp) {
     if (theme.labelHidden) return
     BasicText(
         text = theme.renderedLabel(label),
         // The label keeps its own color in an error state; only the field and the error
         // line change, matching the hosted card form.
         style = theme.labelTextStyle().copy(color = theme.resolvedLabelColor()),
-        modifier = Modifier.padding(bottom = theme.fieldSpacing.orZero())
+        modifier = Modifier
+            .heightIn(min = minHeight)
+            .padding(bottom = theme.fieldSpacing.orZero())
     )
 }
 
@@ -327,3 +339,42 @@ private fun BareBackground(decoration: FieldDecoration) {
 private fun Modifier.semanticsLabel(theme: PaymentCardFormTheme, label: String): Modifier =
     if (theme.labelHidden) semantics { contentDescription = label } else this
 
+/**
+ * Lays out fields that share a row so their inputs stay on one line.
+ *
+ * Each field is its own column, so without this the taller label pushes only its own input down
+ * and the pair ends up a line apart. That happens with an ordinary system font scale: the Spanish
+ * expiry label wraps at 1.27x on a 320dp-wide screen. Clipping the label is not an option — the
+ * text is what GoPay translates — so the row measures the labels first and hands every field the
+ * height of the tallest one as a floor.
+ *
+ * Measuring the real [FieldLabel] rather than the raw string keeps the two in step: whatever the
+ * theme does to a label, uppercase included, the probe sees it too.
+ */
+@Composable
+internal fun SharedLabelHeightRow(
+    theme: PaymentCardFormTheme,
+    labels: List<String>,
+    horizontalSpacing: Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable (labelMinHeight: Dp) -> Unit
+) {
+    SubcomposeLayout(modifier) { constraints ->
+        val cellWidth = ((constraints.maxWidth - horizontalSpacing.roundToPx()) / labels.size)
+            .coerceAtLeast(0)
+        val cell = Constraints(maxWidth = cellWidth)
+        val tallestLabel = subcompose(LabelProbe) {
+            labels.forEach { FieldLabel(theme = theme, label = it) }
+        }.maxOfOrNull { it.measure(cell).height } ?: 0
+
+        val row = subcompose(RowContent) { content(tallestLabel.toDp()) }
+            .first()
+            .measure(constraints)
+        layout(row.width, row.height) { row.place(0, 0) }
+    }
+}
+
+private enum class SharedLabelSlot { LabelProbe, RowContent }
+
+private val LabelProbe = SharedLabelSlot.LabelProbe
+private val RowContent = SharedLabelSlot.RowContent
