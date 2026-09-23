@@ -84,12 +84,13 @@ The screen is split into four numbered sections. Sections 3 and 4 appear once a 
    encrypted card (JWE)**.
 6. Tap **Close** in section 2 when done.
 
-The **Theme** dropdown applies one of the JSON theme documents in
-[`assets/theme-showcase.json`](src/main/assets/theme-showcase.json), the way a host would apply a
-theme its own backend sent down. The documents use the web card form's parameter names, and the
-iOS demo ships the same file, so one document can be compared across Android, iOS and the web.
-`Dark` and `Red` are the two presets the web card form ships with, written out key for key;
-`Default` is an empty document and renders the SDK defaults.
+The **Theme** dropdown applies one of the themes in
+[`ThemeShowcase.kt`](src/main/java/com/gopay/example/ThemeShowcase.kt). `Dark` and `Red` are the
+two presets the web card form ships with, written out parameter for parameter with the web's
+names; the iOS demo carries the same two with the same values, so a parameter can be read off both
+and checked against the web. The rendering is not the same, though: both set `inputBorderStyle` to
+`UNDERLINE`, which draws an underline here and a box on iOS, whose native field has no underline.
+`Default` is the SDK's own theme, which styles nothing.
 
 Every step logs its result, or a structured `GopaySDKException`, into the **Response** card.
 

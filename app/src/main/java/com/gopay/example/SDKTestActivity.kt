@@ -450,22 +450,20 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
         cvv = baseInputs.cvv.copy(hasError = cvvError != null, errorText = cvvError)
     )
 
-    // Themes the form from a JSON document, the way a host would apply one its backend sent.
-    // The same documents ship with the iOS demo, so a parameter can be compared side by side.
-    val context = LocalContext.current
-    val showcase = remember(context) { ThemeShowcase.load(context) }
-    var themeName by remember { mutableStateOf(showcase.names.firstOrNull() ?: "Default") }
+    // The iOS demo carries the same themes with the same values, so a parameter can be compared
+    // side by side.
+    var themeName by remember { mutableStateOf(ThemeShowcase.names.first()) }
     var themeMenuExpanded by remember { mutableStateOf(false) }
-    val theme = remember(themeName) { showcase.theme(themeName) }
+    val theme = remember(themeName) { ThemeShowcase.theme(themeName) }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        // Theme selector — apply one of the demo's JSON theme documents to the form.
+        // Theme selector — apply one of the demo's themes to the form.
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Theme:", style = MaterialTheme.typography.bodyMedium)
             Box {
                 OutlinedButton(onClick = { themeMenuExpanded = true }) { Text(themeName) }
                 DropdownMenu(expanded = themeMenuExpanded, onDismissRequest = { themeMenuExpanded = false }) {
-                    showcase.names.forEach { name ->
+                    ThemeShowcase.names.forEach { name ->
                         DropdownMenuItem(
                             text = { Text(name) },
                             onClick = { themeName = name; themeMenuExpanded = false }
@@ -521,7 +519,7 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
             theme = theme,
             // Placed straight into the section card, the way the iOS example sits in its grey box.
             // The screen's 16dp and the card's 16dp put the fields 32dp from the screen edge under
-            // the Default document, which leaves formPadding at none; Dark and Red set it to 16.
+            // the Default theme, which leaves formPadding at none; Dark and Red set it to 16.
             modifier = Modifier.fillMaxWidth()
         )
 

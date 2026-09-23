@@ -7,17 +7,23 @@ import cz.gopay.sdk.GopaySDK
 /**
  * Logging of the SDK towards the host application.
  *
- * Warnings are things the integrator should know about but that never stop the SDK from working,
- * such as a theme key that was dropped because its value could not be read. They go to Logcat
- * under [TAG] at warn level, and only while the host has debug logging on, matching the rest of
- * the SDK and the iOS side.
+ * Warnings are things the integrator should know about but that never stop the SDK from working:
+ * a value the gateway left out and the SDK had to read as absent, or a device fact the SDK had to
+ * synthesize because the platform would not give it. They go to Logcat under [TAG] at warn level,
+ * and only while the host has debug logging on, the same condition the error path uses, so a
+ * release build stays quiet. The iOS SDK reports the same things the same way.
+ *
+ * Nothing on this branch calls it. The callers live on the 3DS work that builds on top of this
+ * one — the browser data and the charge response adapter — so the channel stays, and so does the
+ * test seam below, which those callers' tests use.
  */
 internal object SdkLog {
     const val TAG = "GopaySDK"
 
     /**
      * Where warnings go. Replaced in unit tests, which run without the Android runtime, to
-     * collect the messages instead of writing them to Logcat.
+     * collect the messages instead of writing them to Logcat. The tests that do so live with the
+     * callers, on the branch that stands on this one.
      */
     @VisibleForTesting
     internal var warnSink: (String) -> Unit = { message ->

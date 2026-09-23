@@ -23,7 +23,8 @@ import java.util.Locale
  * Border treatment of the input fields.
  *
  * Mirrors the `inputBorderStyle` key of the GoPay hosted card form, [UNDERLINE] included: that is
- * what all three channels use when a theme does not say otherwise.
+ * what the hosted form uses when a theme does not say otherwise, and what an ordinary Android
+ * field looks like.
  */
 enum class InputBorderStyle {
     /** Full border around the field, rounded by [PaymentCardFormTheme.inputBorderRadius]. */
@@ -59,8 +60,8 @@ enum class InputBorderStyle {
  * form only ever draws errors the host passes in through [InputFieldConfig.errorText]. And seven
  * that the web can only express by drawing: `inputBorderCollapse`, `focusRingWidth`,
  * `focusRingColor`, `focusGradientStart`, `focusGradientEnd`, `inputLetterSpacing` and
- * `inputLineHeight`. All of them are accepted and ignored when a theme arrives as JSON, so one
- * theme document can still drive all three channels.
+ * `inputLineHeight`. The theme is a typed Kotlin object, so none of them is something a call site
+ * can state in the first place.
  *
  * @property fontFamily Font used for labels, input text, placeholders and error text. `null` uses
  *   the platform font. Fonts are resolved by the host application; the theme carries no font files.

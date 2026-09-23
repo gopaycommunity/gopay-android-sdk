@@ -262,14 +262,14 @@ Two things are worth knowing before reading the table.
 **The theme is a subset of the hosted form's set.** The field is the platform's own text field,
 decorated by the platform, and the SDK paints no part of it, so the theme carries what a native
 input can be told to do and nothing else. Fifteen of the hosted form's keys are therefore absent;
-they are listed below and are ignored when they arrive in a document.
+they are listed below.
 
 **Nothing is styled by default.** An unthemed form looks like any other form on the screen it sits
 in — the platform's type and colors, an ordinary field, labels in the case they were written in,
 and the host's own padding around it. The hosted card form is a page of its own and can afford a
 look; here the form is one part of the merchant's screen. Theming is fully available, it is just a
-choice rather than the starting point, and a theme document that wants the hosted form's look
-states it key by key.
+choice rather than the starting point, and a theme that wants the hosted form's look states it
+parameter by parameter.
 
 ```kotlin
 PaymentCardForm(
@@ -285,32 +285,6 @@ PaymentCardForm(
 )
 ```
 
-A theme can also arrive as the JSON document the web integration uses. Keys this SDK does not
-implement are accepted and ignored, so one document can drive every channel:
-
-```kotlin
-val theme = PaymentCardFormThemeJson.parse(documentFromYourBackend).toTheme()
-```
-
-`toTheme()` applies the document on top of a base theme (the defaults unless you pass one), and
-`PaymentCardFormTheme.toJsonModel().toJson()` goes the other way. Fonts are the one exception: the
-document carries a font *name*, and the host resolves it to a `FontFamily` through the
-`fontFamilyResolver` argument, because the SDK never loads font files itself.
-
-A theme document is untrusted input, so it is read defensively, key by key, and never fails the
-form: a value of the wrong type (`"labelFontSize": "big"`) drops that key alone and the rest of the
-document still applies, a document that cannot be read at all yields an empty one, an unusable
-color keeps the base theme's value, and so does a size that cannot be used, whether it is
-negative or so large it would break the layout. Letter spacing is the one metric that keeps a
-negative value, because tight tracking is a legitimate typographic choice. Font weights are CSS
-numbers; the keywords `bold` and `normal` are read as 700 and 400. A key set to JSON `null` reads
-as absent, so a document adds to and overrides a base theme but cannot clear one of its optional
-values back to unset. A key the SDK cannot read, whether a wrong type, an unusable colour or a
-number outside the range, is reported as a warning in Logcat under the `GopaySDK` tag while debug
-logging is on, the way a type checker would flag it. A `fontFamily` the host's resolver does not
-know is the exception: that key is dropped silently, because only the host can say which fonts it
-has.
-
 #### Parity with the hosted card form
 
 All 44 keys of the hosted form, and what this SDK does with them.
@@ -320,7 +294,7 @@ All 44 keys of the hosted form, and what this SDK does with them.
 | `fontFamily` | `fontFamily: FontFamily?` | Resolved by the host; the theme carries no font files |
 | `labelColor` | `labelColor` | |
 | `labelFontSize` | `labelFontSize` | |
-| `labelFontWeight` | `labelFontWeight: Int` | CSS number; in a JSON document `"bold"` and `"normal"` read as 700 and 400. Android keeps the exact value, so variable fonts resolve weights such as 450; the iOS SDK quantizes to the nearest hundred. A weight outside 100..900 is dropped and reported when it comes from a document, and clamped into range when it comes from Kotlin: a document is untrusted input, a call site is the integrator's own code |
+| `labelFontWeight` | `labelFontWeight: Int` | CSS number, clamped into 100..900. Android keeps the exact value, so variable fonts resolve weights such as 450; the iOS SDK quantizes to the nearest hundred |
 | `labelLineHeight` | `labelLineHeight` | `null` uses the font metrics |
 | `labelUppercase` | `labelUppercase` | Uppercased with the device locale |
 | `labelLetterSpacing` | `labelLetterSpacing` | `null` means none; the web's `em` fallback is not computed |
@@ -367,17 +341,12 @@ submit button — it is the permanent equivalent of the web's `submitMode: 'exte
 iframe hides its button and the host submits, so there is nothing for them to style. `errorHidden`,
 which the mobile form already does by default. And seven the browser can only honour by painting
 the field: the collapsed borders, the focus ring, the focus gradient, and the letter spacing and
-line height of the input. A document that carries any of them still applies the rest of itself.
-
-The two groups are reported differently. The seven that would need painting are named in a warning
-under the `GopaySDK` Logcat tag, so it is clear which parts of a shared document this platform
-turned down. The `submit*` keys and `errorHidden` pass in silence, like any key the SDK does not
-know: they describe a button and a mode that do not exist here at all, so there is nothing an
-integrator would act on.
+line height of the input. The theme is a typed Kotlin object, so an unsupported key is not
+something a call site can write: the parameter simply is not there.
 
 Two parameters have no counterpart on the web and are documented as Android-only extensions:
 `helperTextColor` and `helperFontSize`, which style the optional helper line under a field. The
-iOS SDK has no helper line, so a document carrying them applies only here.
+iOS SDK has no helper line, so these two apply only here.
 
 #### Default values
 
@@ -460,8 +429,7 @@ two parameters kept their names and changed their meaning.
 | the hard-coded `4.dp` under a label | `fieldSpacing` — **the name is reused for a new meaning** |
 
 Seven parameters that 2.0 carried in an earlier preview are gone again, because rendering them
-would mean painting the field rather than asking the platform for it. Nothing replaces them, and a
-theme document carrying them is accepted with a warning:
+would mean painting the field rather than asking the platform for it. Nothing replaces them:
 
 | Removed | What it did |
 |---|---|
