@@ -178,7 +178,7 @@ auth or HTTP errors.
 | `getQrPaymentInfo(format?)` | `GET /payments/{payment_id}/qr-payment/info` |
 | `getGooglePayInfo()` | `GET /payments/{payment_id}/google-pay/info` |
 | `chargeWithGooglePay(activity)` | Managed flow: GP info → Google Pay sheet → `charge(...)` |
-| `handle3dsVerification(activity, redirectUrl)` | Managed WebView; suspends until done or cancelled |
+| `handle3dsVerification(activity, redirectUrl)` | Managed WebView; suspends until the challenge is answered, dismissed or found unreachable |
 | `close()` | Wipes `payment_secret`, JWT; unregisters from the SDK |
 
 Concurrent calls on the same session re-use the cached JWT. On a 401 the session invalidates
@@ -223,6 +223,37 @@ val charge = session.chargeWithEncryptedCard(
     challengePreference = ChallengePreference.AUTO
 )
 charge.action?.redirectUrl?.let { session.handle3dsVerification(activity, it) }
+val finalState = session.getChargeState()
+```
+
+### 3DS verification
+
+`handle3dsVerification(activity, redirectUrl)` opens the challenge in an SDK-managed WebView and
+suspends. It has three ends, not two:
+
+- **Answered** — the ACS returns to the SDK's return URL and the call returns normally. Read the
+  outcome with `getChargeState()`; the SDK does not decide whether the payment went through.
+- **Dismissed** — the user backed out or swiped the task away, which surfaces as
+  `kotlinx.coroutines.CancellationException`.
+- **Unreachable** — the challenge page never drew at all, for instance because the redirect URL
+  has already been retired, which throws `GopaySDKException` with
+  `PAYMENT_VERIFICATION_UNREACHABLE`. Charging again is the right answer to this one, and it is
+  the case that used to arrive as a dismissal, so hosts ticked the verification off as handled
+  and let the payment lapse.
+
+Anything that breaks *after* the challenge has drawn ends as a dismissal instead, because by then
+only `getChargeState()` can say whether the issuer authorised the payment. Only one verification
+runs per process at a time; a second one throws `PAYMENT_VERIFICATION_IN_PROGRESS`.
+
+```kotlin
+try {
+    session.handle3dsVerification(activity, redirectUrl)
+} catch (e: GopaySDKException) {
+    if (e.errorCode == GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE) retryCharge()
+} catch (e: CancellationException) {
+    // The user walked away. getChargeState() is still the only source of truth.
+    throw e
+}
 val finalState = session.getChargeState()
 ```
 
@@ -553,6 +584,7 @@ Every API call may throw `GopaySDKException` with a structured error code (`AUTH
 | `AUTH_SHAREABLE_KEY_MISSING` | `encryptCardData` / `getPublicEncryptionKey` called without `clientId`+`shareableKey` |
 | `PAYMENT_GOOGLE_PAY_IN_PROGRESS` | A second Google Pay sheet attempted while one is visible |
 | `PAYMENT_VERIFICATION_IN_PROGRESS` | A second 3DS WebView attempted while one is open |
+| `PAYMENT_VERIFICATION_UNREACHABLE` | The 3DS challenge page could not be loaded, e.g. the redirect URL is dead; charge again |
 
 ```kotlin
 try {

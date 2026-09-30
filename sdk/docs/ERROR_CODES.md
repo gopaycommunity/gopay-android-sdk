@@ -375,6 +375,16 @@ This document provides a comprehensive reference for all error codes used in the
 - **Developer Action**:
   - Disable the pay button while a charge is in flight
 
+### PAYMENT_010: Verification Unreachable
+- **Description**: The 3DS challenge page could not be loaded, so the verification never started
+- **Common Causes**:
+  - The redirect URL has been retired by the gateway, e.g. the charge it belonged to is long finished
+  - No connectivity while the challenge was opening
+- **Developer Action**:
+  - Read the charge state and report the payment as unverified rather than as abandoned
+  - Do not treat it as a user dismissal, which arrives as a cancellation instead
+  - Charge again to obtain a fresh redirect URL
+
 ## Card Errors (CARD_XXX)
 
 ### CARD_001: Card Tokenization Failed

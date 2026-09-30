@@ -7,7 +7,7 @@
         <activity
             android:name="cz.gopay.sdk.ui.PaymentVerificationActivity"
             android:exported="false"
-            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode|density|fontScale"
             android:windowSoftInputMode="adjustResize" />
 
         <activity

@@ -276,16 +276,20 @@ class PaymentSession internal constructor(
      *
      * Only one verification can run per process at a time;
      * [GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS] is thrown if another is in flight.
-     * User dismissal surfaces as [kotlinx.coroutines.CancellationException].
+     * User dismissal surfaces as [kotlinx.coroutines.CancellationException]. A challenge page
+     * that never drew at all, such as a redirect URL the gateway has already retired, throws
+     * [GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE] rather than reading as a dismissal, so
+     * the host can tell the two apart and report the payment accordingly. Anything that goes
+     * wrong after the user has seen the challenge ends as a cancellation instead, because by
+     * then only [getChargeState] can say whether the payment was authorised.
      */
     suspend fun handle3dsVerification(activity: Activity, redirectUrl: String) {
         val deferred = CompletableDeferred<Boolean>()
-        if (!PaymentVerificationBridge.register(deferred)) {
-            throw GopaySDKException(
+        val owner = PaymentVerificationBridge.register(deferred)
+            ?: throw GopaySDKException(
                 errorCode = GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS,
                 message = "A payment verification is already in progress"
             )
-        }
         try {
             withContext(Dispatchers.Main) {
                 activity.startActivity(
@@ -295,7 +299,9 @@ class PaymentSession internal constructor(
             }
             deferred.await()
         } finally {
-            PaymentVerificationBridge.clear()
+            // Scoped to this verification: the release can land after the next one has already
+            // claimed the bridge, and clearing that one would strand its caller.
+            PaymentVerificationBridge.clear(owner)
         }
     }
 

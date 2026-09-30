@@ -3,6 +3,14 @@ package cz.gopay.sdk.ui
 import kotlinx.coroutines.CompletableDeferred
 import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * Carries the Google Pay token from [GooglePayLauncherActivity] back to the `chargeWithGooglePay`
+ * call that started it.
+ *
+ * Unlike [PaymentVerificationBridge] it hands out no owner token: the launcher activity reports
+ * exactly once, from `onActivityResult`, and has no reporter in `onDestroy`, so there is no late
+ * report that could reach the deferred of a later payment.
+ */
 internal object GooglePayBridge {
     private val deferred = AtomicReference<CompletableDeferred<Result<String>>?>()
 
