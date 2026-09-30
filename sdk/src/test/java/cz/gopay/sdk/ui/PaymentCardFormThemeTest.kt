@@ -84,7 +84,6 @@ class PaymentCardFormThemeTest {
         val input = theme.inputTextStyle()
         assertEquals(FontWeight.Medium, input.fontWeight)
 
-        assertEquals(Color.Magenta, theme.placeholderTextStyle().color)
         assertEquals(FontFamily.Monospace, theme.errorTextStyle().fontFamily)
         assertEquals(TextDirection.Ltr, input.textDirection)
         assertEquals(TextDirection.Ltr, theme.placeholderTextStyle().textDirection)
@@ -99,11 +98,18 @@ class PaymentCardFormThemeTest {
         assertEquals(TextUnit.Unspecified, theme.labelTextStyle().lineHeight)
         assertEquals(TextUnit.Unspecified, theme.labelTextStyle().letterSpacing)
         assertNull("An unset weight stays unset", theme.inputTextStyle().fontWeight)
+    }
+
+    @Test
+    fun placeholderTextStyle_leavesTheColorToTheCallSite() {
+        // resolvedPlaceholderColor is a @Composable that reads the host theme's textColorHint,
+        // so the only caller overwrites whatever colour this style carries. Stating one here
+        // would read as a decision the form does not make.
         assertEquals(
-            "An unset placeholder color is left to the platform",
             Color.Unspecified,
-            theme.placeholderTextStyle().color
+            PaymentCardFormTheme(placeholderColor = Color.Magenta).placeholderTextStyle().color
         )
+        assertEquals(Color.Unspecified, PaymentCardFormTheme().placeholderTextStyle().color)
     }
 
     @Test

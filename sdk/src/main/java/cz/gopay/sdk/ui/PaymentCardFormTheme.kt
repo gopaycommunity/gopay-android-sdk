@@ -205,11 +205,13 @@ internal fun PaymentCardFormTheme.inputTextStyle(): TextStyle = TextStyle(
 )
 
 /**
- * Text style of the placeholder shown in an empty field. An unset color is left unspecified on
- * purpose: the platform then colors the placeholder the way it colors every other one.
+ * Text style of the placeholder shown in an empty field. The color is left unspecified here and
+ * resolved by [resolvedPlaceholderColor] at the call site, which takes the host theme's
+ * `textColorHint` when the theme states none. Reading [PaymentCardFormTheme.placeholderColor]
+ * here as well would only be overwritten a line later.
  */
 internal fun PaymentCardFormTheme.placeholderTextStyle(): TextStyle =
-    inputTextStyle().copy(color = placeholderColor ?: Color.Unspecified)
+    inputTextStyle().copy(color = Color.Unspecified)
 
 /** How much taller a rendered line is than the font size that names it, for the default family. */
 private const val ERROR_LINE_HEIGHT_FACTOR = 1.2f

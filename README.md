@@ -339,10 +339,10 @@ numbers in the 100..900 range.
 
 Two things are worth knowing before reading the table.
 
-**The theme is a subset of the hosted form's set.** The field is the platform's own text field,
-decorated by the platform, and the SDK paints no part of it, so the theme carries what a native
-input can be told to do and nothing else. Sixteen of the hosted form's keys are therefore absent;
-they are listed below.
+**The theme is a subset of the hosted form's set.** The field is a `BasicTextField` in a box the
+SDK builds from framework primitives: a background, a `Modifier.border()` and padding. Nothing is
+painted onto a canvas, so the theme carries what those primitives can be told to do and nothing
+else. Sixteen of the hosted form's keys are therefore absent; they are listed below.
 
 **Nothing is styled by default.** An unthemed form looks like any other form on the screen it sits
 in — the platform's type and colors, an ordinary field, labels in the case they were written in,
@@ -385,7 +385,7 @@ All 44 keys of the hosted form, and what this SDK does with them.
 | `inputLineHeight` | not supported | A single-line field takes its height from the font, the padding and `inputHeight` |
 | `inputLetterSpacing` | not supported | Dropped for parity: the iOS field would have to be measured by hand for it |
 | `inputHeight` | `inputHeight` | A minimum height, with the vertical padding inside it; iOS reads it the same way |
-| `placeholderColor` | `placeholderColor` | `null` uses the platform's own placeholder color, which follows the system appearance rather than the theme |
+| `placeholderColor` | `placeholderColor` | `null` takes the host theme's `textColorHint`, the muted color the host gives its own fields |
 | `inputBorderStyle` | not supported | Neither platform offers a bottom line on its own, so `underline` would have to be painted; every field is a box |
 | `inputBorderColor` | `inputBorderColor` | |
 | `inputBorderWidth` | `inputBorderWidth` | The border thickness. There is only one: the field does not change when it takes focus |
@@ -489,12 +489,12 @@ everywhere else here: a focus ring, a focus gradient or a thickened line would a
 painted by the SDK, and a payment form embedded in someone else's screen is not the place to invent
 a look the platform does not offer. The theme carries no focus color for the same reason.
 
-One layout note: the expiry and CVV fields sit side by side, each with its own label above it, so
-the two line up as long as both labels take the same number of lines. The labels are the ones GoPay
-translates, not ones picked to fit, so in the longer languages, or at a large system font scale,
-the expiry label can wrap where the CVV one does not and leave the pair a line out of step. That is
-left as it is — the label is not clipped to avoid it, and the field is not measured into place, and
-the hosted form and the iOS SDK behave the same way.
+One layout note: the expiry and CVV fields sit side by side, each with its own label above it. The
+labels are the ones GoPay translates, not ones picked to fit, so in the longer languages, or at a
+large system font scale, the expiry label can wrap where the CVV one does not. The row measures
+both labels first and hands every field the height of the tallest one as a floor, so the two inputs
+stay on one line whichever label wraps. The label itself is never clipped or shortened for it, and
+the iOS SDK reserves the row's label height the same way.
 
 #### Migrating from 1.x
 
@@ -508,7 +508,7 @@ two parameters kept their names and changed their meaning.
 | `inputTextStyle` | `inputTextColor` + `inputFontSize` + `inputFontWeight` |
 | `errorTextStyle` | `errorTextColor` + `errorFontSize` |
 | `helperTextStyle` | `helperTextColor` + `helperFontSize` |
-| `placeholderTextStyle` | `placeholderColor` — only the color survives, and unset now means the platform's; the placeholder inherits the rest of the input typography |
+| `placeholderTextStyle` | `placeholderColor` — only the color survives, and unset now means the host theme's `textColorHint`; the placeholder inherits the rest of the input typography |
 | `loadingTextStyle` | removed without replacement; it was never rendered |
 | `inputShape` | `inputBorderRadius: Dp` |
 | `inputPadding` | `inputPaddingVertical` + `inputPaddingHorizontal` |
