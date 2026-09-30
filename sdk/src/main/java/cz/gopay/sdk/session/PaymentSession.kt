@@ -7,6 +7,7 @@ import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.exception.HttpErrorContext
 import cz.gopay.sdk.model.BrowserData
+import cz.gopay.sdk.model.BrowserDataDetected
 import cz.gopay.sdk.model.ChallengePreference
 import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargePaymentResponse
@@ -16,8 +17,10 @@ import cz.gopay.sdk.model.PaymentCreateResponse
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.model.deviceDefault
+import cz.gopay.sdk.model.syntheticUserAgent
 import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.PaymentApi
+import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.modules.network.SessionTokenProvider
 import cz.gopay.sdk.modules.network.apiCall
 import cz.gopay.sdk.service.GooglePayHelper
@@ -28,11 +31,13 @@ import cz.gopay.sdk.ui.PaymentVerificationBridge
 import cz.gopay.sdk.ui.PaymentVerificationPolicy
 import cz.gopay.sdk.util.Base64Utils
 import cz.gopay.sdk.util.JwtUtils
+import cz.gopay.sdk.util.SdkLog
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.IOException
 
 /**
  * A live, per-payment authentication context.
@@ -56,6 +61,11 @@ class PaymentSession internal constructor(
     private val scope: String,
     private val authApi: AuthApi,
     paymentApiBuilder: (SessionTokenProvider) -> PaymentApi,
+    /**
+     * Resolved at charge time, not here: building it throws when `clientId` and `shareableKey`
+     * are not configured, and that belongs to the charge it stops, not to opening the session.
+     */
+    private val publicApi: () -> PublicApi,
     private val onClose: (PaymentSession) -> Unit
 ) : SessionTokenProvider {
 
@@ -95,10 +105,7 @@ class PaymentSession internal constructor(
         return authMutex.withLock {
             // Another caller may have refreshed the token while we were waiting.
             currentToken()?.let { return@withLock it }
-            val secret = paymentSecret ?: throw GopaySDKException(
-                errorCode = GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED,
-                message = "PaymentSession for $paymentId is closed"
-            )
+            val secret = paymentSecret ?: throw sessionClosed()
             val response = try {
                 apiCall("acquire payment-scoped token") {
                     authApi.token(
@@ -136,9 +143,126 @@ class PaymentSession internal constructor(
     suspend fun getStatus(): PaymentCreateResponse =
         apiCall("get payment status") { paymentApi.getPaymentStatus(paymentId) }
 
-    /** POST /payments/{payment_id}/charge */
-    suspend fun charge(request: ChargePaymentRequest): ChargePaymentResponse =
-        apiCall("charge payment") { paymentApi.chargePayment(paymentId, request) }
+    /**
+     * `POST /payments/{payment_id}/charge`.
+     *
+     * The gateway rejects a charge whose `browser_data` lacks `ip`, and the device cannot know
+     * its own public address, so the request's [BrowserData] first goes through
+     * [completeBrowserData]. Every charge on this session ends here, the wrappers included, so
+     * a caller who builds the request by hand gets the same treatment. When the gateway cannot
+     * be asked for the data, the charge is not sent and the failure surfaces as a charge error
+     * with the underlying one as its cause.
+     *
+     * A closed session is refused first, with [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED]:
+     * the charge could not be sent anyway, and asking for the data before saying so would
+     * report the wrong thing, [GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING] without the key.
+     */
+    suspend fun charge(request: ChargePaymentRequest): ChargePaymentResponse {
+        if (paymentSecret == null) throw sessionClosed()
+        val instrument = request.paymentInstrument
+        val completed = request.copy(
+            paymentInstrument = instrument.copy(
+                browserData = completeBrowserData(instrument.browserData)
+            )
+        )
+        return apiCall("charge payment") { paymentApi.chargePayment(paymentId, completed) }
+    }
+
+    /**
+     * Fills in the [BrowserData] fields only the gateway can supply: `ip`, and `accept_header`
+     * from the same request, which is what the issuer expects. Fetches them from
+     * `GET /cards/browser-data` under the shareable key, the same authorization as the public
+     * encryption key, and returns a copy with every null among them set; `javascript_enabled`
+     * becomes `true` when null, because the SDK's challenge WebView runs JavaScript. `clientId`
+     * and `shareableKey` therefore have to be set on [cz.gopay.sdk.config.GopayConfig] to
+     * charge at all.
+     *
+     * The request goes out with `User-Agent` set to [BrowserData.userAgent], so the gateway
+     * echoes the challenge WebView's User-Agent rather than the SDK's HTTP client, and the
+     * issuer sees the same value in the AReq and in the challenge. When [browserData] carries
+     * no `user_agent`, a synthesized WebView-shaped one stands in, on the request and in the
+     * charge, and a warning is logged: the session holds no `Context`, so it cannot read the
+     * WebView's own, and [deviceDefault] is the way to send that one. The header carries the
+     * value reduced to printable ASCII, which is all the HTTP client lets through; the charge
+     * keeps it as given. A value the caller set is never replaced, and when [browserData]
+     * already carries `ip` and `accept_header` the gateway is not asked at all.
+     *
+     * [charge] calls this itself; call it directly when you want to see or log the values
+     * before they go out, and pass the result to the charge unchanged.
+     *
+     * @throws GopaySDKException when the fetch fails, with the underlying error's code
+     *         ([GopayErrorCodes.NETWORK_CLIENT_ERROR] for an HTTP error,
+     *         [GopayErrorCodes.NETWORK_IO_ERROR] for a transport failure,
+     *         [GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING] without the key) and the original
+     *         exception as its cause. A transport failure is mapped to a code only on this
+     *         step; the charge request itself lets an [IOException] through as before, like
+     *         every other call on the session.
+     */
+    suspend fun completeBrowserData(browserData: BrowserData): BrowserData {
+        val userAgent = browserData.userAgent ?: syntheticUserAgent().also {
+            SdkLog.w(
+                "browser_data has no user_agent, filling in a synthesized WebView User-Agent, " +
+                    "which the issuer may score differently; build BrowserData with " +
+                    "deviceDefault(activity) to send the WebView's own"
+            )
+        }
+        if (browserData.ip != null && browserData.acceptHeader != null) {
+            return browserData.copy(
+                userAgent = userAgent,
+                javascriptEnabled = browserData.javascriptEnabled ?: true
+            )
+        }
+        val detected = fetchBrowserData(userAgent)
+        return browserData.copy(
+            ip = browserData.ip ?: detected.ip,
+            userAgent = userAgent,
+            acceptHeader = browserData.acceptHeader ?: detected.acceptHeader,
+            javascriptEnabled = browserData.javascriptEnabled ?: true
+        )
+    }
+
+    private suspend fun fetchBrowserData(userAgent: String): BrowserDataDetected = try {
+        val api = publicApi()
+        apiCall("fetch browser data") { api.getBrowserData(headerValue(userAgent)) }
+    } catch (e: GopaySDKException) {
+        // Charging without the address would fail on the gateway anyway, and reporting that as
+        // the charge's own 400 would hide where it went wrong.
+        throw GopaySDKException(
+            errorCode = e.errorCode,
+            message = "Failed to charge payment: browser data could not be fetched " +
+                "(${e.message})",
+            cause = e,
+            httpContext = e.httpContext
+        )
+    } catch (e: IOException) {
+        throw GopaySDKException(
+            errorCode = GopayErrorCodes.NETWORK_IO_ERROR,
+            message = "Failed to charge payment: browser data could not be fetched " +
+                "(${e.message})",
+            cause = e
+        )
+    }
+
+    /**
+     * [userAgent] as an HTTP header can carry it. OkHttp throws an `IllegalArgumentException`,
+     * outside the SDK's error contract, for a header value with a character outside printable
+     * ASCII, which a device model with an accent puts into the synthesized User-Agent and a
+     * host can put into its own. Line breaks are dropped and the rest is replaced.
+     */
+    private fun headerValue(userAgent: String): String = buildString(userAgent.length) {
+        for (c in userAgent) {
+            when {
+                c == '\r' || c == '\n' -> Unit
+                c.code in 0x20..0x7E -> append(c)
+                else -> append('?')
+            }
+        }
+    }
+
+    private fun sessionClosed() = GopaySDKException(
+        errorCode = GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED,
+        message = "PaymentSession for $paymentId is closed"
+    )
 
     /** GET /payments/{payment_id}/charge */
     suspend fun getChargeState(): ChargePaymentResponse =
@@ -323,7 +447,8 @@ class PaymentSession internal constructor(
     /**
      * Wipes the in-memory `payment_secret` and JWT, and unregisters this session from the SDK
      * registry. Idempotent — once the secret is nulled, [reauthenticate] starts throwing
-     * [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED].
+     * [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED], and [charge] throws it outright, before
+     * asking the gateway for the browser data.
      */
     fun close() {
         if (paymentSecret == null) return
@@ -335,7 +460,8 @@ class PaymentSession internal constructor(
 
     internal class Factory(
         private val authApi: AuthApi,
-        private val paymentApiBuilder: (SessionTokenProvider) -> PaymentApi
+        private val paymentApiBuilder: (SessionTokenProvider) -> PaymentApi,
+        private val publicApi: () -> PublicApi
     ) {
         suspend fun create(
             paymentId: String,
@@ -348,6 +474,7 @@ class PaymentSession internal constructor(
                 scope = scope,
                 authApi = authApi,
                 paymentApiBuilder = paymentApiBuilder,
+                publicApi = publicApi,
                 onClose = onClose
             )
             session.paymentSecret = paymentSecret

@@ -112,7 +112,7 @@ This document provides a comprehensive reference for all error codes used in the
 ### AUTH_011: Shareable Key Missing
 - **Description**: `clientId` / `shareableKey` are absent from `GopayConfig` but required by the requested operation
 - **Common Causes**:
-  - SDK initialized without them, then a public-resource endpoint was called (`GET /cards/public-key`)
+  - SDK initialized without them, then a public-resource endpoint was called (`GET /cards/public-key`, or `GET /cards/browser-data`, which every charge fetches first)
 - **Developer Action**:
   - Supply both in `GopayConfig` — they are safe to embed in the app
 
@@ -208,6 +208,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Retry request
   - Check network stability
   - Implement robust error handling
+- **Note**: The SDK raises it only on `GET /cards/browser-data`, the step every `charge(...)` runs first; the `IOException` is the exception's `cause`. Every other call, the charge request included, lets a transport failure through as the bare `IOException`.
 
 ### NETWORK_008: Request Cancelled
 - **Description**: Network request was cancelled

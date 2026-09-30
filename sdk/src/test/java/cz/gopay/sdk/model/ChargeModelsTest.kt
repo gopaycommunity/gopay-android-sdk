@@ -302,5 +302,57 @@ class ChargeModelsTest {
         // Moshi decodes JSON numbers as Double into a generic Any map.
         assertEquals(1170.0, browser["screen_width"])
         assertEquals(24.0, browser["color_depth"])
+        // Null fields stay out of the body; the session fills ip and its pair before sending.
+        assertFalse("ip must be omitted while unset", browser.containsKey("ip"))
+    }
+
+    @Test
+    fun `browser data serializes ip and its detected pair under the spec's names`() {
+        val browserAdapter = moshi.adapter(BrowserData::class.java)
+        val data = BrowserData(
+            language = "cs-CZ",
+            timezone = -60,
+            screenWidth = 1080,
+            screenHeight = 2400,
+            colorDepth = 24,
+            userAgent = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36",
+            acceptHeader = """{"accept":"application/json, text/plain, */*"}""",
+            javascriptEnabled = true,
+            ip = "192.0.2.42"
+        )
+
+        val mapType = Types.newParameterizedType(
+            Map::class.java, String::class.java, Any::class.java
+        )
+        val json = moshi.adapter<Map<String, Any?>>(mapType).fromJson(browserAdapter.toJson(data))!!
+
+        assertEquals(
+            setOf(
+                "language", "timezone", "screen_width", "screen_height", "color_depth",
+                "user_agent", "accept_header", "javascript_enabled", "ip"
+            ),
+            json.keys
+        )
+        assertEquals("192.0.2.42", json["ip"])
+        assertEquals("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36", json["user_agent"])
+        assertEquals("""{"accept":"application/json, text/plain, */*"}""", json["accept_header"])
+        assertEquals(true, json["javascript_enabled"])
+    }
+
+    @Test
+    fun `the browser-data endpoint response decodes into BrowserDataDetected`() {
+        val detected = moshi.adapter(BrowserDataDetected::class.java).fromJson(
+            """
+            {
+              "ip": "192.0.2.42",
+              "user_agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36",
+              "accept_header": "{\"accept-language\":\"cs;q=0.5\",\"accept\":\"application/json\"}"
+            }
+            """.trimIndent()
+        )!!
+
+        assertEquals("192.0.2.42", detected.ip)
+        assertEquals("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36", detected.userAgent)
+        assertEquals("""{"accept-language":"cs;q=0.5","accept":"application/json"}""", detected.acceptHeader)
     }
 }

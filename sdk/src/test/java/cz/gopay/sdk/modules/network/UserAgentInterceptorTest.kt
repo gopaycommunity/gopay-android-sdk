@@ -18,9 +18,10 @@ import org.mockito.kotlin.whenever
  * Unit tests for UserAgentInterceptor
  * 
  * These tests verify that:
- * - User-Agent header is added to all requests
+ * - User-Agent header is added to every request that has none
  * - User-Agent format is correct: "GoPay Android SDK {VERSION}"
  * - Version is read from BuildConfig.VERSION_NAME
+ * - A User-Agent the request set itself is left alone
  */
 class UserAgentInterceptorTest {
 
@@ -110,28 +111,26 @@ class UserAgentInterceptorTest {
     }
 
     @Test
-    fun `intercept should override existing User-Agent header`() {
-        // Given a request with an existing User-Agent header
+    fun `intercept should keep an existing User-Agent header`() {
+        // GET /cards/browser-data names the 3DS WebView's User-Agent so the gateway echoes that
+        // one back as browser_data.user_agent; the SDK's HTTP client name must not replace it.
         val originalRequest = Request.Builder()
-            .url("https://api.gopay.com/payments")
-            .header("User-Agent", "ExistingUserAgent/1.0")
+            .url("https://api.gopay.com/cards/browser-data")
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
             .build()
         val expectedResponse = createMockResponse(200)
 
         whenever(mockChain.request()).thenReturn(originalRequest)
         whenever(mockChain.proceed(any())).thenReturn(expectedResponse)
 
-        // When intercepting the request
         userAgentInterceptor.intercept(mockChain)
 
-        // Then User-Agent header should be overridden with SDK version
         val capturedRequest = argumentCaptor<Request>()
         verify(mockChain).proceed(capturedRequest.capture())
 
-        val userAgentHeader = capturedRequest.firstValue.header("User-Agent")
-        val expectedUserAgent = "GoPay Android SDK ${BuildConfig.VERSION_NAME}"
-        assertEquals("User-Agent should be overridden with SDK version", 
-            expectedUserAgent, userAgentHeader)
+        assertEquals("User-Agent set by the request must survive",
+            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36",
+            capturedRequest.firstValue.header("User-Agent"))
     }
 
     @Test

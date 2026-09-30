@@ -47,8 +47,10 @@ import com.gopay.example.ui.theme.ExampleAppTheme
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocales
+import cz.gopay.sdk.model.BrowserData
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.ChallengePreference
+import cz.gopay.sdk.model.deviceDefault
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.ui.CardEncryptionResult
@@ -106,6 +108,19 @@ fun SDKTestScreen() {
                 busyLabel = null
             }
         }
+    }
+
+    /**
+     * The device data the gateway forwards to the issuer, which weighs it when deciding between
+     * a frictionless approval and a 3DS challenge. Completed through the session the way the
+     * charge would complete it, logged, and then passed explicitly, so the console shows exactly
+     * what went out rather than a second guess at it. The charge sees every field set and does
+     * not ask the gateway a second time.
+     */
+    suspend fun browserDataForCharge(s: PaymentSession): BrowserData {
+        val data = s.completeBrowserData(BrowserData.deviceDefault(context as Activity))
+        log("// browser_data sent with this charge\nuser_agent: ${data.userAgent}\nlanguage: ${data.language}, timezone: ${data.timezone}\nscreen: ${data.screenWidth}x${data.screenHeight}, color_depth: ${data.colorDepth}\nip: ${maskIp(data.ip)}\naccept_header: ${data.acceptHeader}")
+        return data
     }
 
     Column(
@@ -202,7 +217,10 @@ fun SDKTestScreen() {
 
                 DemoButton("Charge with Google Pay", enabled = !isBusy) {
                     run("Charge with Google Pay") {
-                        val charge = s.chargeWithGooglePay(context as Activity)
+                        val charge = s.chargeWithGooglePay(
+                            activity = context as Activity,
+                            browserData = browserDataForCharge(s)
+                        )
                         val actionInfo = charge.action?.let {
                             "Action: ${it.actionType} (${it.state})\nRedirect: ${it.redirectUrl ?: "N/A"}"
                         } ?: "Action: none"
@@ -243,6 +261,7 @@ fun SDKTestScreen() {
                         val charge = s.chargeWithCardToken(
                             activity = context as Activity,
                             cardToken = cardToken.trim(),
+                            browserData = browserDataForCharge(s),
                             challengePreference = ChallengePreference.AUTO
                         )
                         val actionInfo = charge.action?.let {
@@ -334,6 +353,7 @@ fun SDKTestScreen() {
                         val charge = s.chargeWithEncryptedCard(
                             activity = context as Activity,
                             payload = jwe.trim(),
+                            browserData = browserDataForCharge(s),
                             challengePreference = ChallengePreference.AUTO
                         )
                         val actionInfo = charge.action?.let {
@@ -554,4 +574,18 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
 
         errorMessage?.let { Text("Error: $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
     }
+}
+
+/**
+ * The address as the run's protocol may carry it: the first two groups stay, so the log can be
+ * matched against the gateway's records, and the rest is replaced, so the log does not name the
+ * tester's network. `null` reads as such, because a missing address is the finding.
+ */
+internal fun maskIp(ip: String?): String {
+    if (ip == null) return "null"
+    val separator = if (ip.contains(':')) ':' else '.'
+    val groups = ip.split(separator)
+    if (groups.size < 3) return ip
+    return groups.take(2).joinToString(separator.toString()) +
+        separator + groups.drop(2).joinToString(separator.toString()) { "x" }
 }

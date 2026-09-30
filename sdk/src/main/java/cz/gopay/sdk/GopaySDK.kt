@@ -59,7 +59,8 @@ class GopaySDK private constructor(
     private val paymentSessionFactory: PaymentSession.Factory =
         PaymentSession.Factory(
             authApi = networkManager.authApi,
-            paymentApiBuilder = { provider -> networkManager.buildPaymentApi(provider) }
+            paymentApiBuilder = { provider -> networkManager.buildPaymentApi(provider) },
+            publicApi = { networkManager.publicApi }
         )
 
     private val publicKeyCache: PublicKeyCache by lazy {

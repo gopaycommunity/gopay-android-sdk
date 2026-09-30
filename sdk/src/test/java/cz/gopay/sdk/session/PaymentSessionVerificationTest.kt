@@ -61,7 +61,8 @@ class PaymentSessionVerificationTest {
                 ): Response<TokenResponse> =
                     Response.success(TokenResponse(accessToken = "jwt", tokenType = "Bearer"))
             },
-            paymentApiBuilder = { mock<PaymentApi>() }
+            paymentApiBuilder = { mock<PaymentApi>() },
+            publicApi = { throw UnsupportedOperationException() }
         ).create(paymentId = "pay-1", paymentSecret = "secret", scope = PaymentSession.DEFAULT_SCOPE) {}
     }
 }

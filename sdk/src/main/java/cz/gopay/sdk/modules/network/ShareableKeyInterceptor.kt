@@ -9,7 +9,7 @@ import okhttp3.Response
  * Used by the [PublicApi] client.
  *
  * The shareable key is intended to be embedded in the mobile app — it grants access only to the
- * public-resource endpoints (public key, card form URL).
+ * public-resource endpoints (public key, card form URL, browser data).
  */
 internal class ShareableKeyInterceptor(
     clientId: String,

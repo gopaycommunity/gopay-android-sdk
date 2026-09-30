@@ -31,7 +31,15 @@ enum class Emv3dsState {
 
 /**
  * Browser data collected for 3DS authentication. Required on every card charge regardless of
- * the input type. Maps to `Browser-Data` in Payments.yaml.
+ * the input type. Maps to `Browser-Data` in the published spec.
+ *
+ * The gateway requires every field, [ip] included, and rejects a charge without it. The device
+ * cannot know its own public address, and the issuer expects [userAgent] and [acceptHeader] to
+ * come from the same request that produced the address, so the SDK fetches the three from
+ * `GET /cards/browser-data` right before it charges and fills in whichever of them is null; see
+ * [cz.gopay.sdk.session.PaymentSession.charge]. A value you set yourself is kept, so pass [ip]
+ * only if you collected it in the customer's own browser. [javascriptEnabled] is filled as
+ * `true` when null, because the challenge runs in a WebView with JavaScript on.
  */
 data class BrowserData(
     val language: String,
@@ -41,11 +49,24 @@ data class BrowserData(
     @Json(name = "color_depth") val colorDepth: Int,
     @Json(name = "user_agent") val userAgent: String? = null,
     @Json(name = "accept_header") val acceptHeader: String? = null,
-    @Json(name = "javascript_enabled") val javascriptEnabled: Boolean? = null
+    @Json(name = "javascript_enabled") val javascriptEnabled: Boolean? = null,
+    /** Public address of the customer's browser, at most 45 characters. */
+    val ip: String? = null
 ) {
     /** Anchor for [deviceDefault], the device-derived factory in `BrowserDataDevice.kt`. */
     companion object
 }
+
+/**
+ * Response of `GET /cards/browser-data`: the [BrowserData] fields the device cannot determine on
+ * its own, derived by the gateway from the request that fetched them. Maps to
+ * `Browser-Data-Detected`. The SDK merges it into the charge's [BrowserData].
+ */
+data class BrowserDataDetected(
+    val ip: String,
+    @Json(name = "user_agent") val userAgent: String,
+    @Json(name = "accept_header") val acceptHeader: String
+)
 
 /**
  * Header fields embedded in an Apple Pay payment token. Maps to the nested `header` object on

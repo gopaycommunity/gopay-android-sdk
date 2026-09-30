@@ -13,9 +13,10 @@ schemes the SDK is allowed to use:
   `payment_secret` to the app. The SDK exchanges those at `POST /oauth2/token` with
   `grant_type=payment_credentials` to obtain a payment-scoped JWT. Every charge/status/Google
   Pay/QR/3DS call goes through this JWT.
-- **`shareable_key`** — long-lived `client_id:shareable_key` basic auth for the two public
-  resource endpoints: `GET /cards/public-key` (used for JWE card encryption) and
-  `GET /cards/card-form-url`. Safe to embed in the app — it can't charge anything on its own.
+- **`shareable_key`** — long-lived `client_id:shareable_key` basic auth for the public
+  resource endpoints: `GET /cards/public-key` (used for JWE card encryption),
+  `GET /cards/card-form-url` and `GET /cards/browser-data` (the `ip` every charge needs). Safe to
+  embed in the app — it can't charge anything on its own.
 
 Card tokenization (`POST /cards/tokens`) requires merchant credentials and **runs on your
 backend**, not on the device. The SDK encrypts card data into a JWE and gives it to you to
@@ -118,8 +119,10 @@ class MyApplication : Application() {
 }
 ```
 
-`clientId` and `shareableKey` are optional — only required if you call
-`getPublicEncryptionKey()`, `encryptCardData()`, or use `PaymentCardForm`.
+`clientId` and `shareableKey` are needed to charge: every charge first fetches the browser data
+under the shareable key (see below). They are also what `getPublicEncryptionKey()`,
+`encryptCardData()` and `PaymentCardForm` use. Without them a charge fails with
+`AUTH_SHAREABLE_KEY_MISSING` before anything is sent.
 
 ### 3. Start a session and charge
 
@@ -168,6 +171,24 @@ synthesized User-Agent of the same shape stands in, with a warning in Logcat. `c
 always 24, the value every mobile browser reports. Construct `BrowserData` directly if you have
 collected more accurate values. The iOS SDK exposes the same `BrowserData.deviceDefault()`.
 
+The gateway also requires `ip`, and the device cannot know its own public address, so every
+`charge(...)` on a session first calls `GET /cards/browser-data` under the shareable key, the same
+authorization as the public encryption key, and fills in `ip` and `accept_header` from the
+answer; `javascript_enabled` is sent as `true`, because the challenge runs in a WebView with
+JavaScript on. The request carries the WebView's User-Agent from `BrowserData`, so the issuer
+sees the same value in the AReq and in the challenge. A `BrowserData` you built without `user_agent` gets a synthesized
+WebView-shaped one instead, on the request and in the charge, with a warning in Logcat: the
+session holds no `Context` to read the WebView's own, so use `deviceDefault(activity)` to send
+that one. Only fields that are still `null` are filled: a value you set on
+`BrowserData` stays, and when `ip` and `accept_header` are both set the gateway is not
+asked. When the fetch fails the charge is not sent; the error carries the underlying code
+(`NETWORK_002` for an HTTP error, `NETWORK_007` for a transport failure,
+`AUTH_SHAREABLE_KEY_MISSING` when `clientId` and `shareableKey` are not configured) with the
+original exception as its cause. `NETWORK_007` is mapped only on this step: the charge request
+itself, like every other call on the session, still lets a transport failure through as the bare
+`IOException`. `session.completeBrowserData(browserData)` runs the same step on its own
+when you want to log what goes out; pass its result to the charge unchanged.
+
 ## `GopaySDK` API
 
 | Method | Purpose |
@@ -193,7 +214,8 @@ auth or HTTP errors.
 | Method | Maps to |
 | --- | --- |
 | `getStatus()` | `GET /payments/{payment_id}` |
-| `charge(ChargePaymentRequest)` | `POST /payments/{payment_id}/charge` — low level; you supply `BrowserData` |
+| `charge(ChargePaymentRequest)` | `POST /payments/{payment_id}/charge` — low level; you supply `BrowserData`, the SDK completes `ip` and `accept_header` from `GET /cards/browser-data` first, and a missing `user_agent` before that |
+| `completeBrowserData(browserData)` | `GET /cards/browser-data` — fills the null ones of `ip` and `accept_header`, and a missing `user_agent` with a synthesized WebView one; `charge(...)` does this itself |
 | `chargeWithCardToken(activity, cardToken, browserData?, challengePreference?, returnUrl?)` | `charge(...)` with a card token + device-derived `BrowserData` |
 | `chargeWithEncryptedCard(activity, payload, browserData?, challengePreference?, returnUrl?)` | `charge(...)` with a JWE + device-derived `BrowserData` |
 | `getChargeState()` | `GET /payments/{payment_id}/charge` |
@@ -607,8 +629,8 @@ Every API call may throw `GopaySDKException` with a structured error code (`AUTH
 | `AUTH_PAYMENT_CREDENTIALS_INVALID` | `payment_id`/`payment_secret` rejected by `/oauth2/token` |
 | `AUTH_PAYMENT_TOKEN_EXPIRED` | JWT still rejected after a single re-auth retry — fetch fresh creds from backend |
 | `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` | `startPaymentSession` called for a `paymentId` that already has a live session |
-| `AUTH_PAYMENT_SESSION_CLOSED` | API call on a session after `close()` |
-| `AUTH_SHAREABLE_KEY_MISSING` | `encryptCardData` / `getPublicEncryptionKey` called without `clientId`+`shareableKey` |
+| `AUTH_PAYMENT_SESSION_CLOSED` | API call on a session after `close()`; a charge is refused this way before the browser data is fetched |
+| `AUTH_SHAREABLE_KEY_MISSING` | `charge(...)`, `encryptCardData` or `getPublicEncryptionKey` called without `clientId`+`shareableKey` |
 | `PAYMENT_GOOGLE_PAY_IN_PROGRESS` | A second Google Pay sheet attempted while one is visible |
 | `PAYMENT_VERIFICATION_IN_PROGRESS` | A second 3DS WebView attempted while one is open |
 | `PAYMENT_VERIFICATION_UNREACHABLE` | The 3DS challenge never reached the user: the page would not load, e.g. the redirect URL is dead or is not a web address, or no app took the hand-off |

@@ -8,12 +8,6 @@ import cz.gopay.sdk.util.SdkLog
 import java.util.Locale
 import java.util.TimeZone
 
-// Standard `Accept` header sent by a modern mobile WebView. There's no device API to read this
-// back at charge time (the ACS challenge WebView doesn't exist yet), so this mirrors the
-// conventional value every mainstream mobile browser/3DS SDK reports.
-private const val DEFAULT_ACCEPT_HEADER =
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
-
 /**
  * Best-effort [BrowserData] derived from an [activity]'s configuration. Mirrors the iOS
  * `BrowserData.deviceDefault()`.
@@ -28,6 +22,11 @@ private const val DEFAULT_ACCEPT_HEADER =
  * browser reports regardless of hardware. `javascriptEnabled` reflects that the SDK's own 3DS
  * challenge ([cz.gopay.sdk.ui.PaymentVerificationActivity]) renders in a `WebView` with
  * `settings.javaScriptEnabled = true`.
+ *
+ * `ip` and `acceptHeader` are left null on purpose: the device cannot know its public address,
+ * and the gateway wants the Accept headers of the same request that produced it, so
+ * [cz.gopay.sdk.session.PaymentSession.charge] fetches both from `GET /cards/browser-data` and
+ * fills them in, together with the User-Agent it sent, which is the one read here.
  *
  * Every field can be overridden by constructing [BrowserData] directly if you collected more
  * accurate values elsewhere.
@@ -50,7 +49,6 @@ fun BrowserData.Companion.deviceDefault(activity: Activity): BrowserData {
         screenHeight = metrics.heightPixels,
         colorDepth = 24,
         userAgent = webViewUserAgent(activity),
-        acceptHeader = DEFAULT_ACCEPT_HEADER,
         javascriptEnabled = true
     )
 }
@@ -93,7 +91,9 @@ private fun webViewUserAgent(activity: Activity): String =
  * like a browser, and it can be null, which drops the field from the payload altogether.
  *
  * The Chrome and WebKit build tokens are fixed rather than read, because the package they would
- * be read from is the one that just failed. Mirrors the iOS `syntheticUserAgent()`.
+ * be read from is the one that just failed. Mirrors the iOS `syntheticUserAgent()`. The session
+ * uses it too, for a [BrowserData] built without `userAgent`, since without a `Context` it has
+ * no lookup to fail.
  *
  * The device facts are parameters with the platform's values as defaults, so the shape of the
  * string can be pinned by a test: on a stubbed `android.jar` every [Build] field reads as null
@@ -103,7 +103,6 @@ private fun webViewUserAgent(activity: Activity): String =
  * @param sdkInt stands in for a release the device would not name.
  * @param model `Build.MODEL`, under the same caveat as [release].
  */
-@VisibleForTesting
 internal fun syntheticUserAgent(
     release: String? = Build.VERSION.RELEASE,
     sdkInt: Int = Build.VERSION.SDK_INT,

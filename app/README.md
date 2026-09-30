@@ -91,7 +91,9 @@ names; the iOS demo carries the same two with the same values, so a parameter ca
 and checked against the web. `Default` is the SDK's own theme, which styles nothing and takes the
 host theme's colors.
 
-Every step logs its result, or a structured `GopaySDKException`, into the **Response** card.
+Every step logs its result, or a structured `GopaySDKException`, into the **Response** card. Each
+charge also logs the `browser_data` it sent, with the `ip` and `accept_header` the SDK fetched from
+the gateway for it; the address is cut to its first two groups.
 
 ## Code references
 
