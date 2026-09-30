@@ -15,6 +15,7 @@ import cz.gopay.sdk.model.PaymentChargeInstrument
 import cz.gopay.sdk.model.PaymentCreateResponse
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.model.QrPaymentDetails
+import cz.gopay.sdk.model.deviceDefault
 import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.SessionTokenProvider
@@ -27,7 +28,6 @@ import cz.gopay.sdk.ui.PaymentVerificationBridge
 import cz.gopay.sdk.ui.PaymentVerificationPolicy
 import cz.gopay.sdk.util.Base64Utils
 import cz.gopay.sdk.util.JwtUtils
-import java.util.TimeZone
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -208,7 +208,7 @@ class PaymentSession internal constructor(
                 ChargePaymentRequest(
                     paymentInstrument = PaymentChargeInstrument(
                         input = GooglePayHelper.parseGooglePayToken(tokenJson),
-                        browserData = browserData ?: browserDataFromActivity(activity),
+                        browserData = browserData ?: BrowserData.deviceDefault(activity),
                         challengePreference = challengePreference
                     )
                 )
@@ -237,7 +237,7 @@ class PaymentSession internal constructor(
     ): ChargePaymentResponse = charge(
         ChargePaymentRequest.cardToken(
             cardToken = cardToken,
-            browserData = browserData ?: browserDataFromActivity(activity),
+            browserData = browserData ?: BrowserData.deviceDefault(activity),
             challengePreference = challengePreference,
             returnUrl = returnUrl
         )
@@ -263,7 +263,7 @@ class PaymentSession internal constructor(
     ): ChargePaymentResponse = charge(
         ChargePaymentRequest.encryptedCard(
             payload = payload,
-            browserData = browserData ?: browserDataFromActivity(activity),
+            browserData = browserData ?: BrowserData.deviceDefault(activity),
             challengePreference = challengePreference,
             returnUrl = returnUrl
         )
@@ -368,41 +368,5 @@ class PaymentSession internal constructor(
         // Custom GoPay grant type for the payment-credentials flow (Payments.yaml,
         // components.schemas.Payment-Credentials-Request).
         private const val GRANT_TYPE_PAYMENT_CREDENTIALS = "payment_credentials"
-
-        // Standard `Accept` header sent by a modern mobile WebView. There's no device API to
-        // read this back at charge time (the ACS challenge WebView doesn't exist yet), so this
-        // mirrors the conventional value every mainstream mobile browser/3DS SDK reports.
-        private const val DEFAULT_ACCEPT_HEADER =
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
-
-        /**
-         * Best-effort [BrowserData] derived from an [Activity]'s configuration. The spec
-         * requires `browser_data` on every card charge but a Google Pay payment doesn't
-         * naturally surface it; the device's locale + screen + timezone are reasonable defaults.
-         * `colorDepth` has no real device API on Android; 24 is the universal value every mobile
-         * browser reports regardless of hardware. `javascriptEnabled` reflects that the SDK's own
-         * 3DS challenge ([cz.gopay.sdk.ui.PaymentVerificationActivity]) renders in a `WebView`
-         * with `settings.javaScriptEnabled = true`.
-         */
-        private fun browserDataFromActivity(activity: Activity): BrowserData {
-            val resources = activity.resources
-            val locale = resources.configuration.locales[0]
-            val metrics = resources.displayMetrics
-            // JavaScript convention: minutes west of UTC (CET = -60, CEST = -120).
-            // Offset at the current instant, not rawOffset — the latter ignores daylight saving
-            // and would report the wrong zone for half the year, which `Date.getTimezoneOffset()`
-            // (the value the issuer expects) never does.
-            val tzOffsetMinutes = -(TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000)
-            return BrowserData(
-                language = locale.toLanguageTag(),
-                timezone = tzOffsetMinutes,
-                screenWidth = metrics.widthPixels,
-                screenHeight = metrics.heightPixels,
-                colorDepth = 24,
-                userAgent = System.getProperty("http.agent"),
-                acceptHeader = DEFAULT_ACCEPT_HEADER,
-                javascriptEnabled = true
-            )
-        }
     }
 }

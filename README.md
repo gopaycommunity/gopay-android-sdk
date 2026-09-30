@@ -147,6 +147,27 @@ Prefer `chargeWithCardToken` / `chargeWithEncryptedCard` / `chargeWithGooglePay`
 wrappers fill it in from the activity (locale, screen metrics, timezone, user agent). Drop to
 `charge(...)` only when you have collected more accurate browser data yourself.
 
+### Browser data / User-Agent
+
+`BrowserData.deviceDefault(activity)` is the public extension those wrappers call. Call it
+yourself when you want to see or adjust what goes out:
+
+```kotlin
+import cz.gopay.sdk.model.BrowserData
+import cz.gopay.sdk.model.deviceDefault
+
+val browserData = BrowserData.deviceDefault(activity)
+session.charge(ChargePaymentRequest.cardToken(cardToken, browserData = browserData))
+```
+
+It reads the language and screen metrics off the activity, the timezone off the device clock as
+minutes west of UTC, and `user_agent` from `WebSettings.getDefaultUserAgent(activity)` — the same
+WebView that renders the 3DS challenge, so the value the issuer weighs in the AReq matches the
+browser it will actually see. On a device with the WebView package disabled the lookup fails and a
+synthesized User-Agent of the same shape stands in, with a warning in Logcat. `color_depth` is
+always 24, the value every mobile browser reports. Construct `BrowserData` directly if you have
+collected more accurate values. The iOS SDK exposes the same `BrowserData.deviceDefault()`.
+
 ## `GopaySDK` API
 
 | Method | Purpose |

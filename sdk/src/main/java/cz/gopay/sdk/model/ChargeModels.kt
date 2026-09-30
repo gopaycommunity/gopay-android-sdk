@@ -42,7 +42,10 @@ data class BrowserData(
     @Json(name = "user_agent") val userAgent: String? = null,
     @Json(name = "accept_header") val acceptHeader: String? = null,
     @Json(name = "javascript_enabled") val javascriptEnabled: Boolean? = null
-)
+) {
+    /** Anchor for [deviceDefault], the device-derived factory in `BrowserDataDevice.kt`. */
+    companion object
+}
 
 /**
  * Header fields embedded in an Apple Pay payment token. Maps to the nested `header` object on
