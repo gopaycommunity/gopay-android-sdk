@@ -76,7 +76,13 @@ The screen is split into four numbered sections. Sections 3 and 4 appear once a 
        configured).
      - Or section 4 below, to charge an encrypted card with no tokenization round-trip.
    - A 3DS redirect URL in the charge response enables **Handle 3DS verification**, which opens
-     the managed WebView.
+     the managed WebView. The gateway does not always answer the charge with the action: when it
+     does not, the console polls `getChargeState()` once a second for 20 seconds and enables the
+     button as soon as the action turns up, so the challenge window is not lost to hand-refreshing.
+     A poll that fails is logged and the watch carries on. After the verification returns, the
+     gateway still answers `PROCESSING` for a while, so the console polls the same way until the
+     charge reaches `SUCCEEDED` or `FAILED`, with the same cap. The link stays armed after a
+     failed or dismissed verification, so the same challenge can be retried.
    - **Get charge state** to read the final state.
    - **Get QR payment info** for the bank-transfer/QR variant.
 5. **4. Card form → JWE** — pick a theme from the **Theme** dropdown and a form language from the
@@ -91,9 +97,11 @@ names; the iOS demo carries the same two with the same values, so a parameter ca
 and checked against the web. `Default` is the SDK's own theme, which styles nothing and takes the
 host theme's colors.
 
-Every step logs its result, or a structured `GopaySDKException`, into the **Response** card. Each
-charge also logs the `browser_data` it sent, with the `ip` and `accept_header` the SDK fetched from
-the gateway for it; the address is cut to its first two groups.
+Every step logs its result, or a structured `GopaySDKException`, into the **Response** card. The
+card is cleared on each new action, so every line is mirrored to Logcat under the `GopayDemo` tag
+and a finished run can still be read back. Each charge also logs the `browser_data` it sent, with
+the `ip` and `accept_header` the SDK fetched from the gateway for it; the address is cut to its
+first two groups.
 
 ## Code references
 

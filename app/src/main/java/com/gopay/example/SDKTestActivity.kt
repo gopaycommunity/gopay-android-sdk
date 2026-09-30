@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -50,13 +51,31 @@ import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.model.BrowserData
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.ChallengePreference
+import cz.gopay.sdk.model.ChargePaymentResponse
+import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.model.deviceDefault
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.ui.CardEncryptionResult
 import cz.gopay.sdk.ui.PaymentCardForm
 import cz.gopay.sdk.ui.PaymentFormInputs
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+/** Logcat tag the console mirrors to. */
+private const val LOG_TAG = "GopayDemo"
+
+/**
+ * How long the console watches a charge, for a 3DS action after a charge and for a terminal
+ * state after a 3DS verification, before giving up.
+ */
+private const val CHARGE_POLL_INTERVAL_MS = 1_000L
+private const val CHARGE_POLL_ATTEMPTS = 20
+
+/** SUCCEEDED and FAILED are the states the gateway does not leave again. */
+private val ChargeState.isTerminal: Boolean
+    get() = this == ChargeState.SUCCEEDED || this == ChargeState.FAILED
 
 class SDKTestActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,6 +105,9 @@ fun SDKTestScreen() {
     val context = LocalContext.current
 
     fun log(message: String) {
+        // Mirrored to Logcat because the response box is cleared on every new action, which loses
+        // the trail exactly when a run needs reconstructing afterwards.
+        Log.i(LOG_TAG, message)
         responseText = if (responseText == "Ready." || responseText.isEmpty()) message
                        else "$responseText\n\n$message"
     }
@@ -100,7 +122,7 @@ fun SDKTestScreen() {
                 log("Error [${e.errorCode}]: ${e.message}" +
                     e.httpContext?.let { "\nHTTP ${it.statusCode} ${it.requestMethod} ${it.requestUrl}" +
                         (it.responseBody?.takeIf { b -> b.isNotEmpty() }?.let { b -> "\n${b.take(300)}" } ?: "") }.orEmpty())
-            } catch (e: kotlinx.coroutines.CancellationException) {
+            } catch (e: CancellationException) {
                 log("Cancelled by user.")
             } catch (e: Exception) {
                 log("Error: ${e.message}")
@@ -121,6 +143,100 @@ fun SDKTestScreen() {
         val data = s.completeBrowserData(BrowserData.deviceDefault(context as Activity))
         log("// browser_data sent with this charge\nuser_agent: ${data.userAgent}\nlanguage: ${data.language}, timezone: ${data.timezone}\nscreen: ${data.screenWidth}x${data.screenHeight}, color_depth: ${data.colorDepth}\nip: ${maskIp(data.ip)}\naccept_header: ${data.acceptHeader}")
         return data
+    }
+
+    /**
+     * Polls `getChargeState()` once a second, up to [CHARGE_POLL_ATTEMPTS] times, until [until]
+     * accepts a poll; whether one was accepted. What gets logged is the predicate's business, so
+     * each watch prints only what it is looking for. A poll that fails does not end the watch:
+     * the states the callers wait for appear in windows only tens of seconds long, and giving
+     * up on the first transient error is how the tester loses them.
+     */
+    suspend fun watch(s: PaymentSession, until: (poll: Int, resp: ChargePaymentResponse) -> Boolean): Boolean {
+        repeat(CHARGE_POLL_ATTEMPTS) { attempt ->
+            delay(CHARGE_POLL_INTERVAL_MS)
+            val resp = try {
+                s.getChargeState()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log("// poll ${attempt + 1} failed, still watching: ${e.message}")
+                return@repeat
+            }
+            if (until(attempt + 1, resp)) return true
+        }
+        return false
+    }
+
+    /**
+     * Watches a charge for a 3DS action when the charge response did not carry one.
+     *
+     * The gateway usually does answer the charge with the action, but not always: it can arrive
+     * a couple of seconds later and then only through `getChargeState()`. That is why the
+     * callers check the response first and fall back to this. Without it the tester has to race
+     * the gateway by hand, and the challenge window is only tens of seconds long.
+     */
+    suspend fun watchForAction(s: PaymentSession) {
+        val found = watch(s) { poll, resp ->
+            val action = resp.action
+            when {
+                action != null -> {
+                    log("// poll $poll -> ${resp.state}\nAction: ${action.actionType} (${action.state})\nRedirect: ${action.redirectUrl ?: "N/A"}")
+                    action.redirectUrl?.let {
+                        pending3dsUrl = it
+                        log("3DS required — tap \"Handle 3DS verification\" now, the window is short.")
+                    }
+                    true
+                }
+                resp.state.isTerminal -> {
+                    log("// poll $poll -> ${resp.state}, no action")
+                    true
+                }
+                else -> false
+            }
+        }
+        if (!found) log("No action after $CHARGE_POLL_ATTEMPTS polls; charge still in flight.")
+    }
+
+    /**
+     * Watches a charge for its terminal state after a 3DS verification returned.
+     *
+     * The gateway still answers PROCESSING right after the WebView comes back, and the final
+     * state can take a minute to appear, so a single read after the return reports an in-flight
+     * charge as the outcome.
+     */
+    suspend fun watchForFinalState(s: PaymentSession) {
+        val found = watch(s) { poll, resp ->
+            log("// poll $poll -> ${resp.state}")
+            resp.state.isTerminal
+        }
+        if (!found) log("No terminal state after $CHARGE_POLL_ATTEMPTS polls; charge still in flight, tap \"Get charge state\" later.")
+    }
+
+    /**
+     * Runs one of the charge calls and reports it the way every charge button needs it reported.
+     *
+     * The three buttons differ only in which call they make; everything around it, including
+     * clearing the dead 3DS link before charging and falling back to the watch, has to happen
+     * the same way each time, so it lives here rather than in three copies that can drift.
+     *
+     * @param callLabel how the call is named in the console line, e.g. `chargeWithCardToken()`.
+     */
+    suspend fun chargeAndReport(
+        callLabel: String,
+        s: PaymentSession,
+        charge: suspend () -> ChargePaymentResponse
+    ) {
+        // A new charge supersedes any earlier one, so the previous 3DS link is dead.
+        pending3dsUrl = null
+        val response = charge()
+        val actionInfo = response.action?.let {
+            "Action: ${it.actionType} (${it.state})\nRedirect: ${it.redirectUrl ?: "N/A"}"
+        } ?: "Action: none"
+        log("// $callLabel -> ChargePaymentResponse\nCharge ID: ${response.id}\nState: ${response.state}\n$actionInfo")
+        response.action?.redirectUrl?.let { pending3dsUrl = it }
+        if (pending3dsUrl == null) watchForAction(s)
+        else log("3DS required — tap \"Handle 3DS verification\" to continue.")
     }
 
     Column(
@@ -165,6 +281,9 @@ fun SDKTestScreen() {
             ) {
                 run("Start session") {
                     session?.close()
+                    // The old payment's 3DS link dies with its session; keeping it would let the
+                    // button open the verification of a payment that is long gone.
+                    pending3dsUrl = null
                     val started = GopaySDK.getInstance().startPaymentSession(
                         paymentId = paymentId.trim(),
                         paymentSecret = paymentSecret.trim()
@@ -187,6 +306,7 @@ fun SDKTestScreen() {
                     TextButton(onClick = {
                         session?.close()
                         session = null
+                        pending3dsUrl = null
                         log("Session closed.")
                     }, enabled = !isBusy) { Text("Close") }
                 }
@@ -217,16 +337,12 @@ fun SDKTestScreen() {
 
                 DemoButton("Charge with Google Pay", enabled = !isBusy) {
                     run("Charge with Google Pay") {
-                        val charge = s.chargeWithGooglePay(
-                            activity = context as Activity,
-                            browserData = browserDataForCharge(s)
-                        )
-                        val actionInfo = charge.action?.let {
-                            "Action: ${it.actionType} (${it.state})\nRedirect: ${it.redirectUrl ?: "N/A"}"
-                        } ?: "Action: none"
-                        log("// chargeWithGooglePay() -> ChargePaymentResponse\nCharge ID: ${charge.id}\nState: ${charge.state}\n$actionInfo")
-                        charge.action?.redirectUrl?.let { pending3dsUrl = it }
-                        if (pending3dsUrl != null) log("3DS required — tap \"Handle 3DS verification\" to continue.")
+                        chargeAndReport("chargeWithGooglePay()", s) {
+                            s.chargeWithGooglePay(
+                                activity = context as Activity,
+                                browserData = browserDataForCharge(s)
+                            )
+                        }
                     }
                 }
 
@@ -258,18 +374,14 @@ fun SDKTestScreen() {
                     enabled = !isBusy && cardToken.isNotBlank()
                 ) {
                     run("Charge payment") {
-                        val charge = s.chargeWithCardToken(
-                            activity = context as Activity,
-                            cardToken = cardToken.trim(),
-                            browserData = browserDataForCharge(s),
-                            challengePreference = ChallengePreference.AUTO
-                        )
-                        val actionInfo = charge.action?.let {
-                            "Action: ${it.actionType} (${it.state})\nRedirect: ${it.redirectUrl ?: "N/A"}"
-                        } ?: "Action: none"
-                        log("// chargeWithCardToken() -> ChargePaymentResponse\nCharge ID: ${charge.id}\nState: ${charge.state}\n$actionInfo")
-                        charge.action?.redirectUrl?.let { pending3dsUrl = it }
-                        if (pending3dsUrl != null) log("3DS required — tap \"Handle 3DS verification\" to continue.")
+                        chargeAndReport("chargeWithCardToken()", s) {
+                            s.chargeWithCardToken(
+                                activity = context as Activity,
+                                cardToken = cardToken.trim(),
+                                browserData = browserDataForCharge(s),
+                                challengePreference = ChallengePreference.AUTO
+                            )
+                        }
                     }
                 }
 
@@ -290,10 +402,15 @@ fun SDKTestScreen() {
                 ) {
                     run("Handle 3DS verification") {
                         val url = pending3dsUrl ?: return@run
-                        pending3dsUrl = null
+                        // Cleared only once the verification returned: after a failed or
+                        // dismissed one the link stays armed, so the same challenge can be
+                        // tried again, which the SDK describes as the right answer to a
+                        // challenge that never opened.
                         s.handle3dsVerification(context as Activity, url)
+                        pending3dsUrl = null
                         val finalState = s.getChargeState()
                         log("// getChargeState() after 3DS -> ChargePaymentResponse\nState: ${finalState.state}\nCharge ID: ${finalState.id}")
+                        if (!finalState.state.isTerminal) watchForFinalState(s)
                     }
                 }
 
@@ -350,18 +467,14 @@ fun SDKTestScreen() {
                 ) {
                     run("Charge with encrypted card") {
                         // Charge the encrypted card directly — no POST /cards/tokens round-trip.
-                        val charge = s.chargeWithEncryptedCard(
-                            activity = context as Activity,
-                            payload = jwe.trim(),
-                            browserData = browserDataForCharge(s),
-                            challengePreference = ChallengePreference.AUTO
-                        )
-                        val actionInfo = charge.action?.let {
-                            "Action: ${it.actionType} (${it.state})\nRedirect: ${it.redirectUrl ?: "N/A"}"
-                        } ?: "Action: none"
-                        log("// chargeWithEncryptedCard() -> ChargePaymentResponse\nCharge ID: ${charge.id}\nState: ${charge.state}\n$actionInfo")
-                        charge.action?.redirectUrl?.let { pending3dsUrl = it }
-                        if (pending3dsUrl != null) log("3DS required — tap \"Handle 3DS verification\" to continue.")
+                        chargeAndReport("chargeWithEncryptedCard()", s) {
+                            s.chargeWithEncryptedCard(
+                                activity = context as Activity,
+                                payload = jwe.trim(),
+                                browserData = browserDataForCharge(s),
+                                challengePreference = ChallengePreference.AUTO
+                            )
+                        }
                     }
                 }
             }
@@ -581,7 +694,7 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
  * matched against the gateway's records, and the rest is replaced, so the log does not name the
  * tester's network. `null` reads as such, because a missing address is the finding.
  */
-internal fun maskIp(ip: String?): String {
+private fun maskIp(ip: String?): String {
     if (ip == null) return "null"
     val separator = if (ip.contains(':')) ':' else '.'
     val groups = ip.split(separator)
