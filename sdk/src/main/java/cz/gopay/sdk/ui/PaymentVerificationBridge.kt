@@ -47,7 +47,8 @@ internal object PaymentVerificationBridge {
     fun cancel(owner: Owner) { take(owner)?.cancel() }
 
     /**
-     * The challenge page could not be loaded. Distinct from [cancel] on purpose: the host has to
+     * The challenge never reached the user: the page could not be loaded, or no app on the
+     * device took the hand-off it asked for. Distinct from [cancel] on purpose: the host has to
      * be able to tell a user who walked away from a verification that never had a chance to run.
      */
     fun failUnreachable(owner: Owner, reason: String) {

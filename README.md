@@ -235,11 +235,14 @@ suspends. It has three ends, not two:
   outcome with `getChargeState()`; the SDK does not decide whether the payment went through.
 - **Dismissed** — the user backed out or swiped the task away, which surfaces as
   `kotlinx.coroutines.CancellationException`.
-- **Unreachable** — the challenge page never drew at all, for instance because the redirect URL
-  has already been retired, which throws `GopaySDKException` with
-  `PAYMENT_VERIFICATION_UNREACHABLE`. Charging again is the right answer to this one, and it is
-  the case that used to arrive as a dismissal, so hosts ticked the verification off as handled
-  and let the payment lapse.
+- **Unreachable** — the challenge never reached the user, so there was nothing for them to
+  answer: the page never drew, for instance because the redirect URL has already been retired or
+  is not an `http(s)` address, or the challenge asked to hand off to a banking app and nothing on
+  the device opened it. It throws `GopaySDKException` with `PAYMENT_VERIFICATION_UNREACHABLE`.
+  Charging again is the right answer to a dead redirect URL, and a hand-off nobody took usually
+  means the banking app is not installed, so offer the user another way to authorize. This is the
+  case that used to arrive as a dismissal, so hosts ticked the verification off as handled and let
+  the payment lapse.
 
 Anything that breaks *after* the challenge has drawn ends as a dismissal instead, because by then
 only `getChargeState()` can say whether the issuer authorised the payment. Only one verification
@@ -584,7 +587,7 @@ Every API call may throw `GopaySDKException` with a structured error code (`AUTH
 | `AUTH_SHAREABLE_KEY_MISSING` | `encryptCardData` / `getPublicEncryptionKey` called without `clientId`+`shareableKey` |
 | `PAYMENT_GOOGLE_PAY_IN_PROGRESS` | A second Google Pay sheet attempted while one is visible |
 | `PAYMENT_VERIFICATION_IN_PROGRESS` | A second 3DS WebView attempted while one is open |
-| `PAYMENT_VERIFICATION_UNREACHABLE` | The 3DS challenge page could not be loaded, e.g. the redirect URL is dead; charge again |
+| `PAYMENT_VERIFICATION_UNREACHABLE` | The 3DS challenge never reached the user: the page would not load, e.g. the redirect URL is dead or is not a web address, or no app took the hand-off |
 
 ```kotlin
 try {

@@ -376,14 +376,17 @@ This document provides a comprehensive reference for all error codes used in the
   - Disable the pay button while a charge is in flight
 
 ### PAYMENT_010: Verification Unreachable
-- **Description**: The 3DS challenge page could not be loaded, so the verification never started
+- **Description**: The 3DS challenge never reached the user, so there was nothing for them to answer
 - **Common Causes**:
   - The redirect URL has been retired by the gateway, e.g. the charge it belonged to is long finished
+  - The redirect URL is not an `http(s)` address, so the WebView could never have loaded it
   - No connectivity while the challenge was opening
+  - The challenge asked to hand off to a banking app and nothing on the device opened it
 - **Developer Action**:
   - Read the charge state and report the payment as unverified rather than as abandoned
   - Do not treat it as a user dismissal, which arrives as a cancellation instead
   - Charge again to obtain a fresh redirect URL
+  - A hand-off nobody took usually means the banking app is not installed; offer the user another way to authorize
 
 ## Card Errors (CARD_XXX)
 

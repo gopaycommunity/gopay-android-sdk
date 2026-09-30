@@ -24,6 +24,13 @@ internal class PaymentVerificationActivity : ComponentActivity() {
     private var hasRenderedChallenge = false
 
     /**
+     * Set once a navigation has gone out to the system. An unsupported scheme reported after
+     * that belongs to the hand-off; before it, to the challenge itself. See
+     * [PaymentVerificationPolicy.loadFailureFor].
+     */
+    private var hasHandedOffNavigation = false
+
+    /**
      * The verification this activity serves, taken once in [onCreate].
      *
      * Every report to the bridge carries it, so that this activity finishing long after it has
@@ -51,6 +58,48 @@ internal class PaymentVerificationActivity : ComponentActivity() {
                 PaymentVerificationBridge.failUnreachable(owner, reason)
         }
         finish()
+    }
+
+    /**
+     * Hands a navigation the WebView cannot load to the system, typically a banking app an ACS
+     * redirected to, and deals with a device on which nothing takes it.
+     *
+     * The intent is built and stripped down by [PaymentVerificationPolicy.handOffIntent], so
+     * what stays here is starting it and answering for the three outcomes.
+     *
+     * An `intent://` names the web page to use when the app is missing, and that page is the
+     * whole point of the convention: it keeps the challenge answerable, so it goes back into
+     * this WebView. Without one there is nothing left to try, which is logged rather than
+     * passed over in silence and, while the challenge has not drawn yet, reported;
+     * [PaymentVerificationPolicy.unclaimedHandOffFailure] says why only then.
+     *
+     * Always returns true: every outcome is decided here, and letting the WebView try the
+     * navigation afterwards only produces an error nobody can attribute.
+     */
+    private fun handOff(view: WebView, request: WebResourceRequest): Boolean {
+        val url = request.url.toString()
+        val intent = PaymentVerificationPolicy.handOffIntent(url)
+        if (intent != null && runCatching { startActivity(intent) }.isSuccess) {
+            hasHandedOffNavigation = true
+            return true
+        }
+
+        PaymentVerificationPolicy.fallbackUrlFor(url)?.let { fallback ->
+            view.loadUrl(fallback)
+            return true
+        }
+
+        val reason = "no application could open the ${request.url.scheme} link and the page " +
+            "named no browser_fallback_url"
+        SdkLog.w("The 3DS challenge asked for a link this device cannot open: $reason.")
+        reportLoadFailure(
+            PaymentVerificationPolicy.unclaimedHandOffFailure(
+                isForMainFrame = request.isForMainFrame,
+                hasRenderedChallenge = hasRenderedChallenge
+            ),
+            reason
+        )
+        return true
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -90,13 +139,24 @@ internal class PaymentVerificationActivity : ComponentActivity() {
                     view: WebView,
                     request: WebResourceRequest
                 ): Boolean {
-                    return when (PaymentVerificationPolicy.navigationFor(request.url.scheme)) {
+                    val url = request.url
+                    return when (
+                        PaymentVerificationPolicy.navigationFor(
+                            scheme = url.scheme,
+                            isForMainFrame = request.isForMainFrame
+                        )
+                    ) {
                         PaymentVerificationPolicy.Navigation.COMPLETE -> {
                             PaymentVerificationBridge.complete(owner)
                             finish()
                             true
                         }
                         PaymentVerificationPolicy.Navigation.LOAD -> false
+                        // European ACS routinely hand the main frame to a banking app. A WebView
+                        // cannot load those schemes, so the navigation has to go to the system;
+                        // the verification stays open and the user comes back to it. Only the
+                        // main frame gets here, so an embedded iframe cannot send the user out.
+                        PaymentVerificationPolicy.Navigation.HAND_OFF -> handOff(view, request)
                     }
                 }
 
@@ -117,8 +177,10 @@ internal class PaymentVerificationActivity : ComponentActivity() {
                     error: WebResourceError
                 ) {
                     reportLoadFailure(
-                        PaymentVerificationPolicy.failureFor(
+                        PaymentVerificationPolicy.loadFailureFor(
                             isForMainFrame = request.isForMainFrame,
+                            errorCode = error.errorCode,
+                            hasHandedOffNavigation = hasHandedOffNavigation,
                             hasRenderedChallenge = hasRenderedChallenge
                         ),
                         "${error.description} (${error.errorCode})"

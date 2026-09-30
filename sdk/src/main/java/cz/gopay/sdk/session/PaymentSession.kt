@@ -24,6 +24,7 @@ import cz.gopay.sdk.ui.GooglePayBridge
 import cz.gopay.sdk.ui.GooglePayLauncherActivity
 import cz.gopay.sdk.ui.PaymentVerificationActivity
 import cz.gopay.sdk.ui.PaymentVerificationBridge
+import cz.gopay.sdk.ui.PaymentVerificationPolicy
 import cz.gopay.sdk.util.Base64Utils
 import cz.gopay.sdk.util.JwtUtils
 import java.util.TimeZone
@@ -282,8 +283,22 @@ class PaymentSession internal constructor(
      * the host can tell the two apart and report the payment accordingly. Anything that goes
      * wrong after the user has seen the challenge ends as a cancellation instead, because by
      * then only [getChargeState] can say whether the payment was authorised.
+     *
+     * [redirectUrl] has to be an `http(s)` address; anything else, including an empty string,
+     * throws [GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE] before the challenge is opened.
      */
     suspend fun handle3dsVerification(activity: Activity, redirectUrl: String) {
+        // Checked here rather than in the activity: the WebView is never asked to decide about
+        // the URL it is handed, so a scheme it cannot load would surface only as an error with
+        // nothing to attribute it to, and the caller would wait for a challenge that never
+        // opened. An empty redirect_url from the gateway lands here too.
+        if (!PaymentVerificationPolicy.isLoadableChallengeUrl(redirectUrl)) {
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE,
+                message = "3DS verification could not be loaded: the redirect URL is not an " +
+                    "http(s) address the challenge WebView can open"
+            )
+        }
         val deferred = CompletableDeferred<Boolean>()
         val owner = PaymentVerificationBridge.register(deferred)
             ?: throw GopaySDKException(

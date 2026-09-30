@@ -130,7 +130,11 @@ object GopayErrorCodes {
     /** A Google Pay sheet is already in progress; only one can run at a time */
     const val PAYMENT_GOOGLE_PAY_IN_PROGRESS = "PAYMENT_009"
 
-    /** The 3DS challenge page could not be loaded, e.g. the redirect URL is dead */
+    /**
+     * The 3DS challenge never reached the user: the page could not be loaded, e.g. the redirect
+     * URL is dead or is not a web address, or no app on the device took the hand-off the
+     * challenge asked for.
+     */
     const val PAYMENT_VERIFICATION_UNREACHABLE = "PAYMENT_010"
 
     // ========================================
