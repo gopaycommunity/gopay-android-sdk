@@ -240,11 +240,29 @@ data class ChargeAction(
  * `Payment-Charge-Status-Response` in Payments.yaml. Per the spec only `id`, `state`, and
  * `return_url` are required; instrument details and follow-up action are absent in early
  * states, and `fail_reason` is only present when `state == FAILED`.
+ *
+ * [returnUrl] decodes as null when the gateway omits it, which it does from the `charge` block
+ * of `GET /payments/{payment_id}` despite its own spec; see [ChargePaymentResponseAdapter].
  */
 data class ChargePaymentResponse(
     val id: String,
     val state: ChargeState,
-    @Json(name = "return_url") val returnUrl: String,
+    /**
+     * Where the gateway sends the browser once verification finishes, when it tells us at all.
+     *
+     * Nullable because the deployed gateway omits it: the charge block nested in
+     * `GET /payments/{payment_id}` arrives as just `{id, state, href}`, and the charge endpoints
+     * can leave it out too. The type says so rather than substituting an empty string, which
+     * silently broke the obvious use: `url.startsWith(charge.returnUrl)` matches every URL
+     * against `""`, so the first navigation of a challenge page reads as a finished
+     * verification. For the same reason a blank `return_url` from the gateway decodes as null
+     * too, and is reported like an omitted one.
+     *
+     * If you run your own WebView, treat null as "the gateway did not say"; the SDK's own
+     * [cz.gopay.sdk.session.PaymentSession.handle3dsVerification] does not depend on the field
+     * either, it watches for its own return URL scheme.
+     */
+    @Json(name = "return_url") val returnUrl: String? = null,
     @Json(name = "payment_instrument") val paymentInstrument: PaymentInstrumentData? = null,
     val action: ChargeAction? = null,
     @Json(name = "fail_reason") val failReason: String? = null
