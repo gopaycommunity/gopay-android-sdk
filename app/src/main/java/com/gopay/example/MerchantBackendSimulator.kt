@@ -81,7 +81,9 @@ object MerchantBackendSimulator {
             .put(
                 "callback", JSONObject()
                     .put("notification_url", "https://example.com/gopay/notify")
-                    .put("return_url", DemoConfig.CHARGE_RETURN_URL)
+                    // The SDK's 3DS WebView finishes the challenge when the ACS comes back to
+                    // this address. The gateway accepts only an absolute http(s) return_url.
+                    .put("return_url", GopaySDK.CHARGE_RETURN_URL)
             )
         conn.outputStream.use { it.write(body.toString().toByteArray()) }
         val resp = readResponse(conn, "create payment")

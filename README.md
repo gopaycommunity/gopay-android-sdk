@@ -155,6 +155,7 @@ wrappers fill it in from the activity (locale, screen metrics, timezone, user ag
 | `getInstance()` | Returns the singleton; throws if not initialized. |
 | `isInitialized()` | Quick check before calling `getInstance()`. |
 | `isDebugEnabled()` | Reflects `GopayConfig.debug`. |
+| `CHARGE_RETURN_URL` | `https://gopay.com/sdk/charge-return`, the return URL the 3DS WebView watches for. Your backend passes it as `callback.return_url` when it creates the payment; the gateway accepts only an absolute `http(s)` address there. |
 | `startPaymentSession(paymentId, paymentSecret, scope?)` | Eagerly authenticates and returns a [`PaymentSession`](sdk/src/main/java/cz/gopay/sdk/session/PaymentSession.kt). Throws `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` if one is already live for the same `paymentId`. |
 | `getPaymentSession(paymentId)` | Looks up a live session by id; `null` if absent. |
 | `closeAllPaymentSessions()` | Closes every session — wipes secrets and tokens. |
@@ -231,8 +232,10 @@ val finalState = session.getChargeState()
 `handle3dsVerification(activity, redirectUrl)` opens the challenge in an SDK-managed WebView and
 suspends. It has three ends, not two:
 
-- **Answered** — the ACS returns to the SDK's return URL and the call returns normally. Read the
-  outcome with `getChargeState()`; the SDK does not decide whether the payment went through.
+- **Answered** — the ACS navigates to an address starting with `GopaySDK.CHARGE_RETURN_URL`,
+  which the WebView intercepts without loading, and the call returns normally. Read the outcome
+  with `getChargeState()`; the SDK does not decide whether the payment went through. The
+  payment has to be created with that return URL for the ACS to come back to it.
 - **Dismissed** — the user backed out or swiped the task away, which surfaces as
   `kotlinx.coroutines.CancellationException`.
 - **Unreachable** — the challenge never reached the user, so there was nothing for them to

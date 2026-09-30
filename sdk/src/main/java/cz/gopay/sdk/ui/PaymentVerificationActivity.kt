@@ -142,6 +142,7 @@ internal class PaymentVerificationActivity : ComponentActivity() {
                     val url = request.url
                     return when (
                         PaymentVerificationPolicy.navigationFor(
+                            url = url.toString(),
                             scheme = url.scheme,
                             isForMainFrame = request.isForMainFrame
                         )

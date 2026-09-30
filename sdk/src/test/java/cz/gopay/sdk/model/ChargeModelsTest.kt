@@ -32,7 +32,7 @@ class ChargeModelsTest {
         {
           "id": "charge-abc-123",
           "state": "ACTION_REQUIRED",
-          "return_url": "cz.gopay.sdk://payment/return",
+          "return_url": "https://gopay.com/sdk/charge-return",
           "action": {
             "action_type": "EMV3DS",
             "state": "CREATED",
@@ -46,7 +46,7 @@ class ChargeModelsTest {
         {
           "id": "charge-abc-123",
           "state": "PROCESSING",
-          "return_url": "cz.gopay.sdk://payment/return"
+          "return_url": "https://gopay.com/sdk/charge-return"
         }
     """.trimIndent()
 
@@ -55,7 +55,7 @@ class ChargeModelsTest {
         {
           "id": "charge-abc-123",
           "state": "ACTION_REQUIRED",
-          "return_url": "cz.gopay.sdk://payment/return",
+          "return_url": "https://gopay.com/sdk/charge-return",
           "payment_instrument": {
             "payment_instrument": "PAYMENT_CARD"
           },
@@ -72,7 +72,7 @@ class ChargeModelsTest {
         {
           "id": "charge-abc-123",
           "state": "ACTION_REQUIRED",
-          "return_url": "cz.gopay.sdk://payment/return",
+          "return_url": "https://gopay.com/sdk/charge-return",
           "payment_instrument": {
             "payment_instrument": "PAYMENT_CARD",
             "details": {

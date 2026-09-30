@@ -215,6 +215,16 @@ class GopaySDK private constructor(
         val version: String get() = BuildConfig.VERSION_NAME
 
         /**
+         * Return URL the SDK uses for charge verification flows. Pass it as the payment's
+         * `callback.return_url` when your backend creates the payment: the gateway accepts only
+         * an absolute `http(s)` address there. The 3DS WebView intercepts any navigation that
+         * starts with it and never loads it; [PaymentSession.handle3dsVerification] uses it to
+         * detect completion. It is not sent on the charge request, which the deployed gateway
+         * rejects with a request-level `return_url`. Mirrors `GopaySDK.chargeReturnURL` on iOS.
+         */
+        const val CHARGE_RETURN_URL: String = "https://gopay.com/sdk/charge-return"
+
+        /**
          * Initialize the SDK with the given configuration. Must be called before any other SDK
          * operation. The SDK no longer requires an Android `Context` — all credentials live in
          * memory inside [GopayConfig] and per-payment [PaymentSession] instances.

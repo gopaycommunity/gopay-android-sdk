@@ -78,9 +78,6 @@ object DemoConfig {
         goid = BuildConfig.DEMO_GOID
     )
 
-    /** Return URL the SDK's 3DS WebView intercepts to detect flow completion. */
-    const val CHARGE_RETURN_URL = "cz.gopay.sdk://payment/return"
-
     /** What the badge reads: the built-in environment `gopay.demo.baseUrl` names, or Development. */
     val environment: DemoEnvironment = demoInitialEnvironment(developmentBaseUrl)
 

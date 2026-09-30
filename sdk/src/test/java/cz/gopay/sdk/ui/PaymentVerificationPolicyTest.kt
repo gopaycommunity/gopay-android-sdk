@@ -2,6 +2,7 @@ package cz.gopay.sdk.ui
 
 import android.content.ComponentName
 import android.content.Intent
+import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.ui.PaymentVerificationPolicy.LoadFailure
 import cz.gopay.sdk.ui.PaymentVerificationPolicy.Navigation
 import org.junit.Assert.assertEquals
@@ -31,10 +32,70 @@ class PaymentVerificationPolicyTest {
         assertEquals(
             Navigation.COMPLETE,
             PaymentVerificationPolicy.navigationFor(
-                scheme = PaymentVerificationPolicy.RETURN_URL_SCHEME,
+                url = GopaySDK.CHARGE_RETURN_URL,
+                scheme = "https",
                 isForMainFrame = true
             )
         )
+    }
+
+    @Test
+    fun `the return URL is an https address and still never loads as a page`() {
+        // The return URL is https because the gateway accepts nothing else as a return_url,
+        // and https is the first scheme the WebView would otherwise load. The prefix has to win.
+        assertEquals("https://gopay.com/sdk/charge-return", GopaySDK.CHARGE_RETURN_URL)
+        assertEquals(
+            Navigation.COMPLETE,
+            PaymentVerificationPolicy.navigationFor(
+                url = "https://gopay.com/sdk/charge-return",
+                scheme = "https",
+                isForMainFrame = true
+            )
+        )
+    }
+
+    @Test
+    fun `the return URL is recognised by prefix whatever the gateway appends`() {
+        // Same test as iOS: url.hasPrefix(chargeReturnURL). The ACS comes back with whatever
+        // query or fragment the gateway attached, and a subframe counts as much as the main one.
+        listOf(
+            "https://gopay.com/sdk/charge-return?id=123&state=PAID",
+            "https://gopay.com/sdk/charge-return/",
+            "https://gopay.com/sdk/charge-return#done"
+        ).forEach { url ->
+            assertEquals(
+                "$url must complete the challenge",
+                Navigation.COMPLETE,
+                PaymentVerificationPolicy.navigationFor(
+                    url, scheme = "https", isForMainFrame = true
+                )
+            )
+        }
+        assertEquals(
+            Navigation.COMPLETE,
+            PaymentVerificationPolicy.navigationFor(
+                url = "https://gopay.com/sdk/charge-return?id=123",
+                scheme = "https",
+                isForMainFrame = false
+            )
+        )
+    }
+
+    @Test
+    fun `another page on the return host is an ordinary page`() {
+        listOf(
+            "https://gopay.com/sdk/other",
+            "https://gopay.com/",
+            "https://example.com/?next=https://gopay.com/sdk/charge-return"
+        ).forEach { url ->
+            assertEquals(
+                "$url must load as a page of the challenge",
+                Navigation.LOAD,
+                PaymentVerificationPolicy.navigationFor(
+                    url, scheme = "https", isForMainFrame = true
+                )
+            )
+        }
     }
 
     @Test
@@ -46,7 +107,7 @@ class PaymentVerificationPolicyTest {
             assertEquals(
                 "$scheme must stay in the WebView",
                 Navigation.LOAD,
-                PaymentVerificationPolicy.navigationFor(scheme, isForMainFrame = true)
+                PaymentVerificationPolicy.navigationFor("$scheme:x", scheme, isForMainFrame = true)
             )
         }
     }
@@ -55,11 +116,15 @@ class PaymentVerificationPolicyTest {
     fun `a web scheme is recognised whatever its case`() {
         assertEquals(
             Navigation.LOAD,
-            PaymentVerificationPolicy.navigationFor("HTTPS", isForMainFrame = true)
+            PaymentVerificationPolicy.navigationFor(
+                "HTTPS://3ds.example.com/c", "HTTPS", isForMainFrame = true
+            )
         )
         assertEquals(
             Navigation.LOAD,
-            PaymentVerificationPolicy.navigationFor("JavaScript", isForMainFrame = true)
+            PaymentVerificationPolicy.navigationFor(
+                "JavaScript:void(0)", "JavaScript", isForMainFrame = true
+            )
         )
     }
 
@@ -70,7 +135,9 @@ class PaymentVerificationPolicyTest {
             assertEquals(
                 "$scheme must go to the system",
                 Navigation.HAND_OFF,
-                PaymentVerificationPolicy.navigationFor(scheme, isForMainFrame = true)
+                PaymentVerificationPolicy.navigationFor(
+                    "$scheme://auth", scheme, isForMainFrame = true
+                )
             )
         }
     }
@@ -84,7 +151,9 @@ class PaymentVerificationPolicyTest {
             assertEquals(
                 "$scheme from a subframe must stay with the WebView",
                 Navigation.LOAD,
-                PaymentVerificationPolicy.navigationFor(scheme, isForMainFrame = false)
+                PaymentVerificationPolicy.navigationFor(
+                    "$scheme://auth", scheme, isForMainFrame = false
+                )
             )
         }
         // And the WebView then declines it quietly rather than failing the challenge.
@@ -103,7 +172,7 @@ class PaymentVerificationPolicyTest {
     fun `a navigation without a scheme is handed over rather than loaded`() {
         assertEquals(
             Navigation.HAND_OFF,
-            PaymentVerificationPolicy.navigationFor(null, isForMainFrame = true)
+            PaymentVerificationPolicy.navigationFor("auth/x", null, isForMainFrame = true)
         )
     }
 

@@ -142,7 +142,9 @@ data class ChargePaymentRequest(
     @Json(name = "payment_instrument") val paymentInstrument: PaymentChargeInstrument,
     // `return_url` is defined on `Payment-Charge-Input` in the spec but the deployed Payments 4.0
     // gateway rejects it ("Unrecognized field return_url"). Leave null so it's omitted from the
-    // request; the 3DS redirect comes from the charge response's `action.redirect_url`.
+    // request; the 3DS redirect comes from the charge response's `action.redirect_url`, and
+    // [cz.gopay.sdk.session.PaymentSession.handle3dsVerification] detects completion with
+    // [cz.gopay.sdk.GopaySDK.CHARGE_RETURN_URL].
     @Json(name = "return_url") val returnUrl: String? = null
 ) {
     companion object {
@@ -258,9 +260,9 @@ data class ChargePaymentResponse(
      * verification. For the same reason a blank `return_url` from the gateway decodes as null
      * too, and is reported like an omitted one.
      *
-     * If you run your own WebView, treat null as "the gateway did not say"; the SDK's own
-     * [cz.gopay.sdk.session.PaymentSession.handle3dsVerification] does not depend on the field
-     * either, it watches for its own return URL scheme.
+     * If you run your own WebView, treat null as "the gateway did not say" and use
+     * [cz.gopay.sdk.GopaySDK.CHARGE_RETURN_URL], which the SDK's own
+     * [cz.gopay.sdk.session.PaymentSession.handle3dsVerification] watches for.
      */
     @Json(name = "return_url") val returnUrl: String? = null,
     @Json(name = "payment_instrument") val paymentInstrument: PaymentInstrumentData? = null,

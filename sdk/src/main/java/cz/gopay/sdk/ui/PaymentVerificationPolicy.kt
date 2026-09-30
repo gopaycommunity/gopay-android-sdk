@@ -3,6 +3,7 @@ package cz.gopay.sdk.ui
 import android.content.Intent
 import android.webkit.WebViewClient
 import androidx.annotation.VisibleForTesting
+import cz.gopay.sdk.GopaySDK
 import java.net.URLDecoder
 
 /**
@@ -15,9 +16,6 @@ import java.net.URLDecoder
  * the glue that calls the bridge.
  */
 internal object PaymentVerificationPolicy {
-
-    /** The scheme the ACS returns to when the challenge is done. */
-    const val RETURN_URL_SCHEME: String = "cz.gopay.sdk"
 
     /**
      * Schemes that stay inside the WebView; everything else belongs to some other app.
@@ -58,14 +56,20 @@ internal object PaymentVerificationPolicy {
     }
 
     /**
+     * @param url the navigation as a string. A navigation that starts with
+     *        [GopaySDK.CHARGE_RETURN_URL] is the ACS coming back, whatever the gateway appended
+     *        to it, and is answered before the scheme is looked at: the return URL is an `https`
+     *        address, and letting it reach the web branch would load it as a page of the
+     *        challenge. The same prefix test as on iOS.
+     * @param scheme the navigation's scheme as the WebView parsed it, or null when it has none.
      * @param isForMainFrame gates the hand-off. Leaving another application out of a challenge
      *        is the page navigating itself away, which only the main frame does; an iframe the
      *        ACS embedded would otherwise be able to throw the user out of the payment on its
      *        own. A subframe is left to the WebView, which quietly declines a scheme it cannot
      *        load.
      */
-    fun navigationFor(scheme: String?, isForMainFrame: Boolean): Navigation = when {
-        scheme == RETURN_URL_SCHEME -> Navigation.COMPLETE
+    fun navigationFor(url: String, scheme: String?, isForMainFrame: Boolean): Navigation = when {
+        url.startsWith(GopaySDK.CHARGE_RETURN_URL) -> Navigation.COMPLETE
         scheme?.lowercase() in WEB_SCHEMES -> Navigation.LOAD
         !isForMainFrame -> Navigation.LOAD
         else -> Navigation.HAND_OFF
