@@ -1,216 +1,117 @@
-# GoPay Android SDK Publishing Guide
+# Publishing the GoPay Android SDK
 
-This document explains how to publish the GoPay Android SDK using the Maven Publish Plugin.
+The SDK is published to Maven Central as `cz.gopay:sdk`. Releases are cut in the upstream
+repository and published from its public GitHub mirror,
+[`gopaycommunity/gopay-android-sdk`](https://github.com/gopaycommunity/gopay-android-sdk), by the
+workflow in `.github/workflows/publish-maven-central.yml`.
 
-## Overview
+## How a release reaches Maven Central
 
-The SDK is configured to publish to Maven repositories using the `maven-publish` plugin. The publishing configuration is separated into `publish.gradle.kts` for better organization and reusability.
+1. Changes land on `master` with conventional commit messages.
+2. Someone starts the manual `release` step of the `master` pipeline (`bitbucket-pipelines.yml`),
+   from the pipeline of the newest commit. semantic-release picks the next version from the
+   commits since the last tag.
+3. `scripts/set-version.sh` writes that version into `sdk.version` in `sdk/gradle.properties`.
+   The release commit and the tag `X.Y.Z` carry it.
+4. The pipeline syncs the release commit and the new tag to the GitHub mirror.
+5. The tag starts **Publish to Maven Central** on GitHub. The workflow checks that `sdk.version`
+   in the tagged commit equals the tag, runs the unit tests, builds and signs the deployment,
+   checks that every artifact has a signature, and uploads it to the Central Portal with publishing
+   type `AUTOMATIC`. The Portal validates the deployment and then publishes it.
 
-## Configuration
+A published version is permanent: Maven Central never lets the same version be uploaded again.
 
-### Version Management
+## GitHub setup
 
-The SDK version is managed through properties in `gradle.properties`:
+The workflow needs a GitHub environment named `maven-central` on the mirror, with:
 
-```properties
-sdk.version=1.0.0
-sdk.groupId=cz.gopay
-sdk.artifactId=sdk
-```
+- **Deployment branches and tags**: the branch `master` and tags matching `[0-9]*.[0-9]*.[0-9]*`.
+  Tags are what releases publish from; `master` is only needed for trial uploads.
+- **Environment secrets**:
 
-### Publishing Metadata
+| Secret | Content | Gradle property it becomes |
+|---|---|---|
+| `CENTRAL_PORTAL_USERNAME` | username part of a Central Portal user token | `mavenCentralUsername` |
+| `CENTRAL_PORTAL_PASSWORD` | password part of that token | `mavenCentralPassword` |
+| `SIGNING_KEY` | ASCII-armored secret key, the whole block including the BEGIN and END lines | `signingInMemoryKey` |
+| `SIGNING_KEY_ID` | short key id, 8 hex characters; optional, only needed when a subkey signs | `signingInMemoryKeyId` |
+| `SIGNING_KEY_PASSWORD` | passphrase of the key | `signingInMemoryKeyPassword` |
 
-The SDK publishes with the following metadata:
+The workflow passes them to Gradle as `ORG_GRADLE_PROJECT_<property>` variables, and only to the
+steps that sign and upload. How to create the key is in [SIGNING_SETUP.md](SIGNING_SETUP.md).
+The Portal user token has an expiry date; replace both token secrets before it runs out.
 
-- **Group ID**: `cz.gopay`
-- **Artifact ID**: `sdk`
-- **Version**: Configurable via `sdk.version` property
-- **Description**: Android SDK for GoPay payment integration
-- **License**: MIT License
-- **Repository**: https://github.com/gopay/gpy-sdk-android
+The workflow file has to be on `master` before the first release tag, otherwise the tag has
+nothing to start.
 
-## Available Tasks
+## Running the workflow by hand
 
-### Publishing Tasks
+**Actions → Publish to Maven Central → Run workflow**, on `master`. Inputs:
 
-```bash
-# Publish to local repository (build/repo)
-./gradlew :sdk:publishToLocalRepo
+- `tag`: an existing release tag, for example after a failed run.
+- `publishing-type`: `AUTOMATIC` publishes once the Portal has validated the deployment.
+  `USER_MANAGED` stops at `VALIDATED` and waits for someone to press **Publish** or **Drop** in the
+  Portal.
+- `trial`: see below. With `trial` checked, `tag` and `publishing-type` are ignored.
 
-# Publish to Maven local cache (~/.m2/repository)
-./gradlew :sdk:publishToMavenLocal
+GitHub sends no event when more than three tags are pushed at once. If a sync ever catches up
+several releases in one push, publish the missing tags by hand.
 
-# Publish to all configured repositories
-./gradlew :sdk:publish
+## Trial upload
 
-# Show publishing configuration
-./gradlew :sdk:showPublishingInfo
-```
+A trial checks the whole chain (secrets, signing, upload and Portal validation) without
+publishing anything and without using a release number. Use it after the secrets are set up and
+before the first release.
 
-### Build Tasks
+1. **Run workflow** on `master` with `trial` checked.
+2. The run builds `master` as version `0.0.0-trial.<run number>`, signs it, checks the signatures
+   and uploads it as `USER_MANAGED`. A green run means the Portal validated the deployment.
+3. Sign in to the [Central Portal](https://central.sonatype.com/publishing/deployments) with the
+   account that owns the `cz.gopay` namespace and open the deployment named after that version.
+   Check that it lists the aar, pom, module, sources and javadoc jars, each with an `.asc`.
+4. Press **Drop**. Do not press **Publish**.
 
-```bash
-# Build the SDK
-./gradlew :sdk:assembleRelease
+A trial skips the version check that releases go through. Existing tags predate this build setup,
+so a trial builds master instead. It stays safe because:
 
-# Run tests
-./gradlew :sdk:test
+- it always uploads as `USER_MANAGED`, whatever `publishing-type` says, so nothing goes live
+  without a click in the Portal;
+- the version is always `0.0.0-trial.<n>`, which no release uses, so even an accidental
+  **Publish** could not take a release number;
+- it runs from `master` only, and the `maven-central` environment admits no other branch;
+- only people with write access to the mirror can run a workflow by hand.
 
-# Generate code coverage report
-./gradlew :sdk:jacocoTestReport
-```
+A dropped deployment leaves nothing behind on Maven Central.
 
-## Publishing Workflow
+## When a run fails
 
-### 1. Update Version
+A failed or cancelled run opens an issue labelled `ci-failure`, titled
+`CI: Maven Central publish failed for <version>`, or comments on the open one. Close it by hand
+once the version is published. An issue from a failed trial is closed by hand too.
 
-Before publishing, update the version in `gradle.properties`:
+- **Failed before the upload** (version check, tests, signing): nothing was sent. Fix the cause
+  and run the workflow by hand with the tag. If the tagged commit itself is wrong, the fix needs
+  a new release.
+- **Failed in validation**: nothing was published. The Portal shows the reason on the deployment;
+  drop it there and run the workflow again.
+- **Upload succeeded but the run failed afterwards**: check the deployment in the Portal before
+  running again. If it is published, a second upload of the same version is refused, which is
+  expected.
 
-```properties
-sdk.version=1.0.1
-```
+## Publishing locally
 
-### 2. Build and Test
-
-```bash
-./gradlew :sdk:clean
-./gradlew :sdk:test
-./gradlew :sdk:assembleRelease
-```
-
-### 3. Publish Locally (for testing)
-
-```bash
-./gradlew :sdk:publishToLocalRepo
-```
-
-This creates a local Maven repository at `sdk/build/repo/`.
-
-### 4. Publish to Maven Local
-
-```bash
-./gradlew :sdk:publishToMavenLocal
-```
-
-This publishes to your local Maven cache at `~/.m2/repository/`.
-
-### 5. Publish to Remote Repository
-
-To publish to a remote repository, configure the repository in `publish.gradle.kts`:
-
-```kotlin
-repositories {
-    maven {
-        name = "releaseRepo"
-        url = uri("https://your-maven-repo.com/releases")
-        credentials {
-            username = project.findProperty("mavenUsername") as String? ?: ""
-            password = project.findProperty("mavenPassword") as String? ?: ""
-        }
-    }
-}
-```
-
-Then set your credentials in `gradle.properties`:
-
-```properties
-mavenUsername=your-username
-mavenPassword=your-password
-```
-
-And publish:
+Local publishing needs no credentials. Without a signing key the Sign tasks are skipped and the
+artifacts are unsigned.
 
 ```bash
-./gradlew :sdk:publish
+./gradlew :sdk:publishToLocalRepo    # -> sdk/build/repo
+./gradlew :sdk:publishToMavenLocal   # -> ~/.m2/repository
+./gradlew nmcpZipAggregation         # -> build/nmcp/zip/aggregation.zip, what CI uploads
+./gradlew :sdk:showPublishingInfo    # prints group, artifact and version
 ```
 
-## Consuming the Published SDK
+The coordinates come from `sdk.groupId`, `sdk.artifactId` and `sdk.version` in
+`sdk/gradle.properties`. Pass `-Psdk.version=<x>` to build another version locally. To sign
+locally, see [SIGNING_SETUP.md](SIGNING_SETUP.md).
 
-### From Maven Local
-
-```kotlin
-// In your app's build.gradle.kts
-dependencies {
-    implementation("cz.gopay:sdk:1.0.0")
-}
-```
-
-### From Local Repository
-
-```kotlin
-// In your app's build.gradle.kts
-repositories {
-    maven {
-        url = uri("file:///path/to/gpy-sdk-android/sdk/build/repo")
-    }
-}
-
-dependencies {
-    implementation("cz.gopay:sdk:1.0.0")
-}
-```
-
-### From Remote Repository
-
-```kotlin
-// In your app's build.gradle.kts
-repositories {
-    maven {
-        url = uri("https://your-maven-repo.com/releases")
-    }
-}
-
-dependencies {
-    implementation("cz.gopay:sdk:1.0.0")
-}
-```
-
-## Generated Artifacts
-
-The publishing process generates the following artifacts:
-
-- **AAR file**: The main Android library archive
-- **POM file**: Maven project object model with dependencies
-- **Module metadata**: Gradle module metadata for better dependency resolution
-- **Checksums**: MD5, SHA1, SHA256, and SHA512 checksums for all artifacts
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Version conflicts**: Ensure the version in `gradle.properties` is updated before publishing
-2. **Authentication errors**: Verify your Maven repository credentials
-3. **Network issues**: Check your internet connection and repository URLs
-4. **Build failures**: Run `./gradlew :sdk:clean` before rebuilding
-
-### Debugging
-
-Use the `showPublishingInfo` task to verify your configuration:
-
-```bash
-./gradlew :sdk:showPublishingInfo
-```
-
-### Logs
-
-Enable debug logging for more detailed output:
-
-```bash
-./gradlew :sdk:publish --debug
-```
-
-## Best Practices
-
-1. **Version Management**: Always update the version before publishing
-2. **Testing**: Test locally before publishing to remote repositories
-3. **Documentation**: Update this guide when changing publishing configuration
-4. **Security**: Never commit credentials to version control
-5. **Backup**: Keep backups of published artifacts
-
-## Support
-
-For issues related to publishing, check:
-
-1. Gradle documentation: https://docs.gradle.org/current/userguide/publishing_maven.html
-2. Android documentation: https://developer.android.com/studio/build/maven-publish-plugin
-3. Project issues: https://github.com/gopay/gpy-sdk-android/issues
+Never run `publishAggregationToCentralPortal` from a workstation. Uploads belong to the workflow.

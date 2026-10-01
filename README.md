@@ -50,42 +50,25 @@ forward; the backend submits the JWE and gets back the card token.
 
 ## Installation
 
-Inside this repo the demo app consumes the SDK as a Gradle module:
+The SDK is published to Maven Central as `cz.gopay:sdk`:
 
 ```kotlin
+repositories {
+    mavenCentral()
+}
+
 dependencies {
-    implementation(project(":sdk"))
+    implementation("cz.gopay:sdk:<version>")
 }
 ```
 
-To consume it from another project, publish it to a Maven repo first:
+Use the latest version listed on
+[Maven Central](https://central.sonatype.com/artifact/cz.gopay/sdk). Of the 1.x line only 1.0.0
+was ever published there; later 1.x versions exist only as tags in this repository.
 
-```bash
-./gradlew :sdk:publishToLocalRepo   # -> sdk/build/repo
-./gradlew :sdk:publishToMavenLocal  # -> ~/.m2/repository
-```
-
-then depend on `cz.gopay:sdk:<version>`. Group/artifact/version come from the `sdk.groupId`,
-`sdk.artifactId`, and `sdk.version` Gradle properties (defaults `cz.gopay` / `sdk` / `1.0.0`);
-`./gradlew :sdk:showPublishingInfo` prints the resolved values.
-
-> **Publishing currently fails on a fresh clone.** `sdk/gradle.properties` is committed with
-> `signing.secretKeyRingFile` pointing at one developer's home directory, so the signing plugin
-> cannot build a signatory and the task dies before publishing:
->
-> ```
-> Could not evaluate spec for 'Signing is required, or signatory is set'.
-> Unable to retrieve secret key from key ring file '/Users/<someone>/.gnupg/secring.gpg'
-> ```
->
-> Commenting out the three `signing.*` lines in `sdk/gradle.properties` makes both tasks succeed
-> and produce a working (unsigned) AAR. Overriding them with `-P` does **not** help — an empty
-> value still creates a signatory. This needs fixing properly: the keyring path and password
-> don't belong in a committed file.
-
-> **Pass the version explicitly when you publish.** Nothing bumps `sdk.version` in
-> `sdk/gradle.properties`, so the Maven coordinates and `BuildConfig.VERSION_NAME` do not match
-> the released tag unless you pass `-Psdk.version=<x>`.
+Inside this repo the demo app consumes the SDK as a Gradle module (`implementation(project(":sdk"))`).
+To publish a build of your own to a local Maven repository, see
+[`sdk/docs/PUBLISHING.md`](sdk/docs/PUBLISHING.md#publishing-locally).
 
 ## Quick start
 
@@ -705,9 +688,10 @@ To check the whole project compiles, including the demo app:
 
 ## Releasing
 
-semantic-release cuts versions on `master` from the commit messages. Publishing the AAR is a
-separate, manual step — see [`sdk/docs/PUBLISHING.md`](sdk/docs/PUBLISHING.md).
+A release is started by hand on `master`; semantic-release picks the version from the commit
+messages and tags it. Every release tag that reaches the GitHub mirror is published to Maven
+Central by a GitHub Actions workflow. See [`sdk/docs/PUBLISHING.md`](sdk/docs/PUBLISHING.md).
 
 ## License
 
-Not yet determined. Not in production.
+MIT, see [`LICENSE`](LICENSE). The published POM declares the same.
