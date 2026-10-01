@@ -14,7 +14,7 @@ definitions:
                   - cache
               script:
                   - export REPO_URL=https://gopay-release-bot:$BITBUCKET_BOT_PUSH_TOKEN@bitbucket.org/$BITBUCKET_REPO_FULL_NAME.git
-                  - git remote set-url origin $REPO_URL
+                  - git remote set-url origin "$REPO_URL"
                   - npx -p semantic-release -p @semantic-release/changelog -p @semantic-release/git -p @semantic-release/exec semantic-release --repository-url $REPO_URL
         - step: &tests
               name: Tests
@@ -46,7 +46,7 @@ definitions:
                   depth: full
               script:
                   - git fetch origin master --tags
-                  - git checkout master
+                  - git checkout -B master origin/master
                   # Add GitHub as remote repository (ignore if already exists)
                   # Authenticates via the repository SSH key configured in Pipelines settings,
                   # registered as a write-enabled deploy key on the GitHub mirror
@@ -60,11 +60,18 @@ definitions:
 pipelines:
     branches:
         master:
-            - parallel:
-                  - step: *release
             - step: *tests
             - step: *sonarcloud-analysis
             - step: *github-sync
+            # Release by hand from the pipeline of the newest master commit. semantic-release
+            # releases nothing from an older pipeline.
+            - step:
+                  <<: *release
+                  trigger: manual
+            # Sends the release commit and its tag.
+            - step:
+                  <<: *github-sync
+                  name: Sync release to GitHub
     pull-requests:
         '**':
             - step: *tests

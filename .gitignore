@@ -61,8 +61,6 @@ Thumbs.db
 local.properties
 .vscode/
 
-*.sh
-
 .mcp.json
 
 .github/instructions/*
