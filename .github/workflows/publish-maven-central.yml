@@ -1,0 +1,232 @@
+# Publishes cz.gopay:sdk to Maven Central when a release tag reaches the mirror.
+#
+# Releases are cut upstream: the release commit sets sdk.version and the tag X.Y.Z arrives here
+# with the mirror sync. A manual run can publish an existing tag again, or make a trial upload
+# from master that stops at VALIDATED in the Central Portal and is meant to be dropped there.
+name: Publish to Maven Central
+
+on:
+  create:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (X.Y.Z). Ignored for a trial upload.'
+        required: false
+        type: string
+      publishing-type:
+        description: 'AUTOMATIC publishes after validation, USER_MANAGED waits in the Portal.'
+        required: true
+        default: AUTOMATIC
+        type: choice
+        options: [AUTOMATIC, USER_MANAGED]
+      trial:
+        description: 'Trial upload from master as 0.0.0-trial.<run>, always USER_MANAGED.'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  # Decides what to publish without touching secrets. A branch, or a tag that is not X.Y.Z,
+  # ends here quietly.
+  resolve:
+    name: Resolve version
+    if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      publish: ${{ steps.resolve.outputs.publish }}
+      ref: ${{ steps.resolve.outputs.ref }}
+      version: ${{ steps.resolve.outputs.version }}
+      trial: ${{ steps.resolve.outputs.trial }}
+      publishing-type: ${{ steps.resolve.outputs.publishing-type }}
+    steps:
+      - id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_TYPE: ${{ inputs.publishing-type }}
+          INPUT_TRIAL: ${{ inputs.trial }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SHA: ${{ github.sha }}
+        run: |
+          semver='^[0-9]+\.[0-9]+\.[0-9]+$'
+          if [ "$EVENT" = "create" ]; then
+            if [[ ! "$REF_NAME" =~ $semver ]]; then
+              echo "Tag $REF_NAME is not a release tag, nothing to publish."
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            tag="$REF_NAME"; type=AUTOMATIC; trial=false
+          elif [ "$INPUT_TRIAL" = "true" ]; then
+            # A trial never carries a real version and never publishes on its own, so it can
+            # neither take a release number nor ship untagged code.
+            if [ "$REF" != "refs/heads/master" ]; then
+              echo "::error::A trial upload runs from master only."
+              exit 1
+            fi
+            ref="$SHA"; version="0.0.0-trial.$RUN_NUMBER"; type=USER_MANAGED; trial=true
+          else
+            if [[ ! "$INPUT_TAG" =~ $semver ]]; then
+              echo "::error::Tag '$INPUT_TAG' is not X.Y.Z."
+              exit 1
+            fi
+            tag="$INPUT_TAG"; type="$INPUT_TYPE"; trial=false
+          fi
+          if [ "$trial" = "false" ]; then
+            ref="refs/tags/$tag"; version="$tag"
+          fi
+          {
+            echo "ref=$ref"
+            echo "version=$version"
+            echo "trial=$trial"
+            echo "publishing-type=$type"
+            echo "publish=true"
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish ${{ needs.resolve.outputs.version }}
+    needs: [resolve]
+    if: needs.resolve.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: maven-central
+    # One run per version at a time, and the run in progress is never cancelled. A newer run for the
+    # same version replaces one that is still waiting. Different versions never cancel one another,
+    # and a cancelled job still reaches notify.
+    concurrency:
+      group: maven-central-${{ needs.resolve.outputs.version }}
+      cancel-in-progress: false
+    env:
+      VERSION: ${{ needs.resolve.outputs.version }}
+      TRIAL: ${{ needs.resolve.outputs.trial }}
+      PUBLISHING_TYPE: ${{ needs.resolve.outputs.publishing-type }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          persist-credentials: false
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # A release publishes exactly what the tag says, so the later -Psdk.version changes
+      # nothing for it. Only a trial overrides the version, with a 0.0.0-trial number that no
+      # release uses.
+      - name: Check the version
+        if: env.TRIAL != 'true'
+        run: |
+          declared=$(sed -n 's/^sdk\.version=//p' sdk/gradle.properties)
+          if [ "$declared" != "$VERSION" ]; then
+            echo "::error::sdk/gradle.properties says $declared, the tag says $VERSION."
+            exit 1
+          fi
+
+      - name: Run unit tests
+        run: ./gradlew test
+
+      - name: Build and sign the deployment
+        env:
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ORG_GRADLE_PROJECT_signingInMemoryKey" ]; then
+            echo "::error::The SIGNING_KEY secret is missing."
+            exit 1
+          fi
+          if [ -z "$ORG_GRADLE_PROJECT_signingInMemoryKeyPassword" ]; then
+            echo "::error::The SIGNING_KEY_PASSWORD secret is missing."
+            exit 1
+          fi
+          ./gradlew nmcpZipAggregation "-Psdk.version=$VERSION"
+
+      # A safety net against a build change that silently drops a signature or an artifact. The
+      # Portal would only reject such a deployment after the upload.
+      - name: Check signatures
+        run: |
+          zip=build/nmcp/zip/aggregation.zip
+          files=$(unzip -Z1 "$zip" | grep -v '/$')
+          artifacts=$(grep -vE '\.(asc|md5|sha1|sha256|sha512)$' <<< "$files")
+          missing=0
+          for f in $artifacts; do
+            if ! grep -qxF "$f.asc" <<< "$files"; then
+              echo "::error::No signature for $f"; missing=1
+            fi
+          done
+          for suffix in .aar .pom .module -sources.jar -javadoc.jar; do
+            if ! grep -qxF "cz/gopay/sdk/$VERSION/sdk-$VERSION$suffix" <<< "$artifacts"; then
+              echo "::error::The deployment has no sdk-$VERSION$suffix"; missing=1
+            fi
+          done
+          [ "$missing" = 0 ]
+          echo "$artifacts"
+
+      - name: Upload to the Central Portal
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
+          ORG_GRADLE_PROJECT_nmcpPublishingType: ${{ env.PUBLISHING_TYPE }}
+        run: ./gradlew publishAggregationToCentralPortal "-Psdk.version=$VERSION"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Maven Central"
+            echo "- Version: \`cz.gopay:sdk:$VERSION\`"
+            echo "- Publishing type: $PUBLISHING_TYPE"
+            echo "- Result: ${{ job.status }}"
+            if [ "$PUBLISHING_TYPE" = "USER_MANAGED" ]; then
+              echo "- The deployment waits in the Central Portal. Drop it there unless it should be published."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # See tests.yml: a failure opens an issue, because run notifications reach nobody here.
+  # This issue stays open until someone has published the version again.
+  notify:
+    name: Failure issue
+    needs: [resolve, publish]
+    if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      # A trial that failed before resolve still reports as a trial, never as the tag input.
+      VERSION: ${{ needs.resolve.outputs.version || (inputs.trial && 'trial') || inputs.tag || github.ref_name }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
+
+    steps:
+      - name: Open or update the failure issue
+        shell: bash
+        run: |
+          title="CI: Maven Central publish failed for $VERSION"
+          short="${SHA:0:7}"
+          gh label create ci-failure --color B60205 \
+            --description 'Opened by CI when a workflow fails' --force
+          issues=$(TITLE="$title" gh issue list --label ci-failure --state open --limit 100 \
+            --json number,title --jq '.[] | select(.title == env.TITLE) | .number')
+          issue=$(head -n 1 <<< "$issues")
+
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body "Failed again for $VERSION ($short). Run: $RUN_URL"
+          else
+            gh issue create --title "$title" --label ci-failure \
+              --body "Publishing $VERSION to Maven Central failed ($short). Run: $RUN_URL"
+          fi

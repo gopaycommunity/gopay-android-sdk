@@ -1,0 +1,103 @@
+# Unit tests for the SDK and the demo app.
+#
+# Runs on master only: pull requests live in the upstream repository and never reach this mirror,
+# so this is a regression net after merge, not a PR gate. No secrets are needed, the tests stub
+# the network and never reach a gateway.
+name: Unit tests
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run at a time, and the run in progress is never cancelled. GitHub keeps at most one pending
+# run per group, so a newer push replaces a run that is still waiting.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Gradle test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Run unit tests
+        run: ./gradlew test
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jacoco-report
+          path: sdk/build/reports/jacoco/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload test reports
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: |
+            sdk/build/reports/tests/
+            app/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Run notifications only reach whoever triggered the run, and a mirror sync triggers it here, so
+  # a failure opens an issue instead, which notifies everyone watching the repository. Only master
+  # runs report, since the issue title names master.
+  notify:
+    name: Failure issue
+    needs: [test]
+    if: always() && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TITLE: 'CI: tests failed on master'
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
+      # A timed-out or cancelled job counts as a failure, so a hang is reported too.
+      FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+
+    steps:
+      - name: Open, update or close the failure issue
+        shell: bash
+        run: |
+          short="${SHA:0:7}"
+          gh label create ci-failure --color B60205 \
+            --description 'Opened by CI when a workflow fails' --force
+          issues=$(gh issue list --label ci-failure --state open --limit 100 \
+            --json number,title --jq '.[] | select(.title == env.TITLE) | .number')
+
+          if [ "$FAILED" = "true" ]; then
+            issue=$(head -n 1 <<< "$issues")
+            if [ -n "$issue" ]; then
+              gh issue comment "$issue" --body "Failed again at $short. Run: $RUN_URL"
+            else
+              gh issue create --title "$TITLE" --label ci-failure \
+                --body "Unit tests failed on master at $short. Run: $RUN_URL"
+            fi
+          else
+            for issue in $issues; do
+              gh issue close "$issue" --comment "Passed on master at $short. Run: $RUN_URL"
+            done
+          fi
