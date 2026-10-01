@@ -46,80 +46,72 @@ android {
 }
 
 // Publishing configuration
-afterEvaluate {
-    publishing {
-        publications {
-            create<MavenPublication>("release") {
-                groupId = project.findProperty("sdk.groupId") as String? ?: "cz.gopay"
-                artifactId = project.findProperty("sdk.artifactId") as String? ?: "sdk"
-                version = project.findProperty("sdk.version") as String? ?: "1.0.0"
+publishing {
+    publications {
+        create<MavenPublication>("release") {
+            groupId = project.findProperty("sdk.groupId") as String? ?: "cz.gopay"
+            artifactId = project.findProperty("sdk.artifactId") as String? ?: "sdk"
+            version = project.findProperty("sdk.version") as String? ?: "1.0.0"
 
+            afterEvaluate {
                 from(components["release"])
-                
-                pom {
-                    name.set("GoPay Android SDK")
-                    description.set("Android SDK for GoPay payment integration")
+            }
+
+            pom {
+                name.set("GoPay Android SDK")
+                description.set("Android SDK for GoPay payment integration")
+                url.set("https://github.com/gopay/gpy-sdk-android")
+
+                licenses {
+                    license {
+                        name.set("MIT License")
+                        url.set("https://opensource.org/licenses/MIT")
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set("gopay")
+                        name.set("GoPay Team")
+                        email.set("dev@gopay.com")
+                    }
+                }
+
+                scm {
+                    connection.set("scm:git:git://github.com/gopay/gpy-sdk-android.git")
+                    developerConnection.set("scm:git:ssh://github.com/gopay/gpy-sdk-android.git")
                     url.set("https://github.com/gopay/gpy-sdk-android")
-                    
-                    licenses {
-                        license {
-                            name.set("MIT License")
-                            url.set("https://opensource.org/licenses/MIT")
-                        }
-                    }
-                    
-                    developers {
-                        developer {
-                            id.set("gopay")
-                            name.set("GoPay Team")
-                            email.set("dev@gopay.com")
-                        }
-                    }
-                    
-                    scm {
-                        connection.set("scm:git:git://github.com/gopay/gpy-sdk-android.git")
-                        developerConnection.set("scm:git:ssh://github.com/gopay/gpy-sdk-android.git")
-                        url.set("https://github.com/gopay/gpy-sdk-android")
-                    }
                 }
             }
         }
-        
-        repositories {
-            // Local Maven repository for testing
-            maven {
-                name = "localRepo"
-                url = uri(layout.buildDirectory.dir("repo"))
-            }
-            
-            // Maven Local for development
-            mavenLocal()
-            
-            // Example: Remote repository (uncomment and configure as needed)
-            // maven {
-            //     name = "releaseRepo"
-            //     url = uri("https://your-maven-repo.com/releases")
-            //     credentials {
-            //         username = project.findProperty("mavenUsername") as String? ?: ""
-            //         password = project.findProperty("mavenPassword") as String? ?: ""
-            //     }
-            // }
-        }
     }
-    
-    // Configure signing
-    signing {
-        // Force signing to be required when signatory is configured
-        setRequired {
-            val isReleaseVersion = !(project.findProperty("sdk.version") as String? ?: "1.0.0").endsWith("SNAPSHOT")
-            val isPublishing = gradle.taskGraph.hasTask("publish")
-            val hasSignatory = project.findProperty("signing.gnupg.keyName") != null
-            (isReleaseVersion && isPublishing) || hasSignatory
+
+    repositories {
+        // Local Maven repository for testing
+        maven {
+            name = "localRepo"
+            url = uri(layout.buildDirectory.dir("repo"))
         }
-        
-        // Sign the release publication
-        sign(publishing.publications["release"])
+
+        // Maven Local for development
+        mavenLocal()
     }
+}
+
+// Signing uses an ASCII-armored key passed as Gradle properties (for example
+// ORG_GRADLE_PROJECT_signingInMemoryKey). Without a key the Sign tasks are
+// skipped, so a fresh clone can still publish unsigned to a local repository.
+signing {
+    // An unset CI secret arrives as an empty string, which counts as not set.
+    val key = providers.gradleProperty("signingInMemoryKey").orNull?.takeIf { it.isNotBlank() }
+    val keyId = providers.gradleProperty("signingInMemoryKeyId").orNull?.takeIf { it.isNotBlank() }
+    val password = providers.gradleProperty("signingInMemoryKeyPassword").orNull?.takeIf { it.isNotBlank() }
+    if (key != null) {
+        // The key id is only needed when a subkey does the signing.
+        if (keyId != null) useInMemoryPgpKeys(keyId, key, password) else useInMemoryPgpKeys(key, password)
+    }
+    setRequired { key != null }
+    sign(publishing.publications["release"])
 }
 
 // Custom tasks for publishing
