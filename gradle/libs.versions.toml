@@ -12,6 +12,7 @@ foundationAndroid = "1.8.2"
 materialIconsVersion = "1.5.4"
 sdk = "1.0.0"
 zxingCore = "3.5.3"
+nmcp = "1.6.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,4 +39,5 @@ zxing-core = { module = "com.google.zxing:core", version.ref = "zxingCore" }
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 android-library = { id = "com.android.library", version.ref = "agp" }
-
+nmcp = { id = "com.gradleup.nmcp", version.ref = "nmcp" }
+nmcp-aggregation = { id = "com.gradleup.nmcp.aggregation", version.ref = "nmcp" }

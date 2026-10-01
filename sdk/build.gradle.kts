@@ -4,6 +4,7 @@ plugins {
     jacoco
     `maven-publish`
     signing
+    alias(libs.plugins.nmcp)
 }
 
 android {
@@ -43,6 +44,12 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.1"
     }
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+            withJavadocJar()
+        }
+    }
 }
 
 // Publishing configuration
@@ -60,7 +67,7 @@ publishing {
             pom {
                 name.set("GoPay Android SDK")
                 description.set("Android SDK for GoPay payment integration")
-                url.set("https://github.com/gopay/gpy-sdk-android")
+                url.set("https://github.com/gopaycommunity/gopay-android-sdk")
 
                 licenses {
                     license {
@@ -78,9 +85,9 @@ publishing {
                 }
 
                 scm {
-                    connection.set("scm:git:git://github.com/gopay/gpy-sdk-android.git")
-                    developerConnection.set("scm:git:ssh://github.com/gopay/gpy-sdk-android.git")
-                    url.set("https://github.com/gopay/gpy-sdk-android")
+                    connection.set("scm:git:https://github.com/gopaycommunity/gopay-android-sdk.git")
+                    developerConnection.set("scm:git:ssh://git@github.com/gopaycommunity/gopay-android-sdk.git")
+                    url.set("https://github.com/gopaycommunity/gopay-android-sdk")
                 }
             }
         }
