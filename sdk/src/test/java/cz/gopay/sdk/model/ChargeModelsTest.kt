@@ -283,7 +283,7 @@ class ChargeModelsTest {
         val mapAdapter = moshi.adapter<Map<String, Any?>>(mapType)
         val json = mapAdapter.fromJson(requestAdapter.toJson(request))!!
 
-        // The deployed gateway rejects a request-level return_url, so charges must not send one.
+        // return_url belongs to creating the payment (callback.return_url); a charge never sends it.
         assertFalse("return_url must not be sent on a charge", json.containsKey("return_url"))
         @Suppress("UNCHECKED_CAST")
         val instrument = json["payment_instrument"] as Map<String, Any?>
@@ -304,6 +304,37 @@ class ChargeModelsTest {
         assertEquals(24.0, browser["color_depth"])
         // Null fields stay out of the body; the session fills ip and its pair before sending.
         assertFalse("ip must be omitted while unset", browser.containsKey("ip"))
+    }
+
+    @Test
+    fun `a charge request carries nothing but the payment instrument`() {
+        // Payment-Charge-Input has only payment_instrument; the return URL belongs to creating
+        // the payment. Every factory, so none of them can bring return_url back.
+        val requestAdapter = moshi.adapter(ChargePaymentRequest::class.java)
+        val mapAdapter = moshi.adapter<Map<String, Any?>>(
+            Types.newParameterizedType(Map::class.java, String::class.java, Any::class.java)
+        )
+        val browserData = BrowserData(
+            language = "cs-CZ",
+            timezone = -60,
+            screenWidth = 1170,
+            screenHeight = 2532,
+            colorDepth = 24
+        )
+        listOf(
+            ChargePaymentRequest.cardToken("tok_123", browserData),
+            ChargePaymentRequest.encryptedCard("jwe.compact.string", browserData),
+            ChargePaymentRequest.googlePay(
+                protocolVersion = "ECv2",
+                signature = "sig",
+                intermediateSigningKey = null,
+                signedMessage = "{}",
+                browserData = browserData
+            )
+        ).forEach { request ->
+            val json = mapAdapter.fromJson(requestAdapter.toJson(request))!!
+            assertEquals(setOf("payment_instrument"), json.keys)
+        }
     }
 
     @Test

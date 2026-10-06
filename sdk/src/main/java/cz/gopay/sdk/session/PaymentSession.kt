@@ -356,14 +356,12 @@ class PaymentSession internal constructor(
         activity: Activity,
         cardToken: String,
         browserData: BrowserData? = null,
-        challengePreference: ChallengePreference? = null,
-        returnUrl: String? = null
+        challengePreference: ChallengePreference? = null
     ): ChargePaymentResponse = charge(
         ChargePaymentRequest.cardToken(
             cardToken = cardToken,
             browserData = browserData ?: BrowserData.deviceDefault(activity),
-            challengePreference = challengePreference,
-            returnUrl = returnUrl
+            challengePreference = challengePreference
         )
     )
 
@@ -382,14 +380,12 @@ class PaymentSession internal constructor(
         activity: Activity,
         payload: String,
         browserData: BrowserData? = null,
-        challengePreference: ChallengePreference? = null,
-        returnUrl: String? = null
+        challengePreference: ChallengePreference? = null
     ): ChargePaymentResponse = charge(
         ChargePaymentRequest.encryptedCard(
             payload = payload,
             browserData = browserData ?: BrowserData.deviceDefault(activity),
-            challengePreference = challengePreference,
-            returnUrl = returnUrl
+            challengePreference = challengePreference
         )
     )
 

@@ -216,8 +216,8 @@ auth or HTTP errors.
 | `getStatus()` | `GET /payments/{payment_id}` |
 | `charge(ChargePaymentRequest)` | `POST /payments/{payment_id}/charge` — low level; you supply `BrowserData`, the SDK completes `ip` and `accept_header` from `GET /cards/browser-data` first, and a missing `user_agent` before that |
 | `completeBrowserData(browserData)` | `GET /cards/browser-data` — fills the null ones of `ip` and `accept_header`, and a missing `user_agent` with a synthesized WebView one; `charge(...)` does this itself |
-| `chargeWithCardToken(activity, cardToken, browserData?, challengePreference?, returnUrl?)` | `charge(...)` with a card token + device-derived `BrowserData` |
-| `chargeWithEncryptedCard(activity, payload, browserData?, challengePreference?, returnUrl?)` | `charge(...)` with a JWE + device-derived `BrowserData` |
+| `chargeWithCardToken(activity, cardToken, browserData?, challengePreference?)` | `charge(...)` with a card token + device-derived `BrowserData` |
+| `chargeWithEncryptedCard(activity, payload, browserData?, challengePreference?)` | `charge(...)` with a JWE + device-derived `BrowserData` |
 | `getChargeState()` | `GET /payments/{payment_id}/charge` |
 | `getQrPaymentInfo(format?)` | `GET /payments/{payment_id}/qr-payment/info` |
 | `getGooglePayInfo()` | `GET /payments/{payment_id}/google-pay/info` |

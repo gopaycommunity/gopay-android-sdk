@@ -163,27 +163,19 @@ data class PaymentChargeInstrument(
  * Use the [Companion] factories for the common card-token and Google Pay flows.
  */
 data class ChargePaymentRequest(
-    @Json(name = "payment_instrument") val paymentInstrument: PaymentChargeInstrument,
-    // `return_url` is defined on `Payment-Charge-Input` in the spec but the deployed Payments 4.0
-    // gateway rejects it ("Unrecognized field return_url"). Leave null so it's omitted from the
-    // request; the 3DS redirect comes from the charge response's `action.redirect_url`, and
-    // [cz.gopay.sdk.session.PaymentSession.handle3dsVerification] detects completion with
-    // [cz.gopay.sdk.GopaySDK.CHARGE_RETURN_URL].
-    @Json(name = "return_url") val returnUrl: String? = null
+    @Json(name = "payment_instrument") val paymentInstrument: PaymentChargeInstrument
 ) {
     companion object {
         fun cardToken(
             cardToken: String,
             browserData: BrowserData,
-            challengePreference: ChallengePreference? = null,
-            returnUrl: String? = null
+            challengePreference: ChallengePreference? = null
         ): ChargePaymentRequest = ChargePaymentRequest(
             paymentInstrument = PaymentChargeInstrument(
                 input = PaymentCardInput.cardToken(cardToken),
                 browserData = browserData,
                 challengePreference = challengePreference
-            ),
-            returnUrl = returnUrl
+            )
         )
 
         /**
@@ -194,15 +186,13 @@ data class ChargePaymentRequest(
         fun encryptedCard(
             payload: String,
             browserData: BrowserData,
-            challengePreference: ChallengePreference? = null,
-            returnUrl: String? = null
+            challengePreference: ChallengePreference? = null
         ): ChargePaymentRequest = ChargePaymentRequest(
             paymentInstrument = PaymentChargeInstrument(
                 input = PaymentCardInput.encryptedCard(payload),
                 browserData = browserData,
                 challengePreference = challengePreference
-            ),
-            returnUrl = returnUrl
+            )
         )
 
         fun googlePay(
@@ -211,8 +201,7 @@ data class ChargePaymentRequest(
             intermediateSigningKey: IntermediateSigningKey?,
             signedMessage: String,
             browserData: BrowserData,
-            challengePreference: ChallengePreference? = null,
-            returnUrl: String? = null
+            challengePreference: ChallengePreference? = null
         ): ChargePaymentRequest = ChargePaymentRequest(
             paymentInstrument = PaymentChargeInstrument(
                 input = PaymentCardInput.googlePay(
@@ -223,8 +212,7 @@ data class ChargePaymentRequest(
                 ),
                 browserData = browserData,
                 challengePreference = challengePreference
-            ),
-            returnUrl = returnUrl
+            )
         )
     }
 }

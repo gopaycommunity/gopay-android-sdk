@@ -222,9 +222,8 @@ class GopaySDK private constructor(
          * the payment with. Only without a usable one does it wait for this address instead, and
          * then your backend has to pass it as the payment's `callback.return_url`; the gateway
          * accepts only an absolute `http(s)` address there. The 3DS WebView intercepts any
-         * navigation that starts with the address it watches for and never loads it. It is not
-         * sent on the charge request, which the deployed gateway rejects with a request-level
-         * `return_url`. Mirrors `GopaySDK.chargeReturnURL` on iOS.
+         * navigation that starts with the address it watches for and never loads it. Mirrors
+         * `GopaySDK.chargeReturnURL` on iOS.
          */
         const val CHARGE_RETURN_URL: String = "https://gopay.com/sdk/charge-return"
 
