@@ -296,7 +296,7 @@ class CheckoutController {
             val redirect = response.action?.redirectUrl
             if (redirect != null && handledRedirects.add(redirect)) {
                 busyLabel = "Verifying with your bank…"
-                session.handle3dsVerification(activity, redirect)
+                session.handle3dsVerification(activity, redirect, response.returnUrl)
             }
 
             when (response.state) {

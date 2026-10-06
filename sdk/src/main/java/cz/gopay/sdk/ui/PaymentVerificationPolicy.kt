@@ -4,6 +4,7 @@ import android.content.Intent
 import android.webkit.WebViewClient
 import androidx.annotation.VisibleForTesting
 import cz.gopay.sdk.GopaySDK
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.URLDecoder
 
 /**
@@ -56,9 +57,30 @@ internal object PaymentVerificationPolicy {
     }
 
     /**
-     * @param url the navigation as a string. A navigation that starts with
-     *        [GopaySDK.CHARGE_RETURN_URL] is the ACS coming back, whatever the gateway appended
-     *        to it, and is answered before the scheme is looked at: the return URL is an `https`
+     * The address whose arrival ends the challenge: [returnUrl] in its canonical form when it is
+     * usable, otherwise [GopaySDK.CHARGE_RETURN_URL].
+     *
+     * Usable means an `http(s)` address that still has a host once parsed. Anything less is no
+     * answer at all: a blank one, a bare `https://` or one like `https://user@/r` would match
+     * every page of the challenge as a prefix and close it on its first navigation as answered.
+     *
+     * Canonical is what `HttpUrl` makes of it, which is also how the WebView reports a
+     * navigation: scheme and host in lower case, an international host in punycode, surrounding
+     * whitespace trimmed, the default port dropped and the path and query percent-encoded. A
+     * merchant's `HTTPS://Shop.Example/return` would otherwise never match the
+     * `https://shop.example/return` the ACS comes back to. iOS applies the same conditions
+     * through `URLComponents`.
+     */
+    fun completionUrlFor(returnUrl: String?): String =
+        returnUrl?.toHttpUrlOrNull()
+            ?.takeIf { it.host.isNotEmpty() }
+            ?.toString()
+            ?: GopaySDK.CHARGE_RETURN_URL
+
+    /**
+     * @param url the navigation as a string. A navigation that starts with the completion URL
+     *        (see [completionUrlFor]) is the ACS coming back, whatever the gateway appended to
+     *        it, and is answered before the scheme is looked at: the return URL is an `https`
      *        address, and letting it reach the web branch would load it as a page of the
      *        challenge. The same prefix test as on iOS.
      * @param scheme the navigation's scheme as the WebView parsed it, or null when it has none.
@@ -67,9 +89,17 @@ internal object PaymentVerificationPolicy {
      *        ACS embedded would otherwise be able to throw the user out of the payment on its
      *        own. A subframe is left to the WebView, which quietly declines a scheme it cannot
      *        load.
+     * @param returnUrl the `return_url` the charge response carried, the address the backend
+     *        created the payment with. Null, or one [completionUrlFor] cannot use, falls back to
+     *        [GopaySDK.CHARGE_RETURN_URL].
      */
-    fun navigationFor(url: String, scheme: String?, isForMainFrame: Boolean): Navigation = when {
-        url.startsWith(GopaySDK.CHARGE_RETURN_URL) -> Navigation.COMPLETE
+    fun navigationFor(
+        url: String,
+        scheme: String?,
+        isForMainFrame: Boolean,
+        returnUrl: String? = null
+    ): Navigation = when {
+        url.startsWith(completionUrlFor(returnUrl)) -> Navigation.COMPLETE
         scheme?.lowercase() in WEB_SCHEMES -> Navigation.LOAD
         !isForMainFrame -> Navigation.LOAD
         else -> Navigation.HAND_OFF

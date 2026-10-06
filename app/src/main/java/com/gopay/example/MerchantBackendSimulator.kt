@@ -81,8 +81,10 @@ object MerchantBackendSimulator {
             .put(
                 "callback", JSONObject()
                     .put("notification_url", "https://example.com/gopay/notify")
-                    // The SDK's 3DS WebView finishes the challenge when the ACS comes back to
-                    // this address. The gateway accepts only an absolute http(s) return_url.
+                    // The charge response echoes this as return_url, and the demo passes it to
+                    // handle3dsVerification. A real backend puts its own address here; the
+                    // SDK constant is also what the WebView falls back to without one. The
+                    // gateway accepts only an absolute http(s) return_url.
                     .put("return_url", GopaySDK.CHARGE_RETURN_URL)
             )
         conn.outputStream.use { it.write(body.toString().toByteArray()) }

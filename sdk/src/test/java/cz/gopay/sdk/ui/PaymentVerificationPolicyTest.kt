@@ -81,6 +81,168 @@ class PaymentVerificationPolicyTest {
         )
     }
 
+    private val merchantReturnUrl = "https://shop.example.com/gopay/return"
+
+    @Test
+    fun `the return URL the charge response carried completes the challenge`() {
+        listOf(
+            merchantReturnUrl,
+            "$merchantReturnUrl?id=123&state=PAID"
+        ).forEach { url ->
+            assertEquals(
+                "$url must complete the challenge",
+                Navigation.COMPLETE,
+                PaymentVerificationPolicy.navigationFor(
+                    url, scheme = "https", isForMainFrame = true, returnUrl = merchantReturnUrl
+                )
+            )
+        }
+    }
+
+    @Test
+    fun `without a return URL the SDK constant completes the challenge`() {
+        assertEquals(
+            Navigation.COMPLETE,
+            PaymentVerificationPolicy.navigationFor(
+                GopaySDK.CHARGE_RETURN_URL,
+                scheme = "https",
+                isForMainFrame = true,
+                returnUrl = null
+            )
+        )
+        assertEquals(
+            Navigation.LOAD,
+            PaymentVerificationPolicy.navigationFor(
+                merchantReturnUrl, scheme = "https", isForMainFrame = true, returnUrl = null
+            )
+        )
+    }
+
+    @Test
+    fun `the return URL from the response wins over the SDK constant`() {
+        // The ACS comes back only to the address the payment was created with, so the constant
+        // is just another page here.
+        assertEquals(
+            Navigation.LOAD,
+            PaymentVerificationPolicy.navigationFor(
+                GopaySDK.CHARGE_RETURN_URL,
+                scheme = "https",
+                isForMainFrame = true,
+                returnUrl = merchantReturnUrl
+            )
+        )
+    }
+
+    @Test
+    fun `an unusable return URL falls back to the SDK constant`() {
+        // Blank, or a scheme with no host once parsed, would match every page of the challenge
+        // as a prefix and close it as answered on its first navigation. The iOS cases, plus
+        // HTTPS:// in upper case.
+        listOf(
+            "",
+            "   ",
+            "gopaysdk://charge-return",
+            "https://",
+            "HTTPS://",
+            "shop.example.com/return",
+            "https://:443",
+            "https://user@/r",
+            "https://@/r"
+        ).forEach { returnUrl ->
+            assertEquals(
+                "'$returnUrl' must fall back to the constant",
+                GopaySDK.CHARGE_RETURN_URL,
+                PaymentVerificationPolicy.completionUrlFor(returnUrl)
+            )
+            assertEquals(
+                Navigation.COMPLETE,
+                PaymentVerificationPolicy.navigationFor(
+                    GopaySDK.CHARGE_RETURN_URL,
+                    scheme = "https",
+                    isForMainFrame = true,
+                    returnUrl = returnUrl
+                )
+            )
+            assertEquals(
+                "'$returnUrl' must not complete an ordinary page",
+                Navigation.LOAD,
+                PaymentVerificationPolicy.navigationFor(
+                    "https://3ds.example.com/challenge",
+                    scheme = "https",
+                    isForMainFrame = true,
+                    returnUrl = returnUrl
+                )
+            )
+        }
+    }
+
+    @Test
+    fun `a return URL in another case matches the navigation the WebView reports`() {
+        // The WebView reports scheme and host in lower case, so the return URL is compared in
+        // the same canonical form.
+        assertEquals(
+            "https://shop.example/return",
+            PaymentVerificationPolicy.completionUrlFor("HTTPS://Shop.Example/return")
+        )
+        assertEquals(
+            Navigation.COMPLETE,
+            PaymentVerificationPolicy.navigationFor(
+                "https://shop.example/return?id=1",
+                scheme = "https",
+                isForMainFrame = true,
+                returnUrl = "HTTPS://Shop.Example/return"
+            )
+        )
+        assertEquals(
+            merchantReturnUrl,
+            PaymentVerificationPolicy.completionUrlFor(merchantReturnUrl)
+        )
+    }
+
+    @Test
+    fun `a usable return URL keeps its user info and loses whitespace and the default port`() {
+        assertEquals(
+            "https://user@shop.example/r",
+            PaymentVerificationPolicy.completionUrlFor("https://user@Shop.Example/r")
+        )
+        assertEquals(
+            "https://shop.example/r",
+            PaymentVerificationPolicy.completionUrlFor("https://Shop.Example:443/r")
+        )
+        // HttpUrl trims surrounding whitespace, so a trailing space does not make the address
+        // unusable; it is taken without it.
+        assertEquals(
+            "https://shop.example/r",
+            PaymentVerificationPolicy.completionUrlFor("https://shop.example/r ")
+        )
+        assertEquals(
+            Navigation.COMPLETE,
+            PaymentVerificationPolicy.navigationFor(
+                "https://shop.example/r?id=1",
+                scheme = "https",
+                isForMainFrame = true,
+                returnUrl = "https://shop.example/r "
+            )
+        )
+    }
+
+    @Test
+    fun `an international host is matched in the punycode the WebView reports`() {
+        assertEquals(
+            "https://obchod.xn--z-cia/r",
+            PaymentVerificationPolicy.completionUrlFor("https://obchod.čz/r")
+        )
+        assertEquals(
+            Navigation.COMPLETE,
+            PaymentVerificationPolicy.navigationFor(
+                "https://obchod.xn--z-cia/r?id=1",
+                scheme = "https",
+                isForMainFrame = true,
+                returnUrl = "https://obchod.čz/r"
+            )
+        )
+    }
+
     @Test
     fun `another page on the return host is an ordinary page`() {
         listOf(

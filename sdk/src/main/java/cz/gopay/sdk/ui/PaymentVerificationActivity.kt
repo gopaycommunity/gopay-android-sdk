@@ -18,6 +18,7 @@ internal class PaymentVerificationActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_REDIRECT_URL = "redirect_url"
+        const val EXTRA_RETURN_URL = "return_url"
     }
 
     /** Set once the challenge has actually drawn; see [reportLoadFailure]. */
@@ -124,6 +125,9 @@ internal class PaymentVerificationActivity : ComponentActivity() {
             return
         }
 
+        // Optional: without it the policy watches for GopaySDK.CHARGE_RETURN_URL.
+        val returnUrl = intent.getStringExtra(EXTRA_RETURN_URL)
+
         val progressBar = ProgressBar(this).apply {
             isIndeterminate = true
             visibility = View.VISIBLE
@@ -144,7 +148,8 @@ internal class PaymentVerificationActivity : ComponentActivity() {
                         PaymentVerificationPolicy.navigationFor(
                             url = url.toString(),
                             scheme = url.scheme,
-                            isForMainFrame = request.isForMainFrame
+                            isForMainFrame = request.isForMainFrame,
+                            returnUrl = returnUrl
                         )
                     ) {
                         PaymentVerificationPolicy.Navigation.COMPLETE -> {

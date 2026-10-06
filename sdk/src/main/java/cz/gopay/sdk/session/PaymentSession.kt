@@ -410,8 +410,20 @@ class PaymentSession internal constructor(
      *
      * [redirectUrl] has to be an `http(s)` address; anything else, including an empty string,
      * throws [GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE] before the challenge is opened.
+     *
+     * @param returnUrl the [ChargePaymentResponse.returnUrl] of the response [redirectUrl] came
+     *        from: the address your backend created the payment with, as `callback.return_url`.
+     *        The challenge counts as answered once the WebView navigates to an address starting
+     *        with it. When it is null, blank or not an `http(s)` address with a host, the SDK
+     *        waits for [cz.gopay.sdk.GopaySDK.CHARGE_RETURN_URL] instead, and then the payment
+     *        has to have been created with that address. It should carry no fragment (`#…`):
+     *        what the gateway appends lands in front of it, and the address no longer matches.
      */
-    suspend fun handle3dsVerification(activity: Activity, redirectUrl: String) {
+    suspend fun handle3dsVerification(
+        activity: Activity,
+        redirectUrl: String,
+        returnUrl: String? = null
+    ) {
         // Checked here rather than in the activity: the WebView is never asked to decide about
         // the URL it is handed, so a scheme it cannot load would surface only as an error with
         // nothing to attribute it to, and the caller would wait for a challenge that never
@@ -434,6 +446,7 @@ class PaymentSession internal constructor(
                 activity.startActivity(
                     Intent(activity, PaymentVerificationActivity::class.java)
                         .putExtra(PaymentVerificationActivity.EXTRA_REDIRECT_URL, redirectUrl)
+                        .putExtra(PaymentVerificationActivity.EXTRA_RETURN_URL, returnUrl)
                 )
             }
             deferred.await()

@@ -97,6 +97,8 @@ fun SDKTestScreen() {
     var cardToken by remember { mutableStateOf("") }
     var jwe by remember { mutableStateOf("") }
     var pending3dsUrl by remember { mutableStateOf<String?>(null) }
+    // The return_url of the response pending3dsUrl came from; handle3dsVerification watches for it.
+    var pending3dsReturnUrl by remember { mutableStateOf<String?>(null) }
     var responseText by remember { mutableStateOf("Ready.") }
     var busyLabel by remember { mutableStateOf<String?>(null) }
 
@@ -184,6 +186,7 @@ fun SDKTestScreen() {
                     log("// poll $poll -> ${resp.state}\nAction: ${action.actionType} (${action.state})\nRedirect: ${action.redirectUrl ?: "N/A"}")
                     action.redirectUrl?.let {
                         pending3dsUrl = it
+                        pending3dsReturnUrl = resp.returnUrl
                         log("3DS required — tap \"Handle 3DS verification\" now, the window is short.")
                     }
                     true
@@ -234,7 +237,10 @@ fun SDKTestScreen() {
             "Action: ${it.actionType} (${it.state})\nRedirect: ${it.redirectUrl ?: "N/A"}"
         } ?: "Action: none"
         log("// $callLabel -> ChargePaymentResponse\nCharge ID: ${response.id}\nState: ${response.state}\n$actionInfo")
-        response.action?.redirectUrl?.let { pending3dsUrl = it }
+        response.action?.redirectUrl?.let {
+            pending3dsUrl = it
+            pending3dsReturnUrl = response.returnUrl
+        }
         if (pending3dsUrl == null) watchForAction(s)
         else log("3DS required — tap \"Handle 3DS verification\" to continue.")
     }
@@ -392,7 +398,10 @@ fun SDKTestScreen() {
                             "Action: ${it.actionType} (${it.state})\nRedirect: ${it.redirectUrl ?: "N/A"}"
                         } ?: "Action: none"
                         log("// getChargeState() -> ChargePaymentResponse\nState: ${resp.state}\nCharge ID: ${resp.id}\n$actionInfo")
-                        resp.action?.redirectUrl?.let { pending3dsUrl = it }
+                        resp.action?.redirectUrl?.let {
+                            pending3dsUrl = it
+                            pending3dsReturnUrl = resp.returnUrl
+                        }
                     }
                 }
 
@@ -406,7 +415,7 @@ fun SDKTestScreen() {
                         // dismissed one the link stays armed, so the same challenge can be
                         // tried again, which the SDK describes as the right answer to a
                         // challenge that never opened.
-                        s.handle3dsVerification(context as Activity, url)
+                        s.handle3dsVerification(context as Activity, url, pending3dsReturnUrl)
                         pending3dsUrl = null
                         val finalState = s.getChargeState()
                         log("// getChargeState() after 3DS -> ChargePaymentResponse\nState: ${finalState.state}\nCharge ID: ${finalState.id}")

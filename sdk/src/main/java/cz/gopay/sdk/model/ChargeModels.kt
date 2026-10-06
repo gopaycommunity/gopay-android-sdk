@@ -274,19 +274,22 @@ data class ChargePaymentResponse(
     val id: String,
     val state: ChargeState,
     /**
-     * Where the gateway sends the browser once verification finishes, when it tells us at all.
+     * The address the backend created the payment with (`callback.return_url`), where the
+     * browser goes once verification finishes. Pass it to
+     * [cz.gopay.sdk.session.PaymentSession.handle3dsVerification] together with
+     * `action.redirectUrl`, so the challenge closes when the ACS comes back to it.
      *
-     * Nullable because the deployed gateway omits it: the charge block nested in
-     * `GET /payments/{payment_id}` arrives as just `{id, state, href}`, and the charge endpoints
-     * can leave it out too. The type says so rather than substituting an empty string, which
+     * The charge endpoints return it. It is nullable because the charge block nested in
+     * `GET /payments/{payment_id}` arrives as just `{id, state, href}`, without it. The type
+     * says so rather than substituting an empty string, which
      * silently broke the obvious use: `url.startsWith(charge.returnUrl)` matches every URL
      * against `""`, so the first navigation of a challenge page reads as a finished
      * verification. For the same reason a blank `return_url` from the gateway decodes as null
      * too, and is reported like an omitted one.
      *
-     * If you run your own WebView, treat null as "the gateway did not say" and use
-     * [cz.gopay.sdk.GopaySDK.CHARGE_RETURN_URL], which the SDK's own
-     * [cz.gopay.sdk.session.PaymentSession.handle3dsVerification] watches for.
+     * Without it [cz.gopay.sdk.session.PaymentSession.handle3dsVerification] waits for
+     * [cz.gopay.sdk.GopaySDK.CHARGE_RETURN_URL], and the payment then has to have been created
+     * with that address. If you run your own WebView, do the same.
      */
     @Json(name = "return_url") val returnUrl: String? = null,
     @Json(name = "payment_instrument") val paymentInstrument: PaymentInstrumentData? = null,
