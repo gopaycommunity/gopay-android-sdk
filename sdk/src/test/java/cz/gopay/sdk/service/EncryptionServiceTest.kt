@@ -1,7 +1,6 @@
 package cz.gopay.sdk.service
 
 import cz.gopay.sdk.model.CardData
-import cz.gopay.sdk.model.CardJwePayload
 import cz.gopay.sdk.model.JweHeader
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.util.Base64Utils
@@ -12,16 +11,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.security.KeyPair
-import java.security.KeyPairGenerator
-import java.security.interfaces.RSAPrivateKey
-import java.security.interfaces.RSAPublicKey
-import java.security.spec.MGF1ParameterSpec
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.OAEPParameterSpec
-import javax.crypto.spec.PSource
-import javax.crypto.spec.SecretKeySpec
 
 /**
  * Verifies [EncryptionService] produces a spec-compliant RFC 7516 JWE (RSA-OAEP-256 + A256GCM).
@@ -33,7 +22,7 @@ import javax.crypto.spec.SecretKeySpec
 class EncryptionServiceTest {
 
     private lateinit var service: EncryptionService
-    private lateinit var keyPair: KeyPair
+    private lateinit var keys: TestJwe
     private lateinit var jwk: Jwk
 
     private val cardData = CardData(
@@ -43,25 +32,18 @@ class EncryptionServiceTest {
         cvv = "123"
     )
     private val testClientId = "merchant-client-001"
+    private val issuedAt = 1_790_789_657L
 
     @Before
     fun setUp() {
         service = EncryptionService()
-        keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
-        val pub = keyPair.public as RSAPublicKey
-        jwk = Jwk(
-            kty = "RSA",
-            kid = "test-key-id-1",
-            use = "enc",
-            alg = "RSA-OAEP-256",
-            n = Base64Utils.encodeUrlSafe(pub.modulus.toByteArray()),
-            e = Base64Utils.encodeUrlSafe(pub.publicExponent.toByteArray())
-        )
+        keys = TestJwe()
+        jwk = keys.jwk
     }
 
     @Test
     fun `createJweEncryptedPayload produces five compact segments`() {
-        val jwe = service.createJweEncryptedPayload(cardData, jwk, testClientId)
+        val jwe = service.createJweEncryptedPayload(cardData, jwk, testClientId, issuedAt)
 
         val parts = jwe.split(".")
         assertEquals("JWE compact serialization must have 5 segments", 5, parts.size)
@@ -72,7 +54,7 @@ class EncryptionServiceTest {
 
     @Test
     fun `JWE header declares the expected algorithms and kid`() {
-        val jwe = service.createJweEncryptedPayload(cardData, jwk, testClientId)
+        val jwe = service.createJweEncryptedPayload(cardData, jwk, testClientId, issuedAt)
         val headerJson = String(Base64Utils.decodeUrlSafe(jwe.split(".")[0]), Charsets.UTF_8)
 
         val header = JsonUtils.fromJson<JweHeader>(headerJson)
@@ -85,41 +67,25 @@ class EncryptionServiceTest {
 
     @Test
     fun `JWE round-trips back to the original card data`() {
-        val jwe = service.createJweEncryptedPayload(cardData, jwk, testClientId)
-        val parts = jwe.split(".")
+        val jwe = service.createJweEncryptedPayload(cardData, jwk, testClientId, issuedAt)
 
-        val encodedHeader = parts[0]
-        val encryptedKey = Base64Utils.decodeUrlSafe(parts[1])
-        val iv = Base64Utils.decodeUrlSafe(parts[2])
-        val ciphertext = Base64Utils.decodeUrlSafe(parts[3])
-        val authTag = Base64Utils.decodeUrlSafe(parts[4])
-
-        // 1) Recover the content encryption key via RSA-OAEP-256.
-        val cek = decryptCek(encryptedKey)
+        val cek = keys.decryptCek(Base64Utils.decodeUrlSafe(jwe.split(".")[1]))
         assertEquals("CEK must be 256 bits", 32, cek.size)
-
-        // 2) Decrypt the content with AES-256-GCM, using the encoded header as AAD (RFC 7516 §5.1).
-        val aes = Cipher.getInstance("AES/GCM/NoPadding")
-        aes.init(Cipher.DECRYPT_MODE, SecretKeySpec(cek, "AES"), GCMParameterSpec(128, iv))
-        aes.updateAAD(encodedHeader.toByteArray(Charsets.UTF_8))
-        val plaintext = String(aes.doFinal(ciphertext + authTag), Charsets.UTF_8)
-
-        val decrypted = JsonUtils.fromJson<CardJwePayload>(plaintext)
-        assertNotNull("Payload must deserialize", decrypted)
-        assertEquals("card_pan", cardData.cardPan, decrypted!!.cardPan)
+        val decrypted = keys.decrypt(jwe)
+        assertEquals("card_pan", cardData.cardPan, decrypted.cardPan)
         assertEquals("exp_month", cardData.expMonth, decrypted.expMonth)
         assertEquals("exp_year", cardData.expYear, decrypted.expYear)
         assertEquals("cvv", cardData.cvv, decrypted.cvv)
         assertEquals("client_id", testClientId, decrypted.clientId)
-        assertTrue("iat must be a recent Unix timestamp", decrypted.iat > 0)
-        assertEquals("exp must be iat + 600s", decrypted.iat + 600L, decrypted.exp)
+        assertEquals("iat must be the time it was given", issuedAt, decrypted.iat)
+        assertEquals("exp must be iat + 600s", issuedAt + 600L, decrypted.exp)
         assertTrue("jti must have android- prefix", decrypted.jti.startsWith("android-"))
     }
 
     @Test
     fun `each call uses fresh randomness so output differs`() {
-        val first = service.createJweEncryptedPayload(cardData, jwk, testClientId)
-        val second = service.createJweEncryptedPayload(cardData, jwk, testClientId)
+        val first = service.createJweEncryptedPayload(cardData, jwk, testClientId, issuedAt)
+        val second = service.createJweEncryptedPayload(cardData, jwk, testClientId, issuedAt)
 
         val firstParts = first.split(".")
         val secondParts = second.split(".")
@@ -134,18 +100,6 @@ class EncryptionServiceTest {
     @Test(expected = IllegalArgumentException::class)
     fun `malformed JWK modulus throws IllegalArgumentException`() {
         val badJwk = jwk.copy(n = "this is not valid base64url @@@")
-        service.createJweEncryptedPayload(cardData, badJwk, testClientId)
-    }
-
-    private fun decryptCek(encryptedKey: ByteArray): ByteArray {
-        val rsa = Cipher.getInstance("RSA/ECB/OAEPPadding")
-        val oaep = OAEPParameterSpec(
-            "SHA-256",
-            "MGF1",
-            MGF1ParameterSpec.SHA256,
-            PSource.PSpecified.DEFAULT
-        )
-        rsa.init(Cipher.DECRYPT_MODE, keyPair.private as RSAPrivateKey, oaep)
-        return rsa.doFinal(encryptedKey)
+        service.createJweEncryptedPayload(cardData, badJwk, testClientId, issuedAt)
     }
 }

@@ -13,7 +13,7 @@ import retrofit2.Response
  * - on HTTP error, throws [GopaySDKException] with [HttpErrorContext] populated from the
  *   request and error body.
  *
- * Used by [cz.gopay.sdk.session.PaymentSession] and [cz.gopay.sdk.service.PublicKeyCache] so
+ * Used by [cz.gopay.sdk.session.PaymentSession] and [cz.gopay.sdk.service.CardEncryption] so
  * every API error in the SDK has the same shape.
  *
  * @param action short verb phrase used in error messages, e.g. `"charge payment"`.

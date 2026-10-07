@@ -2,6 +2,7 @@ package cz.gopay.sdk.ui
 
 import android.app.Activity
 import android.view.WindowManager
+import androidx.annotation.VisibleForTesting
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,6 +38,7 @@ import cz.gopay.sdk.ui.utils.CvvMaskedVisualTransformation
 import cz.gopay.sdk.ui.utils.CvvValidator
 import cz.gopay.sdk.ui.utils.ExpirationDateInputValidator
 import cz.gopay.sdk.ui.utils.ExpirationDateVisualTransformation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
@@ -127,8 +129,11 @@ private fun parseExpirationDate(expirationDate: String): Pair<Int, Int>? {
  *
  * Security:
  * - In non-debug builds, the form sets `FLAG_SECURE` on the window to prevent screen capture.
- * - Card data is validated locally and JWE-encrypted using the merchant's public key (fetched
- *   from `GET /cards/public-key` with shareable-key auth and cached in memory).
+ * - Card data is validated locally and JWE-encrypted using the merchant's public key, fetched
+ *   from `GET /cards/public-key` with shareable-key auth on every submit. The JWE's issue time
+ *   is the gateway's, read from that response's `Date` header, not the device clock. Without a
+ *   usable header the device clock is used, with a warning in the debug log, as in
+ *   [GopaySDK.encryptCardData].
  *
  * Localization: field labels and placeholders default to the locale resolved from [locale] /
  * [localeStrings] (falling back to the SDK-wide default, then the device language, then Czech).
@@ -327,13 +332,15 @@ fun PaymentCardForm(
     }
 }
 
-private suspend fun submitCardDataImpl(
+@VisibleForTesting
+internal suspend fun submitCardDataImpl(
     cardNumberDigits: String,
     expirationDateDigits: String,
     cvv: String,
     onEncryptionComplete: (CardEncryptionResult) -> Unit,
     onValidationError: ((CardValidator.CardValidationResult) -> Unit)?,
-    resetForm: () -> Unit
+    resetForm: () -> Unit,
+    encrypt: suspend (CardData) -> String = { GopaySDK.getInstance().encryptCardData(it) }
 ): CardEncryptionResult {
     return try {
         val validation = CardValidator.validateCard(
@@ -363,11 +370,15 @@ private suspend fun submitCardDataImpl(
             cvv = cvv
         )
 
-        val jwe = GopaySDK.getInstance().encryptCardData(cardData)
+        val jwe = encrypt(cardData)
         val result = CardEncryptionResult.Success(jwe)
         resetForm()
         onEncryptionComplete(result)
         result
+    } catch (e: CancellationException) {
+        // The host left the screen or cancelled the submit while the key was being fetched; that
+        // is not a failed encryption, so it must reach the caller's scope instead of the callback.
+        throw e
     } catch (e: Exception) {
         val result = CardEncryptionResult.Error(
             message = e.message ?: "Card encryption failed",

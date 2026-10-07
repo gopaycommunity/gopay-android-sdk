@@ -112,7 +112,8 @@ This document provides a comprehensive reference for all error codes used in the
 ### AUTH_011: Shareable Key Missing
 - **Description**: `clientId` / `shareableKey` are absent from `GopayConfig` but required by the requested operation
 - **Common Causes**:
-  - SDK initialized without them, then a public-resource endpoint was called (`GET /cards/public-key`, or `GET /cards/browser-data`, which every charge fetches first)
+  - SDK initialized without them, then a card was encrypted (`encryptCardData` / `PaymentCardForm` fetch `GET /cards/public-key` every time); no request is sent
+  - A charge, which first fetches `GET /cards/browser-data` with the same credentials; the charge is not sent
 - **Developer Action**:
   - Supply both in `GopayConfig` — they are safe to embed in the app
 

@@ -37,7 +37,8 @@ forward; the backend submits the JWE and gets back the card token.
   auto-init. `payment_secret` and JWT live for the lifetime of the session and are wiped on
   `close()`.
 - Managed Google Pay and 3DS flows directly on the session.
-- JWE card encryption using the merchant public key (cached in-memory).
+- JWE card encryption using the merchant public key, fetched for every encryption and stamped
+  with the gateway's time.
 - Compose `PaymentCardForm` composable that emits a JWE.
 - Localized form labels in 20 languages (device language, falling back to Czech), with per-form
   overrides and custom locale registration.
@@ -185,7 +186,7 @@ when you want to log what goes out; pass its result to the charge unchanged.
 | `getPaymentSession(paymentId)` | Looks up a live session by id; `null` if absent. |
 | `closeAllPaymentSessions()` | Closes every session — wipes secrets and tokens. |
 | `getPublicEncryptionKey(forceRefresh = false)` | Fetches the merchant JWK via shareable-key auth. In-memory cache. |
-| `encryptCardData(CardData)` | Validates the card, fetches the JWK if needed, returns a JWE string. |
+| `encryptCardData(CardData)` | Validates the card, fetches the JWK, returns a JWE string. |
 | `isGooglePayAvailable(activity, info)` | Checks Google Pay readiness on the device using the methods from a `GooglePayInfoResponse`. |
 
 ## `PaymentSession` API
@@ -233,6 +234,12 @@ val jwe: String = GopaySDK.getInstance().encryptCardData(
 )
 // POST `jwe` to your backend; backend returns a card_token.
 ```
+
+Every encryption, here and in `PaymentCardForm`, fetches the key from `GET /cards/public-key`
+again; nothing is cached. The JWE's `iat` is the gateway's time, read from that response's
+`Date` header, and `exp` is 600 seconds later, so a device with a wrong clock still produces a
+JWE the gateway accepts. If the header is missing or unreadable, the device clock is used, with
+a warning in Logcat while `GopayConfig.debug` is on; the encryption does not fail over it.
 
 ### Charge directly with the encrypted card
 
@@ -655,7 +662,7 @@ repo root, then run the app from Android Studio or with `./gradlew :app:installD
 - Neither the `payment_secret` nor the JWT is ever written to disk. Both live in memory inside
   `PaymentSession` and are wiped on `close()`. The SDK no longer reads or writes
   `SharedPreferences`.
-- The merchant public key is cached only in memory; clears on process death.
+- The merchant public key is not cached: it is fetched for every encryption and never stored.
 - `PaymentCardForm` enables `FLAG_SECURE` on the host window in non-debug builds to block
   screenshots of card data.
 - Card data lives in memory only while the form needs it: the form state is cleared after a

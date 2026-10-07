@@ -14,9 +14,9 @@ import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.GooglePayInfoResponse
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.modules.network.NetworkManager
-import cz.gopay.sdk.service.EncryptionService
+import cz.gopay.sdk.modules.network.apiCall
+import cz.gopay.sdk.service.CardEncryption
 import cz.gopay.sdk.service.GooglePayHelper
-import cz.gopay.sdk.service.PublicKeyCache
 import cz.gopay.sdk.session.PaymentSession
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
@@ -51,7 +51,7 @@ class GopaySDK private constructor(
     private val networkManager =
         NetworkManager(config, sslSocketFactory, trustManager, certificatePinner)
 
-    private val encryptionService = EncryptionService()
+    private val cardEncryption = CardEncryption(publicApi = { networkManager.publicApi })
 
     /** Registry of live payment sessions keyed by `payment_id`. Supports concurrent payments. */
     private val sessions: ConcurrentHashMap<String, PaymentSession> = ConcurrentHashMap()
@@ -62,10 +62,6 @@ class GopaySDK private constructor(
             paymentApiBuilder = { provider -> networkManager.buildPaymentApi(provider) },
             publicApi = { networkManager.publicApi }
         )
-
-    private val publicKeyCache: PublicKeyCache by lazy {
-        PublicKeyCache(networkManager.publicApi)
-    }
 
     /** Whether the SDK was initialized in debug mode. */
     fun isDebugEnabled(): Boolean = config.debug
@@ -129,20 +125,22 @@ class GopaySDK private constructor(
     /**
      * Fetches the merchant's encryption JWK from `GET /cards/public-key` using the
      * `shareable_key` basic auth scheme. Requires `clientId` and `shareableKey` to be set on
-     * [GopayConfig]. The key is cached in memory only.
+     * [GopayConfig]. Every call fetches the key again; nothing is cached.
      *
-     * @param forceRefresh Bypass the in-memory cache and fetch fresh.
+     * @param forceRefresh Ignored: the key is no longer cached, so every call is a fresh fetch.
      */
     suspend fun getPublicEncryptionKey(forceRefresh: Boolean = false): Jwk =
-        publicKeyCache.get(forceRefresh)
+        apiCall("fetch public key") { networkManager.publicApi.getPublicKey() }
 
     /**
      * Encrypts card data into a JWE for server-side tokenization.
      *
      * The mobile SDK never calls `POST /cards/tokens` itself (that endpoint requires merchant
      * credentials). Instead, the merchant backend submits the returned JWE on the device's
-     * behalf. The public key is fetched via [getPublicEncryptionKey] and cached in memory; card
-     * data is never persisted.
+     * behalf. Every call fetches the public key from `GET /cards/public-key` again, and the
+     * JWE's `iat` and `exp` follow the gateway's clock, read from that response's `Date` header,
+     * not the device's. Without a usable header the device clock is used, with a warning in
+     * Logcat while [GopayConfig.debug] is on. Neither the key nor card data is persisted.
      *
      * @return JWE compact serialization (RFC 7516) ready to send to the merchant backend.
      * @throws IllegalArgumentException if [cardData] fails basic validation.
@@ -150,11 +148,7 @@ class GopaySDK private constructor(
      */
     suspend fun encryptCardData(cardData: CardData): String {
         validateCardData(cardData)
-        val jwk = publicKeyCache.get()
-        val clientId = requireNotNull(config.clientId) {
-            "GopayConfig.clientId must be set to encrypt card data"
-        }
-        return encryptionService.createJweEncryptedPayload(cardData, jwk, clientId)
+        return cardEncryption.encrypt(cardData, config.clientId)
     }
 
     /**

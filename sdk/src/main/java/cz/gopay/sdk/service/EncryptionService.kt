@@ -25,8 +25,9 @@ import javax.crypto.spec.PSource
  * Implements RFC 7516 JWE standard with RSA-OAEP-256 key encryption and A256GCM content encryption
  * Compatible with Nimbus JOSE+JWT library used by GoPay servers.
  *
- * The JWK is supplied at call time — fetched in-memory from `GET /cards/public-key` by
- * [cz.gopay.sdk.service.PublicKeyCache] — and never persisted by the SDK.
+ * The JWK and the issue time are supplied at call time: [CardEncryption] fetches the key from
+ * `GET /cards/public-key` for every encryption and takes the time from that response's `Date`
+ * header. Neither is persisted by the SDK.
  */
 class EncryptionService {
 
@@ -43,8 +44,15 @@ class EncryptionService {
     /**
      * Creates a JWE encrypted payload using the provided JWK. The merchant backend submits the
      * returned JWE to `POST /cards/tokens` with merchant credentials.
+     *
+     * @param issuedAt the JWE `iat` in Unix seconds; `exp` is 600 seconds later.
      */
-    fun createJweEncryptedPayload(cardData: CardData, jwk: Jwk, clientId: String): String {
+    fun createJweEncryptedPayload(
+        cardData: CardData,
+        jwk: Jwk,
+        clientId: String,
+        issuedAt: Long = System.currentTimeMillis() / 1000L
+    ): String {
         val publicKey = jwkToPublicKey(jwk)
 
         val jweHeader = JweHeader(kid = jwk.kid)
@@ -56,7 +64,6 @@ class EncryptionService {
         val encryptedKey = encryptContentEncryptionKey(cek, publicKey)
         val iv = generateInitializationVector()
 
-        val issuedAt = System.currentTimeMillis() / 1000L
         val payload = CardJwePayload(
             cardPan = cardData.cardPan,
             expMonth = cardData.expMonth,
