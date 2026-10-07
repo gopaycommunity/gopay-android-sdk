@@ -104,8 +104,8 @@ class MyApplication : Application() {
 ```
 
 `clientId` and `shareableKey` are needed to charge: every charge first fetches the browser data
-under the shareable key (see below). They are also what `getPublicEncryptionKey()`,
-`encryptCardData()` and `PaymentCardForm` use. Without them a charge fails with
+under the shareable key (see below). They are also what `encryptCardData()` and
+`PaymentCardForm` use. Without them a charge fails with
 `AUTH_SHAREABLE_KEY_MISSING` before anything is sent.
 
 ### 3. Start a session and charge
@@ -185,7 +185,6 @@ when you want to log what goes out; pass its result to the charge unchanged.
 | `startPaymentSession(paymentId, paymentSecret, scope?)` | Eagerly authenticates and returns a [`PaymentSession`](sdk/src/main/java/cz/gopay/sdk/session/PaymentSession.kt). Throws `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` if one is already live for the same `paymentId`. |
 | `getPaymentSession(paymentId)` | Looks up a live session by id; `null` if absent. |
 | `closeAllPaymentSessions()` | Closes every session — wipes secrets and tokens. |
-| `getPublicEncryptionKey(forceRefresh = false)` | Fetches the merchant JWK via shareable-key auth. In-memory cache. |
 | `encryptCardData(CardData)` | Validates the card, fetches the JWK, returns a JWE string. |
 | `isGooglePayAvailable(activity, info)` | Checks Google Pay readiness on the device using the methods from a `GooglePayInfoResponse`. |
 
@@ -495,7 +494,8 @@ the iOS SDK reserves the row's label height the same way.
 
 `PaymentCardFormTheme` in 2.0 is a new set of parameters. The composed `TextStyle` values are gone,
 so every call site is a compile error rather than a silent change of appearance — deliberately, as
-two parameters kept their names and changed their meaning.
+two parameters kept their names and changed their meaning. The last row is the card encryption
+API 2.0 took away.
 
 | 1.x | 2.0 |
 |---|---|
@@ -512,6 +512,7 @@ two parameters kept their names and changed their meaning.
 | `fieldSpacing` (gap between the rows) | `groupSpacing` — **the meaning moved** |
 | `groupSpacing` (gap between expiry and CVV) | `groupSpacing` — one value now covers both gaps |
 | the hard-coded `4.dp` under a label | `fieldSpacing` — **the name is reused for a new meaning** |
+| `getPublicEncryptionKey()`, `EncryptionService`, `Jwk`, `JweHeader` | Gone or internal: a key fetched ahead of time, or a JWE built outside the SDK, would carry the device's clock. Call `encryptCardData` or use `PaymentCardForm`. |
 
 Eight parameters that 2.0 carried in an earlier preview are gone again, because rendering them
 would mean painting the field rather than asking the platform for it. Nothing replaces them:
@@ -625,7 +626,7 @@ Every API call may throw `GopaySDKException` with a structured error code (`AUTH
 | `AUTH_PAYMENT_TOKEN_EXPIRED` | JWT still rejected after a single re-auth retry — fetch fresh creds from backend |
 | `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` | `startPaymentSession` called for a `paymentId` that already has a live session |
 | `AUTH_PAYMENT_SESSION_CLOSED` | API call on a session after `close()`; a charge is refused this way before the browser data is fetched |
-| `AUTH_SHAREABLE_KEY_MISSING` | `charge(...)`, `encryptCardData` or `getPublicEncryptionKey` called without `clientId`+`shareableKey` |
+| `AUTH_SHAREABLE_KEY_MISSING` | `charge(...)`, `encryptCardData` or `PaymentCardForm` called without `clientId`+`shareableKey` |
 | `PAYMENT_GOOGLE_PAY_IN_PROGRESS` | A second Google Pay sheet attempted while one is visible |
 | `PAYMENT_VERIFICATION_IN_PROGRESS` | A second 3DS WebView attempted while one is open |
 | `PAYMENT_VERIFICATION_UNREACHABLE` | The 3DS challenge never reached the user: the page would not load, e.g. the redirect URL is dead or is not a web address, or no app took the hand-off |

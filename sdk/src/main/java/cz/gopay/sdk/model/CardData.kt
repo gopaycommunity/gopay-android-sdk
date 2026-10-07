@@ -40,7 +40,7 @@ internal data class CardJwePayload(
 }
 
 /** JWE header structure (RFC 7516 §4) emitted by [cz.gopay.sdk.service.EncryptionService]. */
-data class JweHeader(
+internal data class JweHeader(
     val alg: String = "RSA-OAEP-256",
     val enc: String = "A256GCM",
     val kid: String,
@@ -48,7 +48,7 @@ data class JweHeader(
 )
 
 /** JWK (JSON Web Key, RFC 7517) returned by `GET /cards/public-key`. */
-data class Jwk(
+internal data class Jwk(
     val kty: String,
     val kid: String,
     val use: String,

@@ -29,7 +29,7 @@ import javax.crypto.spec.PSource
  * `GET /cards/public-key` for every encryption and takes the time from that response's `Date`
  * header. Neither is persisted by the SDK.
  */
-class EncryptionService {
+internal class EncryptionService {
 
     companion object {
         // Use explicit OAEP parameters for RSA-OAEP-256 compatibility with Nimbus JOSE+JWT
@@ -51,7 +51,7 @@ class EncryptionService {
         cardData: CardData,
         jwk: Jwk,
         clientId: String,
-        issuedAt: Long = System.currentTimeMillis() / 1000L
+        issuedAt: Long
     ): String {
         val publicKey = jwkToPublicKey(jwk)
 

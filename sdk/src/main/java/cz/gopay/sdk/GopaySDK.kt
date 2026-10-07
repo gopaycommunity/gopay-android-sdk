@@ -12,9 +12,7 @@ import cz.gopay.sdk.locales.GopayLocaleStrings
 import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.GooglePayInfoResponse
-import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.modules.network.NetworkManager
-import cz.gopay.sdk.modules.network.apiCall
 import cz.gopay.sdk.service.CardEncryption
 import cz.gopay.sdk.service.GooglePayHelper
 import cz.gopay.sdk.session.PaymentSession
@@ -121,16 +119,6 @@ class GopaySDK private constructor(
     fun closeAllPaymentSessions() {
         sessions.values.toList().forEach { it.close() }
     }
-
-    /**
-     * Fetches the merchant's encryption JWK from `GET /cards/public-key` using the
-     * `shareable_key` basic auth scheme. Requires `clientId` and `shareableKey` to be set on
-     * [GopayConfig]. Every call fetches the key again; nothing is cached.
-     *
-     * @param forceRefresh Ignored: the key is no longer cached, so every call is a fresh fetch.
-     */
-    suspend fun getPublicEncryptionKey(forceRefresh: Boolean = false): Jwk =
-        apiCall("fetch public key") { networkManager.publicApi.getPublicKey() }
 
     /**
      * Encrypts card data into a JWE for server-side tokenization.
