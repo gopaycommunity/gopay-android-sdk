@@ -17,12 +17,30 @@ import okhttp3.Response
  * The interceptor is per-session — one instance per OkHttp client per PaymentSession — so
  * concurrent sessions never share a token. [SessionTokenProvider.currentToken] returns null when
  * the cached token is missing or has expired, so no per-request JWT parsing is needed here.
+ *
+ * Every SDK error leaves as an [SdkIOException]: OkHttp crashes the host process on anything
+ * but an [java.io.IOException] thrown from an interceptor of an asynchronous call. [apiCall]
+ * unwraps it again.
  */
 internal class SessionAuthInterceptor(
     private val tokenProvider: SessionTokenProvider
 ) : Interceptor {
 
-    override fun intercept(chain: Interceptor.Chain): Response {
+    override fun intercept(chain: Interceptor.Chain): Response = try {
+        authorize(chain)
+    } catch (e: RuntimeException) {
+        // E.g. OkHttp refusing a token with a character a header cannot carry; anything but an
+        // IOException would reach the dispatcher thread bare.
+        throw SdkIOException(
+            GopaySDKException(
+                errorCode = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
+                message = "Payment-scoped request could not be authorized: ${e.message}",
+                cause = e
+            )
+        )
+    }
+
+    private fun authorize(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
         val token = tokenProvider.currentToken() ?: reauthBlocking()
 
@@ -39,9 +57,11 @@ internal class SessionAuthInterceptor(
         val retryResponse = chain.proceed(originalRequest.withBearer(refreshed))
         if (retryResponse.code == 401) {
             retryResponse.close()
-            throw GopaySDKException(
-                errorCode = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
-                message = "Payment-scoped token still rejected after re-authentication"
+            throw SdkIOException(
+                GopaySDKException(
+                    errorCode = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
+                    message = "Payment-scoped token still rejected after re-authentication"
+                )
             )
         }
         return retryResponse
@@ -54,12 +74,14 @@ internal class SessionAuthInterceptor(
     private fun reauthBlocking(): String = try {
         runBlocking(Dispatchers.IO) { tokenProvider.reauthenticate() }
     } catch (e: GopaySDKException) {
-        throw e
+        throw SdkIOException(e)
     } catch (e: Throwable) {
-        throw GopaySDKException(
-            errorCode = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
-            message = "Payment-scoped token expired and re-authentication failed",
-            cause = e
+        throw SdkIOException(
+            GopaySDKException(
+                errorCode = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
+                message = "Payment-scoped token expired and re-authentication failed",
+                cause = e
+            )
         )
     }
 

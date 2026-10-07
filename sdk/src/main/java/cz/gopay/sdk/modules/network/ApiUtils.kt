@@ -47,6 +47,9 @@ internal fun <T> Response<T>.unwrap(action: String): T {
  * `catch (e: GopaySDKException)`, where neither is caught. Both arrive here as
  * [GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR] instead.
  *
+ * An [SdkIOException] from [SessionAuthInterceptor] is unwrapped back to the
+ * [GopaySDKException] it carries.
+ *
  * Transport failures are not covered: an [java.io.IOException] from OkHttp still reaches the
  * caller bare, although [GopayErrorCodes.NETWORK_NO_CONNECTION] and
  * [GopayErrorCodes.NETWORK_IO_ERROR] exist for it. That mapping is tracked separately.
@@ -59,6 +62,9 @@ internal fun <T> Response<T>.unwrap(action: String): T {
 internal suspend fun <T> apiCall(action: String, call: suspend () -> Response<T>): T =
     try {
         call().unwrap(action)
+    } catch (e: SdkIOException) {
+        // An SDK error raised inside an interceptor, wrapped only to get it out of OkHttp.
+        throw e.sdkException
     } catch (e: JsonDataException) {
         throw GopaySDKException(
             errorCode = GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR,
