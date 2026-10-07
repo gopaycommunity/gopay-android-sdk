@@ -20,7 +20,12 @@ enum class Currency {
     @Json(name = "HUF")
     HUF,
     @Json(name = "RON")
-    RON
+    RON,
+    /**
+     * A value this version of the SDK does not know, which the gateway added later. The rest
+     * of the response is read as usual; the raw value is in the debug log.
+     */
+    UNKNOWN
 }
 
 /**
@@ -101,7 +106,14 @@ enum class PaymentState {
     @Json(name = "REFUNDED")
     REFUNDED,
     @Json(name = "PARTIALLY_REFUNDED")
-    PARTIALLY_REFUNDED
+    PARTIALLY_REFUNDED,
+    /**
+     * A value this version of the SDK does not know, which the gateway added later. The rest
+     * of the response is read as usual; the raw value is in the debug log. It is not a result:
+     * keep reading [cz.gopay.sdk.session.PaymentSession.getStatus], or settle the payment on
+     * your backend.
+     */
+    UNKNOWN
 }
 
 /**

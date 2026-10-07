@@ -7,7 +7,14 @@ enum class ChargeState {
     @Json(name = "PROCESSING") PROCESSING,
     @Json(name = "ACTION_REQUIRED") ACTION_REQUIRED,
     @Json(name = "SUCCEEDED") SUCCEEDED,
-    @Json(name = "FAILED") FAILED
+    @Json(name = "FAILED") FAILED,
+    /**
+     * A value this version of the SDK does not know, which the gateway added later. The rest
+     * of the response is read as usual; the raw value is in the debug log. It is not a result:
+     * keep reading [cz.gopay.sdk.session.PaymentSession.getChargeState], or settle the payment
+     * on your backend.
+     */
+    UNKNOWN
 }
 
 enum class ChallengePreference {
@@ -17,7 +24,12 @@ enum class ChallengePreference {
 }
 
 enum class ChargeActionType {
-    @Json(name = "EMV3DS") EMV3DS
+    @Json(name = "EMV3DS") EMV3DS,
+    /**
+     * A value this version of the SDK does not know, which the gateway added later. The rest
+     * of the response is read as usual; the raw value is in the debug log.
+     */
+    UNKNOWN
 }
 
 enum class Emv3dsState {
@@ -26,7 +38,12 @@ enum class Emv3dsState {
     @Json(name = "AUTHENTICATED_CHALLENGE") AUTHENTICATED_CHALLENGE,
     @Json(name = "AUTHENTICATED_FRICTIONLESS") AUTHENTICATED_FRICTIONLESS,
     @Json(name = "NOT_AUTHENTICATED") NOT_AUTHENTICATED,
-    @Json(name = "FAILED") FAILED
+    @Json(name = "FAILED") FAILED,
+    /**
+     * A value this version of the SDK does not know, which the gateway added later. The rest
+     * of the response is read as usual; the raw value is in the debug log.
+     */
+    UNKNOWN
 }
 
 /**

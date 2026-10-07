@@ -208,6 +208,11 @@ auth or HTTP errors.
 | `handle3dsVerification(activity, redirectUrl, returnUrl?)` | Managed WebView; suspends until the challenge is answered, dismissed or found unreachable |
 | `close()` | Wipes `payment_secret`, JWT; unregisters from the SDK |
 
+Every enum the gateway sends back (`ChargeState`, `ChargeActionType`, `Emv3dsState`, `CardScheme`,
+`PaymentState`, `Currency`) has an `UNKNOWN` constant: a value the gateway added after this SDK
+version shipped decodes as `UNKNOWN`, the rest of the response still reads, and the raw value goes
+to the debug log.
+
 Concurrent calls on the same session re-use the cached JWT. On a 401 the session invalidates
 the token and re-acquires once from the cached `payment_secret`; a second 401 surfaces as
 `AUTH_PAYMENT_TOKEN_EXPIRED` so the caller can fetch fresh credentials from its backend.
@@ -494,8 +499,8 @@ the iOS SDK reserves the row's label height the same way.
 
 `PaymentCardFormTheme` in 2.0 is a new set of parameters. The composed `TextStyle` values are gone,
 so every call site is a compile error rather than a silent change of appearance — deliberately, as
-two parameters kept their names and changed their meaning. The last row is the card encryption
-API 2.0 took away.
+two parameters kept their names and changed their meaning. The last two rows are API outside the
+form that 2.0 changed.
 
 | 1.x | 2.0 |
 |---|---|
@@ -513,6 +518,7 @@ API 2.0 took away.
 | `groupSpacing` (gap between expiry and CVV) | `groupSpacing` — one value now covers both gaps |
 | the hard-coded `4.dp` under a label | `fieldSpacing` — **the name is reused for a new meaning** |
 | `getPublicEncryptionKey()`, `EncryptionService`, `Jwk`, `JweHeader` | Gone or internal: a key fetched ahead of time, or a JWE built outside the SDK, would carry the device's clock. Call `encryptCardData` or use `PaymentCardForm`. |
+| An exhaustive `when` over `ChargeState`, `ChargeActionType`, `Emv3dsState`, `CardScheme`, `PaymentState` or `Currency` | Each has an `UNKNOWN` constant for a value the gateway added later; add a branch; for a state, treat it as not final. |
 
 Eight parameters that 2.0 carried in an earlier preview are gone again, because rendering them
 would mean painting the field rather than asking the platform for it. Nothing replaces them:

@@ -4,6 +4,7 @@ import cz.gopay.sdk.config.NetworkConfig
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import cz.gopay.sdk.model.ChargePaymentResponseAdapter
+import cz.gopay.sdk.model.UnknownEnumAdapter
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -57,10 +58,12 @@ internal object NetworkModule {
     /**
      * Shared, thread-safe Moshi instance. Reused across every Retrofit client built by the SDK so
      * the Kotlin reflection adapters get registered (and cached) only once per process. The
-     * charge adapter goes in front of the reflection factory so it can delegate to it.
+     * charge adapter goes in front of the reflection factory so it can delegate to it, and the
+     * unknown-enum adapter wraps the standard enum adapter for every enum the gateway sends.
      */
     internal val moshi: Moshi = Moshi.Builder()
         .add(ChargePaymentResponseAdapter.Factory)
+        .add(UnknownEnumAdapter.Factory)
         .add(KotlinJsonAdapterFactory())
         .build()
 

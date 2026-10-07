@@ -64,5 +64,10 @@ enum class CardScheme {
     @Json(name = "VISA")
     VISA,
     @Json(name = "MASTERCARD")
-    MASTERCARD
+    MASTERCARD,
+    /**
+     * A value this version of the SDK does not know, which the gateway added later. The rest
+     * of the response is read as usual; the raw value is in the debug log.
+     */
+    UNKNOWN
 }

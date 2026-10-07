@@ -558,6 +558,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Check data format
   - Verify SDK version compatibility
   - Review data handling
+- **Note**: a new value in one of the response enums is not a decoding error: it decodes as `UNKNOWN` and the original value goes to the debug log
 
 ### INTERNAL_004: Concurrency Error
 - **Description**: Thread safety or concurrency error
