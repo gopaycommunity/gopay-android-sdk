@@ -31,11 +31,11 @@ The workflow needs a GitHub environment named `maven-central` on the mirror, wit
 
 | Secret | Content | Gradle property it becomes |
 |---|---|---|
-| `CENTRAL_PORTAL_USERNAME` | username part of a Central Portal user token | `mavenCentralUsername` |
-| `CENTRAL_PORTAL_PASSWORD` | password part of that token | `mavenCentralPassword` |
-| `SIGNING_KEY` | ASCII-armored secret key, the whole block including the BEGIN and END lines | `signingInMemoryKey` |
-| `SIGNING_KEY_ID` | short key id, 8 hex characters; optional, only needed when a subkey signs | `signingInMemoryKeyId` |
-| `SIGNING_KEY_PASSWORD` | passphrase of the key | `signingInMemoryKeyPassword` |
+| `CENTRAL_TOKEN_USERNAME` | username part of a Central Portal user token | `mavenCentralUsername` |
+| `CENTRAL_TOKEN_PASSWORD` | password part of that token | `mavenCentralPassword` |
+| `MVN_SIGNING_KEY` | ASCII-armored secret key, the whole block including the BEGIN and END lines | `signingInMemoryKey` |
+| `MVN_SIGNING_KEY_ID` | short key id, 8 hex characters; optional, only needed when a subkey signs | `signingInMemoryKeyId` |
+| `MVN_KEY_PASSWORD` | passphrase of the key | `signingInMemoryKeyPassword` |
 
 The workflow passes them to Gradle as `ORG_GRADLE_PROJECT_<property>` variables, and only to the
 steps that sign and upload. How to create the key is in [SIGNING_SETUP.md](SIGNING_SETUP.md).

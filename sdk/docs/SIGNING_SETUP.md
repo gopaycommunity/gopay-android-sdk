@@ -18,20 +18,20 @@ When `signingInMemoryKey` is set, signing is required: a wrong passphrase or key
 build. When it is not set, the Sign tasks are skipped and the artifacts are unsigned, which is
 fine for local publishing and never accepted by Maven Central.
 
-In CI the properties come from the `SIGNING_KEY`, `SIGNING_KEY_ID` and `SIGNING_KEY_PASSWORD`
+In CI the properties come from the `MVN_SIGNING_KEY`, `MVN_SIGNING_KEY_ID` and `MVN_KEY_PASSWORD`
 secrets of the `maven-central` environment; see [PUBLISHING.md](PUBLISHING.md).
 
 ## Creating the key
 
 Use a key that exists only for the SDK. The name and e-mail on it are visible to anyone who
-verifies a signature. The command asks for a passphrase, which becomes `SIGNING_KEY_PASSWORD`.
+verifies a signature. The command asks for a passphrase, which becomes `MVN_KEY_PASSWORD`.
 
 ```bash
 gpg --quick-generate-key "GoPay Android SDK <e-mail>" rsa4096 sign never
 ```
 
 The key id is the 8 characters after `rsa4096/` on the `sec` line; the commands below use it as
-`<KEYID>`. `SIGNING_KEY_ID` is optional and stays empty for a key made with the command above.
+`<KEYID>`. `MVN_SIGNING_KEY_ID` is optional and stays empty for a key made with the command above.
 Only when a subkey signs does it hold the 8 characters after `rsa4096/` on that subkey's `ssb`
 line. The build does not accept the 16-character long form.
 
@@ -48,7 +48,7 @@ gpg --keyserver keys.openpgp.org --send-keys <KEYID>
 gpg --keyserver pgp.mit.edu --send-keys <KEYID>
 ```
 
-Export the secret key. The whole output, including the BEGIN and END lines, is `SIGNING_KEY`;
+Export the secret key. The whole output, including the BEGIN and END lines, is `MVN_SIGNING_KEY`;
 paste it into the secret as it is.
 
 ```bash
@@ -82,7 +82,7 @@ gpg --verify sdk/build/repo/cz/gopay/sdk/<version>/sdk-<version>.aar.asc \
 ## Replacing the key
 
 1. Create and publish a new key as above.
-2. Replace `SIGNING_KEY` and `SIGNING_KEY_PASSWORD` in the `maven-central` environment, and
-   `SIGNING_KEY_ID` only when a subkey signs.
+2. Replace `MVN_SIGNING_KEY` and `MVN_KEY_PASSWORD` in the `maven-central` environment, and
+   `MVN_SIGNING_KEY_ID` only when a subkey signs.
 3. Keep the old public key on the keyservers, so signatures of versions already published still
    verify. Revoke it only if the secret part was exposed.
