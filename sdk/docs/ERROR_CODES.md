@@ -2,6 +2,10 @@
 
 This document provides a comprehensive reference for all error codes used in the Gopay SDK. Each error code follows the pattern `DOMAIN_XXX` where `DOMAIN` represents the functional area and `XXX` is a unique 3-digit identifier.
 
+Codes marked "the SDK does not throw this code" are never thrown by either SDK. Their constants in
+`GopayErrorCodes` stay deprecated for 2.0, so code written against 1.x that names them still
+compiles with a warning, and 3.0 removes them.
+
 ## Error Code Structure
 
 - **AUTH_XXX**: Authentication and authorization errors
@@ -23,6 +27,7 @@ This document provides a comprehensive reference for all error codes used in the
 - **Developer Action**: 
   - The SDK will automatically attempt to refresh the token
   - If refresh fails, re-authenticate the user
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### AUTH_002: Refresh Token Expired  
 - **Description**: The refresh token has expired, requiring full re-authentication
@@ -32,6 +37,7 @@ This document provides a comprehensive reference for all error codes used in the
 - **Developer Action**: 
   - Redirect user to authentication flow
   - Clear stored tokens
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### AUTH_003: Both Tokens Expired
 - **Description**: Both access and refresh tokens are expired
@@ -41,6 +47,7 @@ This document provides a comprehensive reference for all error codes used in the
 - **Developer Action**:
   - Redirect user to authentication flow
   - Clear stored tokens
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### AUTH_004: Token Refresh Failed
 - **Description**: Failed to refresh the access token using the refresh token
@@ -51,6 +58,7 @@ This document provides a comprehensive reference for all error codes used in the
 - **Developer Action**:
   - Check network connectivity
   - If persistent, redirect to authentication flow
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### AUTH_005: Invalid Authentication Response
 - **Description**: The authentication response format is invalid or malformed
@@ -62,6 +70,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Retry authentication
   - Check server API documentation
   - Contact support if persistent
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0. A 2xx answer without a body, which 1.x reported here, is `INTERNAL_003`
 
 ### AUTH_006: Invalid Client ID
 - **Description**: Cannot extract client ID from the access token
@@ -71,6 +80,7 @@ This document provides a comprehensive reference for all error codes used in the
 - **Developer Action**:
   - Re-authenticate user
   - Verify token source
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### AUTH_007: No Tokens Available
 - **Description**: No access token or refresh token is available
@@ -80,6 +90,7 @@ This document provides a comprehensive reference for all error codes used in the
   - First-time app usage
 - **Developer Action**:
   - Redirect user to authentication flow
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### AUTH_008: Invalid Credentials
 - **Description**: Authentication failed due to invalid credentials
@@ -90,6 +101,7 @@ This document provides a comprehensive reference for all error codes used in the
 - **Developer Action**:
   - Prompt user to re-enter credentials
   - Check account status
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### AUTH_009: Payment Token Expired
 - **Description**: The payment-scoped JWT expired and could not be re-acquired from the cached payment credentials
@@ -200,6 +212,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Update certificate pins
   - Verify network security
   - Check for proxy settings
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### NETWORK_007: Network I/O Error
 - **Description**: General network input/output error
@@ -223,6 +236,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Handle cancellation gracefully
   - Provide user feedback
   - Allow retry if appropriate
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ## Configuration Errors (CONFIG_XXX)
 
@@ -245,6 +259,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Verify configuration parameters
   - Check documentation for valid values
   - Use provided constants where available
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### CONFIG_003: Missing Required Parameter
 - **Description**: Required configuration parameter is missing
@@ -254,6 +269,7 @@ This document provides a comprehensive reference for all error codes used in the
 - **Developer Action**:
   - Provide all required configuration parameters
   - Check configuration builder usage
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### CONFIG_004: Missing Application Context
 - **Description**: Cannot obtain Android application context
@@ -265,6 +281,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Ensure proper app initialization
   - Use manual context initialization if needed
   - Check manifest configuration
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### CONFIG_005: Invalid Environment
 - **Description**: Invalid environment configuration
@@ -274,6 +291,7 @@ This document provides a comprehensive reference for all error codes used in the
 - **Developer Action**:
   - Use predefined Environment constants
   - Verify custom environment settings
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### CONFIG_006: Invalid Base URL
 - **Description**: Invalid API base URL provided
@@ -285,6 +303,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Verify URL format
   - Ensure protocol is included (https://)
   - Check domain validity
+- **Note**: the Android SDK does not throw this code; the iOS SDK does, so it stays in the shared catalog
 
 ## Payment Errors (PAYMENT_XXX)
 
@@ -298,6 +317,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Verify payment method ID
   - Refresh available payment methods
   - Check for typos
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### PAYMENT_002: Invalid Payment Amount
 - **Description**: Invalid payment amount (negative, zero, or too large)
@@ -309,6 +329,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Validate amount before processing
   - Check payment limits
   - Ensure positive, non-zero values
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### PAYMENT_003: Payment Processing Failed
 - **Description**: Payment processing failed
@@ -344,6 +365,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Inform user of insufficient funds
   - Suggest adding funds
   - Offer alternative payment methods
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### PAYMENT_006: Payment Declined
 - **Description**: Payment was declined by the payment processor
@@ -355,6 +377,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Inform user of decline
   - Suggest verifying payment details
   - Offer alternative payment methods
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### PAYMENT_007: Payment Timeout
 - **Description**: Payment processing timed out
@@ -366,6 +389,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Retry payment
   - Check payment status
   - Implement timeout handling
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### PAYMENT_008: Verification Already In Progress
 - **Description**: A 3DS verification is already running; only one can run at a time
@@ -414,9 +438,7 @@ This document provides a comprehensive reference for all error codes used in the
   - The merchant backend rejected or failed the `POST /cards/tokens` call
 - **Developer Action**:
   - Handle tokenization failures on your backend and surface a retry to the user
-  - Note that the SDK does not raise this code today: it produces a JWE and never calls the
-    tokenization endpoint itself, so the failure happens on your server. The constant exists so
-    both platforms share one catalog.
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ## Validation Errors (VALIDATION_XXX)
 
@@ -430,6 +452,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Re-authenticate user
   - Verify token source
   - Check token handling code
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### VALIDATION_002: Missing Required Parameter
 - **Description**: Required parameter is missing
@@ -441,6 +464,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Provide all required parameters
   - Check API documentation
   - Validate inputs before API calls
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### VALIDATION_003: Invalid Parameter Format
 - **Description**: Parameter format is invalid
@@ -452,6 +476,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Verify parameter format
   - Check data type requirements
   - Use proper encoding
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### VALIDATION_004: Parameter Out of Range
 - **Description**: Parameter value is outside allowed range
@@ -463,6 +488,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Check parameter limits
   - Validate ranges before API calls
   - Use allowed values only
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### VALIDATION_005: Invalid Email Format
 - **Description**: Email address format is invalid
@@ -474,6 +500,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Validate email format
   - Use email validation libraries
   - Prompt user to correct
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### VALIDATION_006: Invalid Phone Format
 - **Description**: Phone number format is invalid
@@ -485,6 +512,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Validate phone format
   - Use phone validation libraries
   - Provide format examples
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### VALIDATION_007: Invalid Input
 - **Description**: Invalid input data was provided to an SDK call
@@ -493,6 +521,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Card form submitted with fields that fail validation
 - **Developer Action**:
   - Validate inputs before calling, and surface the form's own validation state
+- **Note**: the Android SDK does not throw this code; the iOS SDK does, so it stays in the shared catalog
 
 ## Security Errors (SECURITY_XXX)
 
@@ -506,6 +535,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Check certificate validity
   - Update certificate configuration
   - Verify certificate chain
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### SECURITY_002: SSL Context Failed
 - **Description**: SSL context initialization failed
@@ -517,6 +547,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Check SSL configuration
   - Update security providers
   - Verify TLS compatibility
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### SECURITY_003: Trust Manager Failed
 - **Description**: Trust manager configuration failed
@@ -528,6 +559,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Verify trust manager setup
   - Check certificate store
   - Review security configuration
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### SECURITY_004: Security Policy Violation
 - **Description**: Security policy violation detected
@@ -539,6 +571,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Review security policies
   - Use secure connections
   - Update security settings
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ## Internal Errors (INTERNAL_XXX)
 
@@ -563,6 +596,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Check SDK documentation
   - Use alternative approaches
   - Wait for feature implementation
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### INTERNAL_003: Serialization Error
 - **Description**: Data serialization/deserialization failed
@@ -587,39 +621,51 @@ This document provides a comprehensive reference for all error codes used in the
   - Review threading usage
   - Ensure proper synchronization
   - Use SDK from main thread when required
+- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ## Error Handling Best Practices
 
 ### 1. Catch Specific Errors
 ```kotlin
 try {
-    sdk.authenticate(clientId, clientSecret)
+    session.charge(request)
 } catch (e: GopaySDKException) {
     when (e.errorCode) {
-        GopayErrorCodes.NETWORK_TIMEOUT -> {
-            // Handle timeout - maybe retry
-        }
-        GopayErrorCodes.AUTH_ACCESS_TOKEN_EXPIRED -> {
-            // Handle expired token - refresh token
-        }
-        else -> {
-            // Handle other errors
-        }
+        GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED -> refreshCredsFromBackend()
+        GopayErrorCodes.NETWORK_NO_CONNECTION -> showOffline()
+        else -> showGenericError(e)
     }
 }
 ```
 
 ### 2. Use Error Codes for Logic
 ```kotlin
-catch (e: GopaySDKException) {
+try {
+    session.chargeWithGooglePay(activity)
+} catch (e: GopaySDKException) {
     when (e.errorCode) {
-        GopayErrorCodes.AUTH_ACCESS_TOKEN_EXPIRED -> refreshToken()
-        GopayErrorCodes.NETWORK_TIMEOUT -> retryWithBackoff()
-        GopayErrorCodes.PAYMENT_INSUFFICIENT_FUNDS -> showAddFundsDialog()
-        else -> showGenericError(e.message)
+        GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS -> Unit // a sheet is already open
+        GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE -> hideGooglePayButton()
+        GopayErrorCodes.PAYMENT_CANCELLED -> Unit // the user closed the sheet; not a failure
+        // The charge may have gone through before the answer was lost: read it, do not repeat it.
+        GopayErrorCodes.NETWORK_TIMEOUT -> readChargeBeforeRetrying(session)
+        else -> showGenericError(e) // PAYMENT_PROCESSING_FAILED and the charge's own errors
+    }
+}
+
+suspend fun readChargeBeforeRetrying(session: PaymentSession) {
+    try {
+        showResult(session.getChargeState())
+    } catch (e: GopaySDKException) {
+        if (e.getHttpStatusCode() == 404) offerPaymentAgain() // no charge went out
+        else askBackendForState() // still unknown: the charge may be through
     }
 }
 ```
+
+The codes worth a branch of their own are the ones in the README's
+[Error handling](../../README.md#error-handling); every code the SDK does not throw is marked so
+above.
 
 ### 3. Implement Error Reporting
 ```kotlin

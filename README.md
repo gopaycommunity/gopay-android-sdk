@@ -650,8 +650,9 @@ Plug an analytics callback via `GopayConfig.errorCallback` to receive every exce
 throws, except `PAYMENT_CANCELLED`, which is not an error.
 
 Every code, with its causes and what to do about it, is in
-[`sdk/docs/ERROR_CODES.md`](sdk/docs/ERROR_CODES.md). The codes are shared with the iOS SDK, which
-throws a subset of the same catalog.
+[`sdk/docs/ERROR_CODES.md`](sdk/docs/ERROR_CODES.md). The codes are shared with the iOS SDK. Codes
+neither SDK throws stay in `GopayErrorCodes` for 2.0, deprecated, so code written against 1.x that
+names them still compiles; 3.0 removes them. ERROR_CODES marks them.
 
 ## Migrating from 1.x
 
@@ -670,6 +671,7 @@ the response enums and the card form theme.
 | A Google Pay error or missing data was `PAYMENT_009` | Wallet unavailable: `PAYMENT_004`; any other failure: `PAYMENT_003`; `PAYMENT_009` only for a sheet already open |
 | Closing the Google Pay sheet or the 3DS challenge threw `CancellationException` | `PAYMENT_CANCELLED` (`PAYMENT_011`); a `CancellationException` now comes only from cancelling your own coroutine, which also closes the 3DS challenge |
 | `HttpErrorContext` had four properties | It gains `gatewayError`, the gateway's error body, as a fifth with a default; source that uses it compiles as before, only code compiled against 1.x has to be rebuilt |
+| Codes in `GopayErrorCodes` that the SDK never throws | Deprecated: neither SDK throws them, and 3.0 removes them; ERROR_CODES marks each |
 
 ### Card encryption
 

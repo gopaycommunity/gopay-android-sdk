@@ -6,32 +6,46 @@ package cz.gopay.sdk.exception
  */
 object GopayErrorCodes {
 
+    /**
+     * Why a code is deprecated: neither SDK throws it. It stays for 2.0 so code written against
+     * 1.x that names it still compiles, with a warning, for one major version; 3.0 removes it.
+     */
+    private const val NOT_THROWN = "The SDK does not throw this code; it will be removed in 3.0"
+
     // ========================================
     // AUTHENTICATION ERRORS (AUTH_XXX)
     // ========================================
     
     /** Access token has expired and needs to be refreshed */
+    @Deprecated(NOT_THROWN)
     const val AUTH_ACCESS_TOKEN_EXPIRED = "AUTH_001"
     
     /** Refresh token has expired, re-authentication required */
+    @Deprecated(NOT_THROWN)
     const val AUTH_REFRESH_TOKEN_EXPIRED = "AUTH_002"
     
     /** Both access and refresh tokens are expired */
+    @Deprecated(NOT_THROWN)
     const val AUTH_BOTH_TOKENS_EXPIRED = "AUTH_003"
     
     /** Failed to refresh the access token */
+    @Deprecated(NOT_THROWN)
     const val AUTH_TOKEN_REFRESH_FAILED = "AUTH_004"
     
     /** Invalid authentication response format */
+    @Deprecated(NOT_THROWN)
     const val AUTH_INVALID_RESPONSE = "AUTH_005"
     
     /** Cannot extract client ID from access token */
+    @Deprecated(NOT_THROWN)
     const val AUTH_INVALID_CLIENT_ID = "AUTH_006"
     
     /** No access token or refresh token available */
+    @Deprecated(NOT_THROWN)
     const val AUTH_NO_TOKENS_AVAILABLE = "AUTH_007"
     
     /** Authentication failed with invalid credentials */
+    @Deprecated(NOT_THROWN)
     const val AUTH_INVALID_CREDENTIALS = "AUTH_008"
 
     /** Payment-scoped JWT expired and could not be re-acquired from cached payment credentials */
@@ -69,12 +83,14 @@ object GopayErrorCodes {
     const val NETWORK_SSL_ERROR = "NETWORK_005"
     
     /** Certificate pinning validation failed */
+    @Deprecated(NOT_THROWN)
     const val NETWORK_CERTIFICATE_PINNING_FAILED = "NETWORK_006"
     
     /** General network I/O error */
     const val NETWORK_IO_ERROR = "NETWORK_007"
     
     /** Request was cancelled */
+    @Deprecated(NOT_THROWN)
     const val NETWORK_REQUEST_CANCELLED = "NETWORK_008"
 
     // ========================================
@@ -85,15 +101,19 @@ object GopayErrorCodes {
     const val CONFIG_SDK_NOT_INITIALIZED = "CONFIG_001"
     
     /** Invalid configuration parameter provided */
+    @Deprecated(NOT_THROWN)
     const val CONFIG_INVALID_PARAMETER = "CONFIG_002"
     
     /** Missing required configuration parameter */
+    @Deprecated(NOT_THROWN)
     const val CONFIG_MISSING_PARAMETER = "CONFIG_003"
     
     /** Cannot obtain Android application context */
+    @Deprecated(NOT_THROWN)
     const val CONFIG_MISSING_CONTEXT = "CONFIG_004"
     
     /** Invalid environment configuration */
+    @Deprecated(NOT_THROWN)
     const val CONFIG_INVALID_ENVIRONMENT = "CONFIG_005"
     
     /** Invalid API base URL */
@@ -104,9 +124,11 @@ object GopayErrorCodes {
     // ========================================
     
     /** Invalid payment method ID provided */
+    @Deprecated(NOT_THROWN)
     const val PAYMENT_INVALID_METHOD_ID = "PAYMENT_001"
     
     /** Invalid payment amount (negative, zero, or too large) */
+    @Deprecated(NOT_THROWN)
     const val PAYMENT_INVALID_AMOUNT = "PAYMENT_002"
     
     /** Payment processing failed */
@@ -116,12 +138,15 @@ object GopayErrorCodes {
     const val PAYMENT_METHOD_UNAVAILABLE = "PAYMENT_004"
     
     /** Insufficient funds for payment */
+    @Deprecated(NOT_THROWN)
     const val PAYMENT_INSUFFICIENT_FUNDS = "PAYMENT_005"
     
     /** Payment was declined */
+    @Deprecated(NOT_THROWN)
     const val PAYMENT_DECLINED = "PAYMENT_006"
     
     /** Payment timeout */
+    @Deprecated(NOT_THROWN)
     const val PAYMENT_TIMEOUT = "PAYMENT_007"
 
     /** A 3DS verification is already in progress; only one can run at a time */
@@ -152,6 +177,7 @@ object GopayErrorCodes {
     // ========================================
     
     /** Card tokenization failed */
+    @Deprecated(NOT_THROWN)
     const val CARD_TOKENIZATION_FAILED = "CARD_001"
 
     // ========================================
@@ -159,21 +185,27 @@ object GopayErrorCodes {
     // ========================================
     
     /** Invalid JWT token format */
+    @Deprecated(NOT_THROWN)
     const val VALIDATION_INVALID_JWT_FORMAT = "VALIDATION_001"
     
     /** Missing required parameter */
+    @Deprecated(NOT_THROWN)
     const val VALIDATION_MISSING_PARAMETER = "VALIDATION_002"
     
     /** Invalid parameter format */
+    @Deprecated(NOT_THROWN)
     const val VALIDATION_INVALID_FORMAT = "VALIDATION_003"
     
     /** Parameter value out of allowed range */
+    @Deprecated(NOT_THROWN)
     const val VALIDATION_OUT_OF_RANGE = "VALIDATION_004"
     
     /** Invalid email format */
+    @Deprecated(NOT_THROWN)
     const val VALIDATION_INVALID_EMAIL = "VALIDATION_005"
     
     /** Invalid phone number format */
+    @Deprecated(NOT_THROWN)
     const val VALIDATION_INVALID_PHONE = "VALIDATION_006"
     
     /** Invalid input data provided */
@@ -184,15 +216,19 @@ object GopayErrorCodes {
     // ========================================
     
     /** Certificate validation failed */
+    @Deprecated(NOT_THROWN)
     const val SECURITY_CERTIFICATE_VALIDATION_FAILED = "SECURITY_001"
     
     /** SSL context initialization failed */
+    @Deprecated(NOT_THROWN)
     const val SECURITY_SSL_CONTEXT_FAILED = "SECURITY_002"
     
     /** Trust manager configuration failed */
+    @Deprecated(NOT_THROWN)
     const val SECURITY_TRUST_MANAGER_FAILED = "SECURITY_003"
     
     /** Security policy violation */
+    @Deprecated(NOT_THROWN)
     const val SECURITY_POLICY_VIOLATION = "SECURITY_004"
 
     // ========================================
@@ -203,11 +239,13 @@ object GopayErrorCodes {
     const val INTERNAL_UNEXPECTED_ERROR = "INTERNAL_001"
     
     /** Feature not implemented yet */
+    @Deprecated(NOT_THROWN)
     const val INTERNAL_NOT_IMPLEMENTED = "INTERNAL_002"
     
     /** Serialization/deserialization error */
     const val INTERNAL_SERIALIZATION_ERROR = "INTERNAL_003"
     
     /** Thread/concurrency error */
+    @Deprecated(NOT_THROWN)
     const val INTERNAL_CONCURRENCY_ERROR = "INTERNAL_004"
 } 
