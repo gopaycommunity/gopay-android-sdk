@@ -2,6 +2,11 @@ package cz.gopay.sdk.model
 
 import com.squareup.moshi.Json
 
+/**
+ * State of a charge. Only [SUCCEEDED] and [FAILED] are results, and [ACTION_REQUIRED] waits for a
+ * 3DS challenge; [REQUESTED] and [PROCESSING] are not an outcome yet, so read
+ * [cz.gopay.sdk.session.PaymentSession.getChargeState] again until the state is one of those.
+ */
 enum class ChargeState {
     @Json(name = "REQUESTED") REQUESTED,
     @Json(name = "PROCESSING") PROCESSING,

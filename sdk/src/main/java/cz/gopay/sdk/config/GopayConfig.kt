@@ -15,16 +15,19 @@ data class GopayConfig(
 
     /**
      * Merchant `client_id`. Required together with [shareableKey] to call the public-resource
-     * endpoints (`GET /cards/public-key`, `GET /cards/card-form-url`) authenticated with
-     * `shareable_key` basic auth. Safe to embed in the mobile app — it is paired with the
-     * shareable key, never with the merchant secret.
+     * endpoints (`GET /cards/public-key`, `GET /cards/card-form-url`, `GET /cards/browser-data`)
+     * authenticated with `shareable_key` basic auth. Safe to embed in the mobile app — it is
+     * paired with the shareable key, never with the merchant secret.
      */
     val clientId: String? = null,
 
     /**
      * Merchant `shareable_key`. Required together with [clientId] for public-resource
-     * endpoints. Optional if the SDK is only used for charging existing payments via
-     * [cz.gopay.sdk.session.PaymentSession].
+     * endpoints, and so for charging too: a charge first fetches the browser data under it,
+     * unless the [cz.gopay.sdk.model.BrowserData] passed in already carries `ip` and
+     * `acceptHeader`. Without it such a charge fails with
+     * [cz.gopay.sdk.exception.GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING]. The card form and
+     * `encryptCardData` need it as well.
      */
     val shareableKey: String? = null,
 

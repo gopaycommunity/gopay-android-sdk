@@ -1,7 +1,8 @@
 # GoPay Android SDK
 
-Android SDK for charging GoPay payments from a mobile app. Maps to the Payments 4.0 API
-(`Payments.yaml`).
+Android SDK for charging GoPay payments from a mobile app. Maps to the GoPay Payments 4.0 API: the
+[OpenAPI specification](https://api-docs.gopay.com/spec/en/payments.yaml) and the
+[API documentation](https://api-docs.gopay.com/en/api).
 
 ## Overview
 
@@ -45,9 +46,26 @@ forward; the backend submits the JWE and gets back the card token.
 
 ## Requirements
 
-- JDK 17+ (Gradle 8.7 / AGP 8.6)
-- Android SDK Platform 35 (`compileSdk = 35`), `minSdk = 24`
-- Kotlin, Gradle Kotlin DSL
+Your app:
+
+- `minSdk` 24 or higher.
+- `compileSdk` 35 or higher: the AndroidX libraries the SDK builds on require it.
+- Any `targetSdk`. From 35 on, Android 15 and later draw every activity edge to edge, the SDK's
+  3DS screen included, which keeps itself clear of the system bars and the keyboard. Checked with
+  an app targeting 35 on Android 16.
+- Kotlin with coroutines, since the session API is `suspend` functions, and Jetpack Compose for
+  `PaymentCardForm`.
+
+Building this repository needs JDK 17+ (Gradle 8.7 / AGP 8.6; JDK 21 verified) and Android SDK
+Platform 35. `local.properties` is gitignored, so a fresh clone has no Android SDK location and
+every Gradle command fails with `SDK location not found`. Android Studio writes it on first open;
+from the CLI:
+
+```bash
+echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
+```
+
+To run the bundled demo app see [`app/README.md`](app/README.md).
 
 ## Installation
 
@@ -71,23 +89,65 @@ Inside this repo the demo app consumes the SDK as a Gradle module (`implementati
 To publish a build of your own to a local Maven repository, see
 [`sdk/docs/PUBLISHING.md`](sdk/docs/PUBLISHING.md#publishing-locally).
 
+## Your backend
+
+The SDK charges a payment your server has created and settles nothing on its own. What your server
+does, as the GoPay guide describes it
+([Security and credentials](https://api-docs.gopay.com/en/docs/01-security.md),
+[Payment states and lifecycle](https://api-docs.gopay.com/en/docs/02-payment-lifecycle.md),
+[Saved cards](https://api-docs.gopay.com/en/docs/05-saved-cards.md)):
+
+1. **Create the payment** with `POST /eshops/{goid}/payments`, under a merchant access token with
+   the `payment:write` scope. The body needs `amount`, `currency`, `order_number`, `customer` and
+   `callback`. `amount` is an integer in the currency's minor unit: 100.00 CZK is `10000`.
+2. **Set both callback URLs.** `callback.return_url` and `callback.notification_url` are required.
+   According to the GoPay guide both must be absolute HTTPS URLs; in production a `return_url`
+   that is not HTTPS gets a 403 when the payment is created, the sandbox is more tolerant. The
+   3DS screen closes when the challenge comes back to `return_url` (see
+   [3DS verification](#3ds-verification)), so the URL does not have to serve anything to the app.
+   `notification_url` must be reachable from GoPay's servers.
+3. **Give the app `id` and `payment_secret`**, nothing else; the app passes them to
+   `startPaymentSession`. According to the GoPay guide, `payment_secret` must not be stored,
+   logged or put in a URL, and it is valid for seven days, after which the gateway refuses it
+   with a 403.
+4. **Settle the payment on the server.** What the app reports is not proof of payment. GoPay
+   sends a `GET` to `notification_url` with the payment `id` on every state change; answer `204`
+   and read the payment with `GET /payments/{id}`. The GoPay guide treats this webhook as the
+   authoritative signal. A payment nobody charges times out, after one hour by default.
+5. **Save a card, if you need to,** by exchanging the JWE from the card form for a permanent token
+   with `POST /cards/tokens` (merchant scope `card:write`). Tokenisation is off until GoPay enables
+   it for you through `integration@gopay.com`. A JWE is single-use: it pays one charge or makes one
+   token, not both. A Google Pay payload cannot be tokenised.
+
 ## Quick start
 
-### 1. Local setup
+### 1. Keys
 
-`local.properties` is gitignored, so a fresh clone has no Android SDK location and every Gradle
-command fails with `SDK location not found`. Android Studio writes it on first open; from the CLI:
+`clientId` and `shareableKey` come from GoPay. They are safe to ship in the app, but keep them out
+of version control, for example as Gradle properties in `~/.gradle/gradle.properties` or a CI
+secret, and hand them to the code through `BuildConfig`:
 
-```bash
-echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
+```kotlin
+// app/build.gradle.kts
+android {
+    buildFeatures { buildConfig = true }
+    defaultConfig {
+        buildConfigField("String", "GOPAY_CLIENT_ID",
+            "\"${providers.gradleProperty("gopay.clientId").getOrElse("")}\"")
+        buildConfigField("String", "GOPAY_SHAREABLE_KEY",
+            "\"${providers.gradleProperty("gopay.shareableKey").getOrElse("")}\"")
+    }
+}
 ```
-
-You also need JDK 17+ (Gradle 8.7 / AGP 8.6; JDK 21 verified) and Android SDK Platform 35
-(`compileSdk = 35`). To run the bundled demo app see [`app/README.md`](app/README.md).
 
 ### 2. Initialize
 
 ```kotlin
+import android.app.Application
+import cz.gopay.sdk.GopaySDK
+import cz.gopay.sdk.config.Environment
+import cz.gopay.sdk.config.GopayConfig
+
 class MyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
@@ -110,22 +170,75 @@ under the shareable key (see below). They are also what `encryptCardData()` and
 
 ### 3. Start a session and charge
 
-```kotlin
-// payment_id + payment_secret come from YOUR backend after it creates the payment.
-val session = GopaySDK.getInstance().startPaymentSession(
-    paymentId = paymentId,
-    paymentSecret = paymentSecret
-    // scope defaults to PaymentSession.DEFAULT_SCOPE ("payment:charge payment:read"),
-    // override only if you need a wider scope.
-)
+Every session call is a `suspend` function. Run them in a scope that outlives a rotation, such as a
+ViewModel's `viewModelScope`; [Rotation and process death](#rotation-and-process-death) says why.
 
-try {
-    // chargeWithCardToken derives the spec-required BrowserData from the activity for you.
-    val charge = session.chargeWithCardToken(activity, cardToken)
-    charge.action?.redirectUrl?.let { session.handle3dsVerification(activity, it, charge.returnUrl) }
-    val finalState = session.getChargeState()
-} finally {
-    session.close()  // wipes the secret + JWT from memory
+```kotlin
+import android.app.Activity
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import cz.gopay.sdk.GopaySDK
+import cz.gopay.sdk.exception.GopayErrorCodes
+import cz.gopay.sdk.exception.GopaySDKException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+
+class CheckoutViewModel : ViewModel() {
+    // The activity showing the checkout: set it in onStart and back to null in onStop. Each SDK
+    // call waits for the one on screen, so the coroutine never holds one a rotation destroyed.
+    val screen = MutableStateFlow<Activity?>(null)
+    private suspend fun currentScreen(): Activity = screen.filterNotNull().first()
+
+    // paymentId + paymentSecret come from YOUR backend after it creates the payment.
+    fun pay(paymentId: String, paymentSecret: String, cardToken: String) {
+        viewModelScope.launch {
+            val session = try {
+                GopaySDK.getInstance().startPaymentSession(
+                    paymentId = paymentId,
+                    paymentSecret = paymentSecret
+                    // scope defaults to PaymentSession.DEFAULT_SCOPE ("payment:charge payment:read")
+                )
+            } catch (e: CancellationException) {
+                throw e                // the ViewModel is going away; nothing to show it on
+            } catch (e: Exception) {
+                showError(e)
+                return@launch
+            }
+            try {
+                try {
+                    // chargeWithCardToken derives the spec-required BrowserData from the activity.
+                    val charge = session.chargeWithCardToken(currentScreen(), cardToken)
+                    charge.action?.redirectUrl?.let {
+                        session.handle3dsVerification(currentScreen(), it, charge.returnUrl)
+                    }
+                } catch (e: GopaySDKException) {
+                    // Closed before it returned: the charge was sent, the state below decides.
+                    if (e.errorCode != GopayErrorCodes.PAYMENT_CANCELLED) {
+                        showError(e)   // the charge failed
+                        return@launch
+                    }
+                }
+                // Read the state while the session is open, before offering anything else.
+                try {
+                    showResult(settle(session))   // see Reading the result
+                } catch (e: GopaySDKException) {
+                    if (e.getHttpStatusCode() == 404) offerPaymentAgain()   // no charge went out
+                    else askBackendForState()   // could not be read: the charge may be through
+                } catch (e: PaymentStillPending) {
+                    askBackendForState()        // not decided yet
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                showError(e)           // anything else, so the sample never takes the app down
+            } finally {
+                session.close()  // wipes the secret + JWT from memory
+            }
+        }
+    }
 }
 ```
 
@@ -275,7 +388,8 @@ not two:
 
 - **Answered** — the ACS navigates to an address starting with the return URL, which the
   WebView intercepts without loading, and the call returns normally. Read the outcome with
-  `getChargeState()`; the SDK does not decide whether the payment went through.
+  `getChargeState()` until it is final (see [Reading the result](#reading-the-result)); the SDK
+  does not decide whether the payment went through.
 - **Closed** — the screen closed before the challenge returned, which throws `GopaySDKException`
   with `PAYMENT_CANCELLED` (`PAYMENT_011`), whether the user backed out or swiped the task away.
   The user may have answered the challenge first, so read the charge before offering to pay
@@ -310,6 +424,57 @@ try {
 val finalState = session.getChargeState()
 ```
 
+### Reading the result
+
+After a charge, and again after `handle3dsVerification` returns or throws `PAYMENT_011`, ask for
+the state with `getChargeState()`. Only `SUCCEEDED` and `FAILED` are results; `ACTION_REQUIRED`
+means a 3DS challenge is waiting. `REQUESTED` and `PROCESSING` mean the gateway has not decided
+yet, which can take a while after a 3DS challenge, so keep asking; the GoPay guide recommends once
+a second ([Payment states and lifecycle](https://api-docs.gopay.com/en/docs/02-payment-lifecycle.md)).
+`UNKNOWN` is a state this SDK does not know, so treat it like `PROCESSING`. Stop after a limit of
+your own and leave the payment to your backend then.
+
+```kotlin
+suspend fun settle(session: PaymentSession): ChargePaymentResponse {
+    repeat(60) {
+        val charge = session.getChargeState()
+        when (charge.state) {
+            ChargeState.SUCCEEDED, ChargeState.FAILED, ChargeState.ACTION_REQUIRED -> return charge
+            ChargeState.REQUESTED, ChargeState.PROCESSING, ChargeState.UNKNOWN -> delay(1_000)
+        }
+    }
+    throw PaymentStillPending()   // your own exception: ask your backend later
+}
+```
+
+A charge that comes back in `ACTION_REQUIRED` with `action?.redirectUrl` needs
+`handle3dsVerification`; call `settle` again once it returns. When no charge went out, for
+instance after a Google Pay sheet closed without paying, `getChargeState()` throws `NETWORK_002`
+with HTTP 404. Your backend, not the app, decides whether the order is paid (see
+[Your backend](#your-backend)).
+
+### Rotation and process death
+
+The 3DS challenge and the Google Pay sheet are activities of their own, shown on top of yours, and
+the SDK keeps nothing on disk. Two things follow:
+
+- **Call the SDK from a scope that survives a configuration change**, such as a ViewModel's
+  `viewModelScope`, not your activity's `lifecycleScope`. A rotation, a switch to dark mode or a
+  font size change recreates your activity behind the SDK's screen, and a call running in the old
+  activity's scope is cancelled with it; for `handle3dsVerification` that also closes the
+  challenge. The `activity` you pass starts the SDK's screen and gives the device's browser data.
+  `handle3dsVerification` and the card charges use it only when the call starts;
+  `chargeWithGooglePay` keeps it until the sheet returns, because it reads the browser data then.
+  So pass the one on screen at that moment and do not keep one captured in the coroutine, as the
+  [quick start](#3-start-a-session-and-charge) shows. The SDK's own screens keep their state
+  across a rotation.
+- **Process death ends the call.** It happens above all while the user is away in a banking app
+  during 3DS and Android reclaims your app. When the user comes back, the restored 3DS screen
+  closes itself and nothing returns to your code. Keep the payment `id` in saved state
+  (`SavedStateHandle`, `onSaveInstanceState`), never `payment_secret`, and when your screen comes
+  back with an `id` but no result, ask your backend for the payment's state before offering to pay
+  again. Your backend learns it from the notification and `GET /payments/{id}`.
+
 ### `PaymentCardForm` composable
 
 ```kotlin
@@ -330,9 +495,29 @@ fun MyCardSheet(onJwe: (String) -> Unit) {
 ```
 
 The form validates input, sets `FLAG_SECURE` unless your app is debuggable, and never exposes
-raw card data to the host. Theming is controlled by `PaymentCardFormTheme`; the form callback contract
-also offers `onFormReady { submitFn -> … }` for external submit triggers and
-`onValidationError { … }` for inline error display.
+raw card data to the host. Theming is controlled by `PaymentCardFormTheme`, and
+`onValidationError { … }` reports the fields that failed validation for inline error display.
+
+To submit from a button of your own, take the submit function from `onFormReady`. Its type is
+`(suspend () -> CardEncryptionResult) -> Unit`: the form hands you a `suspend` function once,
+and each call validates the fields, encrypts them and returns the result (it also goes to
+`onEncryptionComplete`).
+
+```kotlin
+var submit by remember { mutableStateOf<(suspend () -> CardEncryptionResult)?>(null) }
+val scope = rememberCoroutineScope()
+
+PaymentCardForm(onEncryptionComplete = { }, onFormReady = { submit = it })
+Button(onClick = {
+    scope.launch {
+        when (val result = submit?.invoke()) {
+            is CardEncryptionResult.Success -> viewModel.payWithJwe(result.jwe)
+            is CardEncryptionResult.Error -> showError(result.message)
+            null -> Unit
+        }
+    }
+}) { Text("Pay") }
+```
 
 ### Theming the form
 
@@ -560,11 +745,29 @@ throws `PAYMENT_CANCELLED`. Google Pay unable to show its sheet throws
 `PAYMENT_PROCESSING_FAILED`, and `PAYMENT_GOOGLE_PAY_IN_PROGRESS` only means another sheet is
 already open.
 
-Add the Google Pay dependency to your app:
+The SDK brings `play-services-wallet` with it. Add it to your app yourself only when your own code
+calls the Google Pay API.
 
-```kotlin
-implementation("com.google.android.gms:play-services-wallet:19.4.0")
-```
+### Setting up Google Pay
+
+According to the GoPay guide
+([Google Pay, Sandbox testing](https://api-docs.gopay.com/en/docs/07-google-pay.md)), nothing has
+to be set up on Google's side in the sandbox: the gateway answers with the `TEST` environment, no
+merchant identifier or release signing is needed, and Google Pay shows dummy payment methods under
+an unverified-merchant banner. Production works only once your app and GoPay are set up for it. The
+steps are in the GoPay guide,
+[Google Pay, App setup](https://api-docs.gopay.com/en/docs/07-google-pay.md); in short, you
+register the app in the [Google Pay & Wallet Console](https://pay.google.com/business/console),
+submit it for approval with screenshots from a build signed with your release key, and send your
+Google merchant identifier to GoPay through `integration@gopay.com`. Before you submit, go through
+Google's [Integration checklist](https://developers.google.com/pay/api/android/guides/test-and-deploy/integration-checklist)
+and [Request production access](https://developers.google.com/pay/api/android/guides/test-and-deploy/request-prod-access).
+
+The SDK has no Google Pay settings of its own: the environment (`TEST` or `PRODUCTION`), the card
+networks, the amount and the tokenization parameters come from the gateway for each payment
+(`GET /payments/{id}/google-pay/info`). `gatewayMerchantId` in those parameters is your merchant at
+GoPay, filled in by the gateway; you never set it. Which environment the sheet runs in is therefore
+the gateway's decision, not the app's.
 
 ## Environments
 
@@ -773,13 +976,28 @@ repo root, then run the app from Android Studio or with `./gradlew :app:installD
   `GopaySDK`'s private constructor and `GopaySDK.initialize(config)` never passes one.
   `GopayConfig` has no pinning field. Exposing it needs a small API change.
 
+### Google Play and PCI DSS
+
+- The card form and Google Pay take payment details in your app. What you declare in the Play
+  Console's Data safety form is yours to decide, see Google's
+  [Declare your app's data use](https://developer.android.com/guide/topics/data/collect-share),
+  User payment info under Financial info in particular.
+- Google Play's [Payments policy](https://support.google.com/googleplay/android-developer/answer/9858738)
+  says when Google Play's billing must and must not be used; physical goods and services are paid
+  outside it, which is what the SDK is for.
+- According to the GoPay guide
+  ([PCI DSS scope](https://api-docs.gopay.com/en/docs/01-security.md)), an integration where the
+  GoPay SDK collects and encrypts the card and your code handles only the resulting JWE or card
+  token qualifies for SAQ-A; if your code collects the card itself and builds the JWE, it is in
+  SAQ-D scope. Confirm your own scope with GoPay at `integration@gopay.com`.
+
 ## Testing
 
 ```bash
 ./gradlew :sdk:testDebugUnitTest
 ```
 
-Requires `local.properties` (see [Quick start](#1-local-setup)). `:sdk:jacocoTestReport` is wired
+Requires `local.properties` (see [Requirements](#requirements)). `:sdk:jacocoTestReport` is wired
 as a `finalizedBy` of the test task, so a coverage report is generated automatically afterwards:
 `sdk/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml` plus a browsable
 `.../jacocoTestReport/html/index.html`.
