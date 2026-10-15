@@ -319,6 +319,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Check payment details
   - Verify account balance
   - Retry with different payment method
+- **Note**: The SDK raises it when the wallet sheet fails (Google Pay, and Apple Pay on iOS): an error from the wallet, no payment data, a token the SDK cannot read, or the SDK's own Google Pay activity missing from the merged manifest. The wallet's own error is the `cause`. Any error Google Pay returns from the sheet lands here, whatever its cause, a setup problem of the app included, except Google Play services missing, disabled or outdated, which is `PAYMENT_004`. The iOS SDK reports a wallet the app is not set up for as `PAYMENT_004` instead.
 
 ### PAYMENT_004: Payment Method Unavailable
 - **Description**: Selected payment method is not available
@@ -330,6 +331,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Refresh available methods
   - Offer alternative payment methods
   - Check account status
+- **Note**: The SDK raises it when the wallet cannot show its sheet on the device, e.g. Google Play services are missing, disabled or outdated (Apple Pay not set up on iOS). Hide the wallet button. On iOS it also covers an app missing the Apple Pay capability or merchant ID; on Android anything Google Pay returns as an error, other than Google Play services missing, disabled or outdated, is `PAYMENT_003`.
 
 ### PAYMENT_005: Insufficient Funds
 - **Description**: Insufficient funds for the payment
@@ -372,7 +374,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Await the in-flight verification before starting another
 
 ### PAYMENT_009: Wallet Sheet Already In Progress
-- **Description**: A Google Pay sheet is already running; only one can run at a time (the iOS SDK uses this code for Apple Pay)
+- **Description**: A Google Pay sheet is already running; only one can run at a time (the iOS SDK uses this code for Apple Pay). The SDK raises it for nothing else: other wallet failures are `PAYMENT_003` or `PAYMENT_004`
 - **Common Causes**:
   - `chargeWithGooglePay` invoked twice, e.g. from a double tap
 - **Developer Action**:

@@ -136,8 +136,8 @@ internal class PaymentVerificationActivity : ComponentActivity() {
         val redirectUrl = intent.getStringExtra(EXTRA_REDIRECT_URL) ?: run {
             // The SDK never started a launch without it; this is our bug, not a dead link, and
             // the advice that goes with an unreachable challenge would send the host charging
-            // again for no reason. GooglePayLauncherActivity reports the same case as its own
-            // mistake too, though through a plain IllegalArgumentException rather than a code.
+            // again for no reason. GooglePayLauncherActivity reports the same case as a failed
+            // payment, PAYMENT_PROCESSING_FAILED, which carries no such advice either.
             PaymentVerificationBridge.failInternally(owner, "no redirect URL was supplied")
             finish()
             return

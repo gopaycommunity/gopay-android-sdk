@@ -1,6 +1,7 @@
 package cz.gopay.sdk.session
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import com.google.android.gms.wallet.WalletConstants
 import cz.gopay.sdk.exception.GopayErrorCodes
@@ -283,8 +284,11 @@ class PaymentSession internal constructor(
      * required, then [getChargeState] for the final result.
      *
      * Only one Google Pay sheet can be visible per process; if another session has one in
-     * progress this throws [GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS]. User dismissal is
-     * reported as [kotlinx.coroutines.CancellationException].
+     * progress this throws [GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS], and only then. User
+     * dismissal is reported as [kotlinx.coroutines.CancellationException]. Google Pay unable to
+     * show its sheet on this device throws [GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE]; any
+     * other failure of the sheet or of its token throws
+     * [GopayErrorCodes.PAYMENT_PROCESSING_FAILED] with the original as the cause.
      *
      * @param browserData Optional 3DS browser data. Required by the spec on every card charge;
      *                    when null, the SDK derives it from the [activity]'s resources. Override
@@ -302,41 +306,53 @@ class PaymentSession internal constructor(
                   else WalletConstants.ENVIRONMENT_TEST
 
         val deferred = CompletableDeferred<Result<String>>()
-        if (!GooglePayBridge.register(deferred)) {
-            throw GopaySDKException(
+        val owner = GooglePayBridge.register(deferred)
+            ?: throw GopaySDKException(
                 errorCode = GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS,
                 message = "A Google Pay payment is already in progress"
             )
-        }
         try {
             withContext(Dispatchers.Main) {
-                activity.startActivity(
-                    Intent(activity, GooglePayLauncherActivity::class.java)
-                        .putExtra(GooglePayLauncherActivity.EXTRA_PAYMENT_REQUEST_JSON, paymentRequestJson)
-                        .putExtra(GooglePayLauncherActivity.EXTRA_ENVIRONMENT, env)
-                )
-            }
-            val tokenJson = deferred.await().getOrElse { cause ->
-                if (cause is GooglePayBridge.UserCancelledThrowable) {
-                    throw kotlinx.coroutines.CancellationException("Google Pay sheet was dismissed")
+                try {
+                    activity.startActivity(
+                        Intent(activity, GooglePayLauncherActivity::class.java)
+                            .putExtra(
+                                GooglePayLauncherActivity.EXTRA_PAYMENT_REQUEST_JSON,
+                                paymentRequestJson
+                            )
+                            .putExtra(GooglePayLauncherActivity.EXTRA_ENVIRONMENT, env)
+                            .putExtra(GooglePayLauncherActivity.EXTRA_OWNER_ID, owner.id)
+                    )
+                } catch (e: ActivityNotFoundException) {
+                    // The SDK's own launcher is missing from the merged manifest: an integration
+                    // problem, not Google Pay being unavailable, so not the code that hides the
+                    // button.
+                    throw GopaySDKException(
+                        errorCode = GopayErrorCodes.PAYMENT_PROCESSING_FAILED,
+                        message = "Google Pay failed: the SDK's Google Pay activity could not " +
+                            "be started",
+                        cause = e
+                    )
                 }
-                throw GopaySDKException(
-                    errorCode = GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS,
-                    message = "Google Pay failed: ${cause.message}",
-                    cause = cause
-                )
+            }
+            val tokenJson = deferred.await().getOrElse { throw GooglePayBridge.failureFor(it) }
+            val input = try {
+                GooglePayHelper.parseGooglePayToken(tokenJson)
+            } catch (e: Exception) {
+                throw GooglePayBridge.failureFor(e)
             }
             return charge(
                 ChargePaymentRequest(
                     paymentInstrument = PaymentChargeInstrument(
-                        input = GooglePayHelper.parseGooglePayToken(tokenJson),
+                        input = input,
                         browserData = browserData ?: BrowserData.deviceDefault(activity),
                         challengePreference = challengePreference
                     )
                 )
             )
         } finally {
-            GooglePayBridge.clear()
+            // Scoped to this request: a later one may already hold the bridge.
+            GooglePayBridge.clear(owner)
         }
     }
 

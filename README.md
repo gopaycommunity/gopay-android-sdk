@@ -548,7 +548,10 @@ if (GopaySDK.getInstance().isGooglePayAvailable(activity, info)) {
 
 `chargeWithGooglePay` launches the Google Pay sheet inside an SDK-managed activity, parses the
 returned token, and posts the charge in one step. User dismissal surfaces as
-`kotlinx.coroutines.CancellationException`.
+`kotlinx.coroutines.CancellationException`. Google Pay unable to show its sheet throws
+`PAYMENT_METHOD_UNAVAILABLE`, any other failure of the sheet or its token
+`PAYMENT_PROCESSING_FAILED`, and `PAYMENT_GOOGLE_PAY_IN_PROGRESS` only means another sheet is
+already open.
 
 Add the Google Pay dependency to your app:
 
@@ -587,7 +590,9 @@ mapped. Codes most likely to surface in the per-payment flow:
 | `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` | `startPaymentSession` called for a `paymentId` that already has a live session |
 | `AUTH_PAYMENT_SESSION_CLOSED` | API call on a session after `close()`; a charge is refused this way before the browser data is fetched |
 | `AUTH_SHAREABLE_KEY_MISSING` | `charge(...)`, `encryptCardData` or `PaymentCardForm` called without `clientId`+`shareableKey` |
-| `PAYMENT_GOOGLE_PAY_IN_PROGRESS` | A second Google Pay sheet attempted while one is visible |
+| `PAYMENT_GOOGLE_PAY_IN_PROGRESS` | A second Google Pay sheet attempted while one is visible, and nothing else |
+| `PAYMENT_METHOD_UNAVAILABLE` | Google Pay cannot show its sheet on this device, e.g. Google Play services are missing, disabled or outdated |
+| `PAYMENT_PROCESSING_FAILED` | Google Pay failed in the sheet, or returned no data or a token the SDK cannot read; the original is the `cause` |
 | `PAYMENT_VERIFICATION_IN_PROGRESS` | A second 3DS WebView attempted while one is open |
 | `PAYMENT_VERIFICATION_UNREACHABLE` | The 3DS challenge never reached the user: the page would not load, e.g. the redirect URL is dead or is not a web address, or no app took the hand-off |
 
@@ -597,8 +602,22 @@ try {
 } catch (e: GopaySDKException) {
     when (e.errorCode) {
         GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED -> refreshCredsFromBackend()
-        GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS -> showAlreadyInProgress()
+        GopayErrorCodes.NETWORK_NO_CONNECTION -> showOffline()
         else -> showGenericError(e)
+    }
+}
+```
+
+`chargeWithGooglePay` adds its own cases:
+
+```kotlin
+try {
+    session.chargeWithGooglePay(activity)
+} catch (e: GopaySDKException) {
+    when (e.errorCode) {
+        GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS -> Unit // a sheet is already open
+        GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE -> hideGooglePayButton()
+        else -> showGenericError(e) // PAYMENT_PROCESSING_FAILED and the charge's own errors
     }
 }
 ```
@@ -624,6 +643,7 @@ the response enums and the card form theme.
 | Any failure of the token request in `startPaymentSession` was `AUTH_010` | `AUTH_010` only when the gateway turns the pair down (HTTP 400, 401 or 403); anything else keeps its `NETWORK_*` code |
 | An unexpected failure while exchanging the payment credentials was `AUTH_010` | `INTERNAL_001` |
 | A 2xx without a body was `AUTH_005` | `INTERNAL_003`, as a body the SDK cannot read |
+| A Google Pay error or missing data was `PAYMENT_009` | Wallet unavailable: `PAYMENT_004`; any other failure: `PAYMENT_003`; `PAYMENT_009` only for a sheet already open |
 
 ### Card encryption
 
