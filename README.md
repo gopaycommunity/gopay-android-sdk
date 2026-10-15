@@ -670,6 +670,9 @@ repo root, then run the app from Android Studio or with `./gradlew :app:installD
   `PaymentSession` and are wiped on `close()`. The SDK no longer reads or writes
   `SharedPreferences`.
 - The merchant public key is not cached: it is fetched for every encryption and never stored.
+- With `GopayConfig.debug` on, the SDK logs its HTTP traffic, bodies included, to Logcat under
+  the `okhttp.OkHttpClient` tag. The `Authorization` header, the JWT, card tokens, the card JWE
+  and the Google Pay payment data are masked. Keep `debug` off in release builds.
 - `PaymentCardForm` enables `FLAG_SECURE` on the host window in non-debug builds to block
   screenshots of card data.
 - Card data lives in memory only while the form needs it: the form state is cleared after a

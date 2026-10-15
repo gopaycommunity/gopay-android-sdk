@@ -34,7 +34,9 @@ data class GopayConfig(
     val requestTimeoutMs: Long = 30000,
 
     /**
-     * Whether to enable debug mode.
+     * Whether to enable debug mode: SDK warnings and the HTTP traffic, bodies included, go to
+     * Logcat. The `Authorization` header, the JWT, card tokens, the card JWE and the Google Pay
+     * payment data are masked in that log. Keep it off in release builds.
      */
     val debug: Boolean = false,
 

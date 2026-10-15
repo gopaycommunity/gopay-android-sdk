@@ -33,10 +33,7 @@ internal object NetworkModule {
 
         // Add logging if enabled
         if (config.enableLogging) {
-            val loggingInterceptor = HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY
-            }
-            builder.addInterceptor(loggingInterceptor)
+            builder.addInterceptor(loggingInterceptor())
         }
 
         // Add custom SSL factory and trust manager if provided
@@ -53,6 +50,18 @@ internal object NetworkModule {
         }
 
         return builder.build()
+    }
+
+    /**
+     * The debug log of every request and response, bodies included, with the credentials taken
+     * out: the `Authorization` header, which carries `payment_id:payment_secret` on the token
+     * request, and the body values [RedactingHttpLogger] masks.
+     */
+    internal fun loggingInterceptor(
+        logger: HttpLoggingInterceptor.Logger = RedactingHttpLogger()
+    ): HttpLoggingInterceptor = HttpLoggingInterceptor(logger).apply {
+        level = HttpLoggingInterceptor.Level.BODY
+        redactHeader("Authorization")
     }
 
     /**
