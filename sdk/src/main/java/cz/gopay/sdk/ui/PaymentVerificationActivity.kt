@@ -56,8 +56,9 @@ internal class PaymentVerificationActivity : ComponentActivity() {
     /**
      * Carries out what [PaymentVerificationPolicy] decided about a load failure.
      *
-     * A failure degraded to a cancellation is logged rather than silent: to support, an HTTP
-     * 404 in the middle of a challenge would otherwise be indistinguishable from a tap on Back.
+     * A failure degraded to [cz.gopay.sdk.exception.GopayErrorCodes.PAYMENT_CANCELLED] is logged
+     * rather than silent: to support, an HTTP 404 in the middle of a challenge would otherwise be
+     * indistinguishable from a tap on Back.
      */
     private fun reportLoadFailure(failure: PaymentVerificationPolicy.LoadFailure, reason: String) {
         when (failure) {
@@ -65,9 +66,9 @@ internal class PaymentVerificationActivity : ComponentActivity() {
             PaymentVerificationPolicy.LoadFailure.CANCEL -> {
                 SdkLog.w(
                     "3DS verification failed after the challenge started rendering, reporting " +
-                        "it as a cancellation: $reason"
+                        "it as PAYMENT_011: $reason"
                 )
-                PaymentVerificationBridge.cancel(owner)
+                PaymentVerificationBridge.cancel(owner, "the page failed after it started: $reason")
             }
             PaymentVerificationPolicy.LoadFailure.REPORT_UNREACHABLE ->
                 PaymentVerificationBridge.failUnreachable(owner, reason)
@@ -129,6 +130,13 @@ internal class PaymentVerificationActivity : ComponentActivity() {
         // already done with it, typically a system recreation after the verification ended, and
         // there is nobody left to report to.
         owner = PaymentVerificationBridge.currentOwner() ?: run {
+            finish()
+            return
+        }
+
+        // A caller whose coroutine is cancelled closes the challenge it no longer waits for, and
+        // one that gave up before this point leaves nothing to serve.
+        if (!PaymentVerificationBridge.attach(owner) { runOnUiThread { finish() } }) {
             finish()
             return
         }
@@ -327,8 +335,10 @@ internal class PaymentVerificationActivity : ComponentActivity() {
      * The bridge holds the caller's `CompletableDeferred`, so an unreported end leaves
      * `handle3dsVerification` suspended for the life of the process and every later
      * verification failing on [cz.gopay.sdk.exception.GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS].
-     * Reporting a cancellation is right for it: the user walked away, and the charge state is
-     * the only thing that can say what happened to the payment.
+     * Reporting [cz.gopay.sdk.exception.GopayErrorCodes.PAYMENT_CANCELLED] is right for it: the
+     * user walked away, and the charge state is the only thing that can say what happened to the
+     * payment. When the caller gave up first, the bridge is already released and this reaches
+     * nothing.
      *
      * Only a destruction this activity asked for reports anything. [isFinishing] is what says
      * so: a configuration change recreates the activity rather than ending it, and the system
@@ -339,6 +349,8 @@ internal class PaymentVerificationActivity : ComponentActivity() {
      */
     override fun onDestroy() {
         super.onDestroy()
-        if (isFinishing && ::owner.isInitialized) PaymentVerificationBridge.cancel(owner)
+        if (isFinishing && ::owner.isInitialized) {
+            PaymentVerificationBridge.cancel(owner, "the activity was closed")
+        }
     }
 }

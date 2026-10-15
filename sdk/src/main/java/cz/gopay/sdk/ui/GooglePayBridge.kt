@@ -5,7 +5,6 @@ import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.wallet.AutoResolveHelper
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -100,7 +99,7 @@ internal object GooglePayBridge {
     /** The user leaving the launcher before Google Pay answered, e.g. with Back. */
     fun dismissed(): Result<String> = Result.failure(UserCancelledThrowable())
 
-    // Sentinel for a user dismissal, which failureFor turns into a cancellation
+    // Sentinel for a user dismissal, which failureFor turns into PAYMENT_CANCELLED
     internal class UserCancelledThrowable : Throwable("Google Pay sheet was dismissed by the user")
 
     /** Google Pay cannot show its sheet on this device at all, as opposed to failing in it. */
@@ -120,15 +119,18 @@ internal object GooglePayBridge {
 
     /**
      * What `chargeWithGooglePay` throws for a sheet that did not produce a token:
-     * - the user closing it is a [CancellationException];
+     * - the user closing it is [GopayErrorCodes.PAYMENT_CANCELLED];
      * - Google Pay unable to show it is [GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE];
      * - any other failure is [GopayErrorCodes.PAYMENT_PROCESSING_FAILED], with [cause] kept.
      *
      * [GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS] is only ever for a sheet already open.
      * The iOS SDK maps Apple Pay the same way.
      */
-    fun failureFor(cause: Throwable): Throwable = when (cause) {
-        is UserCancelledThrowable -> CancellationException("Google Pay sheet was dismissed")
+    fun failureFor(cause: Throwable): GopaySDKException = when (cause) {
+        is UserCancelledThrowable -> GopaySDKException(
+            errorCode = GopayErrorCodes.PAYMENT_CANCELLED,
+            message = "Google Pay sheet was closed without paying"
+        )
         is UnavailableThrowable -> GopaySDKException(
             errorCode = GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE,
             message = "Google Pay is not available: ${cause.message}",

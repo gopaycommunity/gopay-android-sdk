@@ -4,8 +4,6 @@ import android.app.Activity
 import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.wallet.AutoResolveHelper
 import cz.gopay.sdk.exception.GopayErrorCodes
-import cz.gopay.sdk.exception.GopaySDKException
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -91,7 +89,7 @@ class GooglePayBridgeTest {
         assertTrue(failure is IllegalStateException)
         assertEquals(
             GopayErrorCodes.PAYMENT_PROCESSING_FAILED,
-            (GooglePayBridge.failureFor(failure!!) as GopaySDKException).errorCode
+            GooglePayBridge.failureFor(failure!!).errorCode
         )
     }
 
@@ -126,17 +124,18 @@ class GooglePayBridgeTest {
     }
 
     @Test
-    fun `a dismissed sheet surfaces as a cancellation`() {
+    fun `a dismissed sheet surfaces as PAYMENT_CANCELLED, not as a cancellation`() {
+        // A GopaySDKException by type, so never a CancellationException.
         val failure = GooglePayBridge.failureFor(GooglePayBridge.UserCancelledThrowable())
 
-        assertTrue(failure is CancellationException)
+        assertEquals(GopayErrorCodes.PAYMENT_CANCELLED, failure.errorCode)
     }
 
     @Test
     fun `a sheet Google Pay cannot show is PAYMENT_004`() {
         val cause = GooglePayBridge.UnavailableThrowable("Google Play services disabled")
 
-        val failure = GooglePayBridge.failureFor(cause) as GopaySDKException
+        val failure = GooglePayBridge.failureFor(cause)
 
         assertEquals(GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE, failure.errorCode)
         assertSame(cause, failure.cause)
@@ -150,7 +149,7 @@ class GooglePayBridgeTest {
             IllegalArgumentException("Missing signature in Google Pay token")
         )
         for (cause in causes) {
-            val failure = GooglePayBridge.failureFor(cause) as GopaySDKException
+            val failure = GooglePayBridge.failureFor(cause)
 
             assertEquals("$cause", GopayErrorCodes.PAYMENT_PROCESSING_FAILED, failure.errorCode)
             assertSame(cause, failure.cause)

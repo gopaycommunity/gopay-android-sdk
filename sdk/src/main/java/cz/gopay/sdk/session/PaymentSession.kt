@@ -284,8 +284,10 @@ class PaymentSession internal constructor(
      * required, then [getChargeState] for the final result.
      *
      * Only one Google Pay sheet can be visible per process; if another session has one in
-     * progress this throws [GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS], and only then. User
-     * dismissal is reported as [kotlinx.coroutines.CancellationException]. Google Pay unable to
+     * progress this throws [GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS], and only then. The
+     * user closing the sheet without paying throws [GopayErrorCodes.PAYMENT_CANCELLED]. A
+     * [CancellationException] comes only from cancelling the calling coroutine; a sheet already
+     * up stays until the user closes it. Google Pay unable to
      * show its sheet on this device throws [GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE]; any
      * other failure of the sheet or of its token throws
      * [GopayErrorCodes.PAYMENT_PROCESSING_FAILED] with the original as the cause.
@@ -411,12 +413,15 @@ class PaymentSession internal constructor(
      *
      * Only one verification can run per process at a time;
      * [GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS] is thrown if another is in flight.
-     * User dismissal surfaces as [kotlinx.coroutines.CancellationException]. A challenge page
-     * that never drew at all, such as a redirect URL the gateway has already retired, throws
+     * The user closing the challenge, or the task being swiped away, throws
+     * [GopayErrorCodes.PAYMENT_CANCELLED]. Cancelling the calling coroutine is not a dismissal:
+     * it closes the challenge and ends the call with that [CancellationException], so the next
+     * verification can start right away. A challenge page that never drew at all, such as a
+     * redirect URL the gateway has already retired, throws
      * [GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE] rather than reading as a dismissal, so
      * the host can tell the two apart and report the payment accordingly. Anything that goes
-     * wrong after the user has seen the challenge ends as a cancellation instead, because by
-     * then only [getChargeState] can say whether the payment was authorised.
+     * wrong after the user has seen the challenge ends as [GopayErrorCodes.PAYMENT_CANCELLED]
+     * instead, because by then only [getChargeState] can say whether the payment was authorised.
      *
      * [redirectUrl] has to be an `http(s)` address; anything else, including an empty string,
      * throws [GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE] before the challenge is opened.
@@ -459,11 +464,12 @@ class PaymentSession internal constructor(
                         .putExtra(PaymentVerificationActivity.EXTRA_RETURN_URL, returnUrl)
                 )
             }
-            deferred.await()
+            PaymentVerificationBridge.await(owner, deferred)
         } finally {
-            // Scoped to this verification: the release can land after the next one has already
-            // claimed the bridge, and clearing that one would strand its caller.
-            PaymentVerificationBridge.clear(owner)
+            // However the call ends, the challenge must not outlive it: dismiss closes it if it is
+            // still up and releases the bridge. Scoped to this verification, so a release landing
+            // after the next one has claimed the bridge leaves that one alone.
+            PaymentVerificationBridge.dismiss(owner)
         }
     }
 

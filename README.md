@@ -203,7 +203,7 @@ auth, HTTP or transport errors.
 | `getQrPaymentInfo(format?)` | `GET /payments/{payment_id}/qr-payment/info` |
 | `getGooglePayInfo()` | `GET /payments/{payment_id}/google-pay/info` |
 | `chargeWithGooglePay(activity)` | Managed flow: GP info → Google Pay sheet → `charge(...)` |
-| `handle3dsVerification(activity, redirectUrl, returnUrl?)` | Managed WebView; suspends until the challenge is answered, dismissed or found unreachable |
+| `handle3dsVerification(activity, redirectUrl, returnUrl?)` | Managed WebView; suspends until the challenge is answered, closed or found unreachable |
 | `close()` | Wipes `payment_secret`, JWT; unregisters from the SDK |
 
 Every enum the gateway sends back (`ChargeState`, `ChargeActionType`, `Emv3dsState`, `CardScheme`,
@@ -276,8 +276,10 @@ not two:
 - **Answered** — the ACS navigates to an address starting with the return URL, which the
   WebView intercepts without loading, and the call returns normally. Read the outcome with
   `getChargeState()`; the SDK does not decide whether the payment went through.
-- **Dismissed** — the user backed out or swiped the task away, which surfaces as
-  `kotlinx.coroutines.CancellationException`.
+- **Closed** — the screen closed before the challenge returned, which throws `GopaySDKException`
+  with `PAYMENT_CANCELLED` (`PAYMENT_011`), whether the user backed out or swiped the task away.
+  The user may have answered the challenge first, so read the charge before offering to pay
+  again; the next verification can start right away.
 - **Unreachable** — the challenge never reached the user, so there was nothing for them to
   answer: the page never drew, for instance because the redirect URL has already been retired or
   is not an `http(s)` address, or the challenge asked to hand off to a banking app and nothing on
@@ -287,18 +289,23 @@ not two:
   case that used to arrive as a dismissal, so hosts ticked the verification off as handled and let
   the payment lapse.
 
-Anything that breaks *after* the challenge has drawn ends as a dismissal instead, because by then
-only `getChargeState()` can say whether the issuer authorised the payment. Only one verification
-runs per process at a time; a second one throws `PAYMENT_VERIFICATION_IN_PROGRESS`.
+Anything that breaks *after* the challenge has drawn ends as `PAYMENT_011` too, because by then
+only `getChargeState()` can say whether the issuer authorised the payment. Cancelling the coroutine
+that awaits the call (a `withTimeout`, a closed screen's scope) is not `PAYMENT_011`: it closes the
+challenge and ends the call with that `CancellationException`. Only one verification runs per
+process at a time; a second one throws `PAYMENT_VERIFICATION_IN_PROGRESS`.
 
 ```kotlin
 try {
     session.handle3dsVerification(activity, redirectUrl, charge.returnUrl)
 } catch (e: GopaySDKException) {
-    if (e.errorCode == GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE) retryCharge()
-} catch (e: CancellationException) {
-    // The user walked away. getChargeState() is still the only source of truth.
-    throw e
+    when (e.errorCode) {
+        GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE -> retryCharge()
+        // The challenge closed before it returned, but the charge was already sent: the state
+        // below decides, so do not offer a new payment before reading it.
+        GopayErrorCodes.PAYMENT_CANCELLED -> Unit
+        else -> throw e
+    }
 }
 val finalState = session.getChargeState()
 ```
@@ -547,8 +554,8 @@ if (GopaySDK.getInstance().isGooglePayAvailable(activity, info)) {
 ```
 
 `chargeWithGooglePay` launches the Google Pay sheet inside an SDK-managed activity, parses the
-returned token, and posts the charge in one step. User dismissal surfaces as
-`kotlinx.coroutines.CancellationException`. Google Pay unable to show its sheet throws
+returned token, and posts the charge in one step. The user closing the sheet without paying
+throws `PAYMENT_CANCELLED`. Google Pay unable to show its sheet throws
 `PAYMENT_METHOD_UNAVAILABLE`, any other failure of the sheet or its token
 `PAYMENT_PROCESSING_FAILED`, and `PAYMENT_GOOGLE_PAY_IN_PROGRESS` only means another sheet is
 already open.
@@ -595,6 +602,7 @@ mapped. Codes most likely to surface in the per-payment flow:
 | `PAYMENT_PROCESSING_FAILED` | Google Pay failed in the sheet, or returned no data or a token the SDK cannot read; the original is the `cause` |
 | `PAYMENT_VERIFICATION_IN_PROGRESS` | A second 3DS WebView attempted while one is open |
 | `PAYMENT_VERIFICATION_UNREACHABLE` | The 3DS challenge never reached the user: the page would not load, e.g. the redirect URL is dead or is not a web address, or no app took the hand-off |
+| `PAYMENT_CANCELLED` | The Google Pay sheet or the 3DS screen closed before it finished, or the 3DS page failed after it had drawn; read the charge before paying again |
 
 ```kotlin
 try {
@@ -617,13 +625,24 @@ try {
     when (e.errorCode) {
         GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS -> Unit // a sheet is already open
         GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE -> hideGooglePayButton()
+        GopayErrorCodes.PAYMENT_CANCELLED -> Unit // the user closed the sheet; not a failure
         else -> showGenericError(e) // PAYMENT_PROCESSING_FAILED and the charge's own errors
     }
 }
 ```
 
+Closing the Google Pay sheet without paying or the 3DS challenge before it returned throws
+`PAYMENT_CANCELLED` (`PAYMENT_011`), and so does a challenge page that fails after it has started
+rendering. The payment did not fail. From the Google Pay sheet nothing was charged; from the 3DS
+challenge the charge was already sent, so read `getChargeState()` before offering to pay again. It
+is not passed to `errorCallback`. A `CancellationException` comes only from cancelling the coroutine
+that awaits the call: that closes the 3DS challenge and ends the call with it. A Google Pay sheet
+already up stays until the user closes it, but the call ends at once; what the user does in the
+sheet is discarded and nothing is charged. Do not catch `CancellationException` to detect a closed
+sheet; rethrow it.
+
 Plug an analytics callback via `GopayConfig.errorCallback` to receive every exception the SDK
-throws.
+throws, except `PAYMENT_CANCELLED`, which is not an error.
 
 Every code, with its causes and what to do about it, is in
 [`sdk/docs/ERROR_CODES.md`](sdk/docs/ERROR_CODES.md). The codes are shared with the iOS SDK, which
@@ -644,6 +663,7 @@ the response enums and the card form theme.
 | An unexpected failure while exchanging the payment credentials was `AUTH_010` | `INTERNAL_001` |
 | A 2xx without a body was `AUTH_005` | `INTERNAL_003`, as a body the SDK cannot read |
 | A Google Pay error or missing data was `PAYMENT_009` | Wallet unavailable: `PAYMENT_004`; any other failure: `PAYMENT_003`; `PAYMENT_009` only for a sheet already open |
+| Closing the Google Pay sheet or the 3DS challenge threw `CancellationException` | `PAYMENT_CANCELLED` (`PAYMENT_011`); a `CancellationException` now comes only from cancelling your own coroutine, which also closes the 3DS challenge |
 
 ### Card encryption
 

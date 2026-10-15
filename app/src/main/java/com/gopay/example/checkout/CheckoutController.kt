@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.gopay.example.MerchantBackendSimulator
 import cz.gopay.sdk.GopaySDK
+import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.ChallengePreference
@@ -88,7 +89,11 @@ class CheckoutController {
     var locale by mutableStateOf<String?>(null)
     /** Non-null while a network call or a presented SDK sheet is in flight; carries the status. */
     var busyLabel by mutableStateOf<String?>(null)
-    /** Transient, non-fatal message (cancellations, unavailable wallet). */
+    /**
+     * Transient, non-fatal message: a payment window closed before anything was charged, or
+     * Google Pay reported unavailable before its sheet was offered. A `PAYMENT_004` from the sheet
+     * itself is a failed payment and goes to the result screen instead.
+     */
     var banner by mutableStateOf<String?>(null)
     /** Inline validation / encryption error shown under the card form. */
     var cardFormError by mutableStateOf<String?>(null)
@@ -99,6 +104,9 @@ class CheckoutController {
         private set
 
     private var session: PaymentSession? = null
+
+    /** Whether the current attempt's charge has gone out, which decides what a closed window means. */
+    private var chargeSent = false
 
     /**
      * The SDK's card form has no pay button of its own — it hands back a submit lambda through
@@ -128,6 +136,7 @@ class CheckoutController {
     suspend fun pay(activity: Activity) {
         banner = null
         cardFormError = null
+        chargeSent = false
         try {
             when (selectedMethod) {
                 Method.CARD -> payWithNewCard(activity)
@@ -136,10 +145,13 @@ class CheckoutController {
                 Method.BANK_TRANSFER -> showBankTransfer()
             }
         } catch (e: CancellationException) {
-            // The SDK signals Google Pay / 3DS dismissal this way. Backing out of a sheet is not a
-            // failed payment, so it gets a soft banner rather than the failure screen.
-            banner = "Payment cancelled. Pick a method and try again."
+            // The checkout's own scope going away, not the user: nothing left to show it on.
+            throw e
         } catch (e: GopaySDKException) {
+            if (e.errorCode == GopayErrorCodes.PAYMENT_CANCELLED) {
+                afterClosedWindow(activity, session)
+                return
+            }
             fail("[${e.errorCode}] ${e.message}")
         } catch (e: Exception) {
             fail(e.message ?: "Something went wrong")
@@ -170,9 +182,13 @@ class CheckoutController {
             val settled = settle(activity, current, charge)
             outcome = Outcome(settled.state, settled, settled.failReason)
         } catch (e: CancellationException) {
-            banner = "Verification cancelled."
+            throw e
         } catch (e: GopaySDKException) {
-            banner = "[${e.errorCode}] ${e.message}"
+            if (e.errorCode == GopayErrorCodes.PAYMENT_CANCELLED) {
+                afterClosedWindow(activity, current)
+            } else {
+                banner = "[${e.errorCode}] ${e.message}"
+            }
         } catch (e: Exception) {
             banner = e.message ?: "Something went wrong"
         } finally {
@@ -267,6 +283,7 @@ class CheckoutController {
         charge: suspend () -> ChargePaymentResponse
     ) {
         val response = charge()
+        chargeSent = true
         val settled = settle(activity, session, response)
         outcome = Outcome(settled.state, settled, settled.failReason)
     }
@@ -337,6 +354,60 @@ class CheckoutController {
         session = started
         paymentId = created.paymentId
         return started
+    }
+
+    /**
+     * A payment window closed before it finished (`PAYMENT_011`). Closing the Google Pay sheet
+     * sends no charge, so a soft banner is all it takes. Closing the 3DS challenge comes after the
+     * charge went out, and the issuer may have authorised it already: offering a new payment then
+     * could charge the shopper twice, so the charge decides first. A result is shown, an undecided
+     * charge is polled, and only a charge the gateway does not have (404) or that did not go
+     * through gets the banner. When the charge cannot be read, the pending screen offers Refresh
+     * rather than a new payment. The iOS demo does the same.
+     */
+    private suspend fun afterClosedWindow(activity: Activity, session: PaymentSession?) {
+        val cancelled = "Payment cancelled. Pick a method and try again."
+        if (!chargeSent || session == null) {
+            banner = cancelled
+            return
+        }
+        busyLabel = "Checking the payment…"
+        // The last charge read, which the pending screen falls back to if reading fails later.
+        var lastRead: ChargePaymentResponse? = null
+        try {
+            val charge = session.getChargeState().also { lastRead = it }
+            when (charge.state) {
+                ChargeState.SUCCEEDED -> outcome = Outcome(charge.state, charge, null)
+                ChargeState.REQUESTED, ChargeState.PROCESSING, ChargeState.UNKNOWN -> {
+                    val settled = settle(activity, session, charge)
+                    outcome = Outcome(settled.state, settled, settled.failReason)
+                }
+                else -> {
+                    // Not through: back to the checkout, also from the pending screen's Refresh.
+                    outcome = null
+                    banner = cancelled
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val noCharge = e is GopaySDKException &&
+                e.errorCode == GopayErrorCodes.NETWORK_CLIENT_ERROR && e.getHttpStatusCode() == 404
+            if (noCharge) {
+                // The gateway has no charge on this payment: nothing went out.
+                outcome = null
+                banner = cancelled
+                return
+            }
+            // The charge may be through, so no new payment: the pending screen and its Refresh,
+            // with the reason where the result screen shows it rather than behind it in a banner.
+            val reason = if (e is GopaySDKException) "[${e.errorCode}] ${e.message}" else e.message
+            outcome = Outcome(
+                state = lastRead?.state ?: ChargeState.UNKNOWN,
+                response = lastRead,
+                message = "Couldn't check the payment: $reason"
+            )
+        }
     }
 
     private fun fail(message: String) {

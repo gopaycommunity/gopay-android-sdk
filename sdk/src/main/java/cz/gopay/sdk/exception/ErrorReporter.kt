@@ -15,7 +15,8 @@ fun interface ErrorCallback {
 
 /**
  * Internal error reporter that manages error callbacks.
- * This is used internally by GopaySDKException to report errors when they occur.
+ * This is used internally by GopaySDKException to report errors when they occur, all but
+ * [GopayErrorCodes.PAYMENT_CANCELLED], which is not an error.
  */
 internal object ErrorReporter {
     
@@ -38,6 +39,8 @@ internal object ErrorReporter {
      * @param exception The exception to report
      */
     fun report(exception: GopaySDKException) {
+        // A payment window that closed before it finished is not an error; see PAYMENT_CANCELLED.
+        if (exception.errorCode == GopayErrorCodes.PAYMENT_CANCELLED) return
         try {
             errorCallback?.onError(exception)
         } catch (e: Exception) {

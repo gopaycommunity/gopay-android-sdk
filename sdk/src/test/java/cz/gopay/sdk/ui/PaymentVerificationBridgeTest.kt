@@ -2,7 +2,12 @@ package cz.gopay.sdk.ui
 
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -25,7 +30,7 @@ class PaymentVerificationBridgeTest {
 
     @After
     fun tearDown() {
-        if (::owner.isInitialized) PaymentVerificationBridge.clear(owner)
+        if (::owner.isInitialized) PaymentVerificationBridge.dismiss(owner)
     }
 
     /** Registers [d] and keeps its token for [tearDown]. */
@@ -56,13 +61,20 @@ class PaymentVerificationBridgeTest {
     }
 
     @Test
-    fun `cancel surfaces user dismissal as cancellation`() {
+    fun `cancel surfaces a closed challenge as PAYMENT_CANCELLED, not as a cancellation`() = runTest {
         val d = CompletableDeferred<Boolean>()
         val o = register(d)!!
 
         PaymentVerificationBridge.cancel(o)
 
-        assertTrue(d.isCancelled)
+        // A CancellationException would read as the host's own scope going away.
+        assertFalse(d.getCompletionExceptionOrNull() is CancellationException)
+        try {
+            d.await()
+            fail("Expected GopaySDKException for a closed challenge")
+        } catch (e: GopaySDKException) {
+            assertEquals(GopayErrorCodes.PAYMENT_CANCELLED, e.errorCode)
+        }
     }
 
     @Test
@@ -72,8 +84,8 @@ class PaymentVerificationBridgeTest {
 
         PaymentVerificationBridge.failUnreachable(o, "HTTP 404")
 
-        // The host tells a dead link from a dismissal by what await() throws: a
-        // GopaySDKException here, a CancellationException from cancel().
+        // The host tells a dead link from a dismissal by the code: PAYMENT_010 here,
+        // PAYMENT_011 from cancel().
         try {
             d.await()
             fail("Expected GopaySDKException for a challenge that could not be loaded")
@@ -103,7 +115,7 @@ class PaymentVerificationBridgeTest {
     fun `a report after the bridge is released is a no-op`() {
         val d = CompletableDeferred<Boolean>()
         val o = register(d)!!
-        PaymentVerificationBridge.clear(o)
+        PaymentVerificationBridge.dismiss(o)
 
         PaymentVerificationBridge.failUnreachable(o, "HTTP 404")
 
@@ -118,7 +130,7 @@ class PaymentVerificationBridgeTest {
         val first = CompletableDeferred<Boolean>()
         val staleOwner = PaymentVerificationBridge.register(first)!!
         PaymentVerificationBridge.complete(staleOwner)
-        PaymentVerificationBridge.clear(staleOwner)
+        PaymentVerificationBridge.dismiss(staleOwner)
 
         val second = CompletableDeferred<Boolean>()
         register(second)
@@ -138,8 +150,79 @@ class PaymentVerificationBridgeTest {
         val current = register(second)
 
         // The first caller's finally lands late; the bridge must stay claimed by the second.
-        PaymentVerificationBridge.clear(staleOwner)
+        PaymentVerificationBridge.dismiss(staleOwner)
 
         assertSame(current, PaymentVerificationBridge.currentOwner())
+    }
+
+    @Test
+    fun `cancelling the caller closes the challenge and frees the bridge`() = runBlocking {
+        val deferred = CompletableDeferred<Boolean>()
+        val token = register(deferred)!!
+        var closed = 0
+        // What the activity does in onCreate.
+        PaymentVerificationBridge.attach(token) { closed++ }
+
+        // Runs up to the point where it waits for the result, as the real caller does.
+        val caller = launch(start = CoroutineStart.UNDISPATCHED) {
+            PaymentVerificationBridge.await(token, deferred)
+        }
+        caller.cancelAndJoin()
+
+        assertEquals("the challenge must be closed once", 1, closed)
+        assertNull("the next verification must be able to start", PaymentVerificationBridge.currentOwner())
+        // The closing activity's own onDestroy reaches nothing.
+        PaymentVerificationBridge.cancel(token)
+        assertTrue(caller.isCancelled)
+        assertFalse("the caller's cancellation must not turn into PAYMENT_011", deferred.isCompleted)
+    }
+
+    @Test
+    fun `a user dismissal is not closed a second time`() = runBlocking {
+        val deferred = CompletableDeferred<Boolean>()
+        val token = register(deferred)!!
+        var closed = 0
+        PaymentVerificationBridge.attach(token) { closed++ }
+
+        PaymentVerificationBridge.cancel(token)
+        try {
+            PaymentVerificationBridge.await(token, deferred)
+            fail("Expected the dismissal as PAYMENT_CANCELLED")
+        } catch (e: GopaySDKException) {
+            assertEquals(GopayErrorCodes.PAYMENT_CANCELLED, e.errorCode)
+        }
+
+        assertEquals("the activity closes itself after a dismissal", 0, closed)
+    }
+
+    @Test
+    fun `dismissing a finished verification does not touch the one that replaced it`() {
+        val first = register(CompletableDeferred())!!
+        PaymentVerificationBridge.dismiss(first)
+        val second = register(CompletableDeferred())!!
+        var closed = 0
+        PaymentVerificationBridge.attach(second) { closed++ }
+        // A stale activity of the first verification tries to attach too.
+        PaymentVerificationBridge.attach(first) { fail("a stale activity must not attach") }
+
+        PaymentVerificationBridge.dismiss(first)
+
+        assertEquals(0, closed)
+        assertSame(second, PaymentVerificationBridge.currentOwner())
+    }
+
+    @Test
+    fun `an activity whose caller already gave up is told to close itself`() {
+        val token = register(CompletableDeferred())!!
+        PaymentVerificationBridge.dismiss(token)
+
+        assertFalse(PaymentVerificationBridge.attach(token) { fail("nothing should close it") })
+    }
+
+    @Test
+    fun `an activity attaching to its live verification may stay`() {
+        val token = register(CompletableDeferred())!!
+
+        assertTrue(PaymentVerificationBridge.attach(token) { })
     }
 }

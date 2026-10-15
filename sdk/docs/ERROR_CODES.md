@@ -371,10 +371,11 @@ This document provides a comprehensive reference for all error codes used in the
 - **Common Causes**:
   - `handle3dsVerification` invoked while a verification sheet is open
 - **Developer Action**:
-  - Await the in-flight verification before starting another
+  - Await the in-flight verification before starting another; to drop it, cancel the coroutine awaiting it, which closes the challenge
+- **Note**: A cancelled coroutine ends the running verification with its `CancellationException` and frees the slot, so this code does not outlive it.
 
 ### PAYMENT_009: Wallet Sheet Already In Progress
-- **Description**: A Google Pay sheet is already running; only one can run at a time (the iOS SDK uses this code for Apple Pay). The SDK raises it for nothing else: other wallet failures are `PAYMENT_003` or `PAYMENT_004`
+- **Description**: A Google Pay sheet is already running; only one can run at a time (the iOS SDK uses this code for Apple Pay). The SDK raises it for nothing else: a closed sheet is `PAYMENT_011`, other wallet failures are `PAYMENT_003` or `PAYMENT_004`
 - **Common Causes**:
   - `chargeWithGooglePay` invoked twice, e.g. from a double tap
 - **Developer Action**:
@@ -389,9 +390,20 @@ This document provides a comprehensive reference for all error codes used in the
   - The challenge asked to hand off to a banking app and nothing on the device opened it
 - **Developer Action**:
   - Read the charge state and report the payment as unverified rather than as abandoned
-  - Do not treat it as a user dismissal, which arrives as a cancellation instead
+  - Do not treat it as a user dismissal, which arrives as `PAYMENT_011` instead
   - Charge again to obtain a fresh redirect URL
   - A hand-off nobody took usually means the banking app is not installed; offer the user another way to authorize
+
+### PAYMENT_011: Payment Cancelled
+- **Description**: The payment window closed before it finished: the Google Pay sheet or the 3DS screen was closed, or the 3DS page failed after it had started rendering
+- **Common Causes**:
+  - The Google Pay sheet was closed without paying
+  - The 3DS verification screen was closed, by the user or by the app's task being swiped away
+  - The 3DS page failed after it had started rendering, when the user may already have answered
+- **Developer Action**:
+  - Not a failed payment, and not necessarily one that did not happen: read `getChargeState()` before offering the payment again. A 3DS challenge may have been answered
+  - When there is no charge (`NETWORK_002`, HTTP 404) or it did not go through, let the user pick a method again
+- **Note**: not reported through `errorCallback`. Cancelling the coroutine that awaits the call is not this code: it stays a `CancellationException`, closes the 3DS screen and frees `PAYMENT_008`. With a Google Pay sheet up the call ends at once with the `CancellationException`; the sheet stays until the user closes it, what they do in it is discarded and nothing is charged. The iOS SDK reports the same code for Apple Pay and its 3DS screen
 
 ## Card Errors (CARD_XXX)
 
@@ -643,6 +655,6 @@ If you encounter errors not covered in this documentation or need additional ass
 3. Enable debug logging to get more details
 4. Contact support with the error code and context
 
-To receive every exception the SDK throws, register an analytics callback via
-`GopayConfig.errorCallback`.
+To receive every exception the SDK throws, except `PAYMENT_011`, which is not an error, register an
+analytics callback via `GopayConfig.errorCallback`.
  

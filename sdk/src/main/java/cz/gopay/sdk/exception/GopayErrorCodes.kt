@@ -137,6 +137,16 @@ object GopayErrorCodes {
      */
     const val PAYMENT_VERIFICATION_UNREACHABLE = "PAYMENT_010"
 
+    /**
+     * The payment window was closed before it finished: the Google Pay sheet closed without
+     * paying, or the 3DS challenge closed before it returned, or the challenge page failed after
+     * it had started rendering. Not a failed payment; after the 3DS challenge the charge was
+     * already sent, so read `getChargeState()` before offering it again. Never passed to
+     * `errorCallback`. A cancelled calling coroutine is not this code, it stays a
+     * `CancellationException`.
+     */
+    const val PAYMENT_CANCELLED = "PAYMENT_011"
+
     // ========================================
     // CARD ERRORS (CARD_XXX)
     // ========================================

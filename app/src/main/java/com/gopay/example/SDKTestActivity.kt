@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.gopay.example.ui.theme.ExampleAppTheme
 import cz.gopay.sdk.GopaySDK
+import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.model.BrowserData
@@ -121,11 +122,16 @@ fun SDKTestScreen() {
             try {
                 block()
             } catch (e: GopaySDKException) {
+                if (e.errorCode == GopayErrorCodes.PAYMENT_CANCELLED) {
+                    log("Closed before it finished [${e.errorCode}]: ${e.message}")
+                    return@launch
+                }
                 log("Error [${e.errorCode}]: ${e.message}" +
                     e.httpContext?.let { "\nHTTP ${it.statusCode} ${it.requestMethod} ${it.requestUrl}" +
                         (it.responseBody?.takeIf { b -> b.isNotEmpty() }?.let { b -> "\n${b.take(300)}" } ?: "") }.orEmpty())
             } catch (e: CancellationException) {
-                log("Cancelled by user.")
+                // The screen's own scope going away, never the user closing a sheet.
+                throw e
             } catch (e: Exception) {
                 log("Error: ${e.message}")
             } finally {

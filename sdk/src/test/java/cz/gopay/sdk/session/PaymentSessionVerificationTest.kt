@@ -46,7 +46,7 @@ class PaymentSessionVerificationTest {
             assertSame("the in-flight verification must be left alone", owner, PaymentVerificationBridge.currentOwner())
             verifyNoInteractions(activity)
         } finally {
-            PaymentVerificationBridge.clear(owner)
+            PaymentVerificationBridge.dismiss(owner)
         }
     }
 

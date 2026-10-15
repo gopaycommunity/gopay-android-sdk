@@ -42,7 +42,8 @@ data class GopayConfig(
 
     /**
      * Optional callback for error reporting.
-     * When set, all SDK errors will be reported to this callback for analytics integration.
+     * When set, every SDK error is reported to this callback for analytics integration, except
+     * [cz.gopay.sdk.exception.GopayErrorCodes.PAYMENT_CANCELLED], which is not an error.
      */
     val errorCallback: ErrorCallback? = null,
 

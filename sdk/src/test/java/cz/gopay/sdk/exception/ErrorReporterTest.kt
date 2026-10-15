@@ -41,6 +41,16 @@ class ErrorReporterTest {
     }
 
     @Test
+    fun `a closed payment window is not reported as an error`() {
+        val received = mutableListOf<GopaySDKException>()
+        ErrorReporter.setErrorCallback { received.add(it) }
+
+        GopaySDKException(GopayErrorCodes.PAYMENT_CANCELLED, "Google Pay sheet was closed")
+
+        assertTrue(received.isEmpty())
+    }
+
+    @Test
     fun `no callback means report is a no-op`() {
         // No callback configured — must not throw when an exception is created.
         GopaySDKException("NETWORK_002", "boom")
