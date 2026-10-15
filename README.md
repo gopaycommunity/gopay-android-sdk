@@ -324,8 +324,8 @@ fun MyCardSheet(onJwe: (String) -> Unit) {
 }
 ```
 
-The form validates input, sets `FLAG_SECURE` on non-debug builds, and never exposes raw card
-data to the host. Theming is controlled by `PaymentCardFormTheme`; the form callback contract
+The form validates input, sets `FLAG_SECURE` unless your app is debuggable, and never exposes
+raw card data to the host. Theming is controlled by `PaymentCardFormTheme`; the form callback contract
 also offers `onFormReady { submitFn -> … }` for external submit triggers and
 `onValidationError { … }` for inline error display.
 
@@ -673,8 +673,13 @@ repo root, then run the app from Android Studio or with `./gradlew :app:installD
 - With `GopayConfig.debug` on, the SDK logs its HTTP traffic, bodies included, to Logcat under
   the `okhttp.OkHttpClient` tag. The `Authorization` header, the JWT, card tokens, the card JWE
   and the Google Pay payment data are masked. Keep `debug` off in release builds.
-- `PaymentCardForm` enables `FLAG_SECURE` on the host window in non-debug builds to block
-  screenshots of card data.
+- `PaymentCardForm` sets `FLAG_SECURE` on the window it is drawn in, a dialog or a Material3
+  `ModalBottomSheet` included, to block screenshots and screen recording of card data. It does so
+  unless your app is debuggable (`android:debuggable`, as in a debug build), independent of
+  `GopayConfig.debug`, and takes the flag off when the form leaves. A window that already had the
+  flag keeps it. One nesting is not covered: a sheet or dialog with the form opened from another
+  dialog inherits the flag from that dialog, so set `SecureFlagPolicy.SecureOn` on the sheet, or
+  `FLAG_SECURE` on the dialog under it, yourself.
 - Card data lives in memory only while the form needs it: the form state is cleared after a
   successful encryption and when the form leaves the composition (PCI DSS 4.0.1, req. 3.3.1).
   It is deliberately kept after a *failed* encryption so the user can retry without retyping.

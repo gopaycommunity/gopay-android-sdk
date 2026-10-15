@@ -1,7 +1,5 @@
 package cz.gopay.sdk.ui
 
-import android.app.Activity
-import android.view.WindowManager
 import androidx.annotation.VisibleForTesting
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -128,7 +126,9 @@ private fun parseExpirationDate(expirationDate: String): Pair<Int, Int>? {
  * credentials) then calls `POST /cards/tokens` to obtain the final card token.
  *
  * Security:
- * - In non-debug builds, the form sets `FLAG_SECURE` on the window to prevent screen capture.
+ * - Unless the host app is debuggable, the form sets `FLAG_SECURE` on the window it is drawn in,
+ *   a dialog or bottom sheet included, to prevent screen capture, and takes it off when it
+ *   leaves. A window that had the flag before keeps it.
  * - Card data is validated locally and JWE-encrypted using the merchant's public key, fetched
  *   from `GET /cards/public-key` with shareable-key auth on every submit. The JWE's issue time
  *   is the gateway's, read from that response's `Date` header, not the device clock. Without a
@@ -188,7 +188,7 @@ fun PaymentCardForm(
     val cvvFocusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope()
 
-    // Get the view to access the window for FLAG_SECURE
+    // The view the form is drawn in, for FLAG_SECURE on its window
     val view = LocalView.current
 
     // Create the submit function
@@ -208,18 +208,15 @@ fun PaymentCardForm(
         onFormReady?.invoke(submitCardData)
     }
 
-    // Set FLAG_SECURE for production builds to prevent screen capture. Disable for debug builds.
-    LaunchedEffect(Unit) {
-        try {
-            val sdk = GopaySDK.getInstance()
-            if (!sdk.isDebugEnabled()) {
-                val activity = view.context as? Activity
-                activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-            }
-        } catch (e: Exception) {
-            // Silently handle any errors accessing the window
-            // This prevents crashes if the view context is not an Activity
+    // Keep the window the form is drawn in, a dialog or bottom sheet included, out of screenshots
+    // while the form is there. Not in a debuggable build of the host. See SecureWindow.
+    DisposableEffect(view) {
+        val protection = if (SecureWindow.shouldProtect(view.context)) {
+            SecureWindow.protect(view)
+        } else {
+            null
         }
+        onDispose { protection?.release() }
     }
 
     // Drop the card-data references when the form leaves the composition, so PAN/CVV don't
