@@ -166,6 +166,25 @@ class PaymentSessionTransportTest {
     }
 
     @Test
+    fun `AUTH_010 carries what the gateway said about the credentials`() {
+        val e = assertThrows(GopaySDKException::class.java) {
+            runBlocking {
+                start {
+                    retrofit2.Response.error(
+                        401,
+                        """{"error":"UNAUTHORIZED","message":"Invalid payment credentials"}"""
+                            .toResponseBody("application/json".toMediaType())
+                    )
+                }
+            }
+        }
+
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID, e.errorCode)
+        assertEquals("payment_credentials rejected: HTTP 401: Invalid payment credentials", e.message)
+        assertEquals("UNAUTHORIZED", e.httpContext?.gatewayError?.error)
+    }
+
+    @Test
     fun `a cancelled token request stays a cancellation`() {
         val cancellation = CancellationException("host left")
 
@@ -187,6 +206,27 @@ class PaymentSessionTransportTest {
 
         assertEquals(GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED, e.errorCode)
         assertEquals(2, gateway.requests.get())
+        assertNoCrash()
+    }
+
+    @Test
+    fun `AUTH_009 carries what the gateway said about the token`() {
+        val gateway = Gateway { chain ->
+            response(chain, 401, """{"error":"UNAUTHORIZED","message":"Token revoked"}""")
+        }
+        val session = session(gateway)
+
+        val e = assertThrows(GopaySDKException::class.java) {
+            runBlocking { session.getChargeState() }
+        }
+
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED, e.errorCode)
+        assertEquals(
+            "Payment-scoped token still rejected after re-authentication: Token revoked",
+            e.message
+        )
+        assertEquals(401, e.httpContext?.statusCode)
+        assertEquals("UNAUTHORIZED", e.httpContext?.gatewayError?.error)
         assertNoCrash()
     }
 

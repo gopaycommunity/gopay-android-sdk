@@ -591,7 +591,7 @@ mapped. Codes most likely to surface in the per-payment flow:
 | `NETWORK_NO_CONNECTION` | The gateway could not be reached: offline, DNS failure, connection refused |
 | `NETWORK_SSL_ERROR` | The gateway's certificate failed the check or does not match its host name; a TLS connection that drops is `NETWORK_IO_ERROR` |
 | `NETWORK_IO_ERROR` | Any other transport failure, e.g. the connection dropped mid-response |
-| `NETWORK_CLIENT_ERROR` / `NETWORK_SERVER_ERROR` | The gateway answered with a 4xx / 5xx; the status is in `httpContext` |
+| `NETWORK_CLIENT_ERROR` / `NETWORK_SERVER_ERROR` | The gateway answered with a 4xx / 5xx; the status and the gateway's error are in `httpContext` |
 | `AUTH_PAYMENT_CREDENTIALS_INVALID` | `/oauth2/token` turned the `payment_id`/`payment_secret` pair down (HTTP 400, 401 or 403). Any other failure there keeps its `NETWORK_*` code, or `INTERNAL_*` when the answer cannot be read, so an offline device is not told the payment is bad |
 | `AUTH_PAYMENT_TOKEN_EXPIRED` | JWT still rejected after a single re-auth retry — fetch fresh creds from backend |
 | `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` | `startPaymentSession` called for a `paymentId` that already has a live session |
@@ -615,6 +615,11 @@ try {
     }
 }
 ```
+
+When the gateway answered with an error, `httpContext` carries the status and `gatewayError` its
+error body (`error`, `message`, `detail`, each nullable); the gateway's `message` is also appended
+to the exception's, e.g. `Failed to get Google Pay info: HTTP 403: <the gateway's message>`. The
+raw body stays in `httpContext.responseBody`.
 
 `chargeWithGooglePay` adds its own cases:
 
@@ -664,6 +669,7 @@ the response enums and the card form theme.
 | A 2xx without a body was `AUTH_005` | `INTERNAL_003`, as a body the SDK cannot read |
 | A Google Pay error or missing data was `PAYMENT_009` | Wallet unavailable: `PAYMENT_004`; any other failure: `PAYMENT_003`; `PAYMENT_009` only for a sheet already open |
 | Closing the Google Pay sheet or the 3DS challenge threw `CancellationException` | `PAYMENT_CANCELLED` (`PAYMENT_011`); a `CancellationException` now comes only from cancelling your own coroutine, which also closes the 3DS challenge |
+| `HttpErrorContext` had four properties | It gains `gatewayError`, the gateway's error body, as a fifth with a default; source that uses it compiles as before, only code compiled against 1.x has to be rebuilt |
 
 ### Card encryption
 

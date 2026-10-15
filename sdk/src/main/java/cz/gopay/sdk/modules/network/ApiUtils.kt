@@ -25,6 +25,9 @@ import javax.net.ssl.SSLPeerUnverifiedException
  * - on HTTP error, throws [GopaySDKException] with [HttpErrorContext] populated from the
  *   request and error body: [GopayErrorCodes.NETWORK_SERVER_ERROR] for a 5xx status,
  *   [GopayErrorCodes.NETWORK_CLIENT_ERROR] for any other. The iOS SDK maps statuses the same way.
+ *   The gateway's error body, when the response carries one, goes into
+ *   [HttpErrorContext.gatewayError] and its `message` into the exception's, so "HTTP 403" says
+ *   why.
  *
  * Used by [cz.gopay.sdk.session.PaymentSession] and [cz.gopay.sdk.service.CardEncryption] so
  * every API error in the SDK has the same shape.
@@ -33,18 +36,22 @@ import javax.net.ssl.SSLPeerUnverifiedException
  */
 internal fun <T> Response<T>.unwrap(action: String): T {
     if (!isSuccessful) {
+        val body = errorBody()?.string()
+        val gatewayError = GatewayErrorBody.parse(body)
         throw GopaySDKException(
             errorCode = if (code() in 500..599) {
                 GopayErrorCodes.NETWORK_SERVER_ERROR
             } else {
                 GopayErrorCodes.NETWORK_CLIENT_ERROR
             },
-            message = "Failed to $action: HTTP ${code()}",
+            message = "Failed to $action: HTTP ${code()}" +
+                GatewayErrorBody.messageSuffix(gatewayError),
             httpContext = HttpErrorContext(
                 statusCode = code(),
-                responseBody = errorBody()?.string(),
+                responseBody = body,
                 requestUrl = raw().request.url.toString(),
-                requestMethod = raw().request.method
+                requestMethod = raw().request.method,
+                gatewayError = gatewayError
             )
         )
     }

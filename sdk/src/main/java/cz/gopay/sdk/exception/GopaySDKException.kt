@@ -70,14 +70,34 @@ class GopaySDKException(
  * @param responseBody Response body content (truncated if too long)
  * @param requestUrl The URL that was requested
  * @param requestMethod HTTP method (GET, POST, etc.)
+ * @param gatewayError What the gateway said about the failure, read from [responseBody] when it
+ *        holds the gateway's error body; its `message` is part of the exception's message too.
  */
 data class HttpErrorContext(
     val statusCode: Int,
     val responseBody: String? = null,
     val requestUrl: String? = null,
-    val requestMethod: String? = null
+    val requestMethod: String? = null,
+    val gatewayError: GopayGatewayError? = null
 ) {
     override fun toString(): String {
-        return "HttpErrorContext(statusCode=$statusCode, requestMethod=$requestMethod, requestUrl=$requestUrl)"
+        return "HttpErrorContext(statusCode=$statusCode, requestMethod=$requestMethod, " +
+            "requestUrl=$requestUrl, gatewayError=$gatewayError)"
     }
-} 
+}
+
+/**
+ * The body the gateway answers a failed request with (`Error-Response-Body` in the GoPay API).
+ * Every field is optional: the SDK reads what is there and does not fail on what is not. The iOS
+ * SDK exposes the same three fields as `GopaySDKError.gatewayError`.
+ *
+ * @param error The error type, which follows the HTTP status, e.g. `BAD_REQUEST` or `FORBIDDEN`.
+ *        The gateway has no finer business codes.
+ * @param message A human-readable explanation from the gateway.
+ * @param detail Further detail, e.g. which field of the request was wrong.
+ */
+data class GopayGatewayError(
+    val error: String? = null,
+    val message: String? = null,
+    val detail: String? = null
+)

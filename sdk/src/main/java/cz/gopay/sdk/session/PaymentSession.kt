@@ -20,6 +20,7 @@ import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.model.deviceDefault
 import cz.gopay.sdk.model.syntheticUserAgent
 import cz.gopay.sdk.modules.network.AuthApi
+import cz.gopay.sdk.modules.network.GatewayErrorBody
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.modules.network.SessionTokenProvider
@@ -127,7 +128,8 @@ class PaymentSession internal constructor(
                 if (status == 400 || status == 401 || status == 403) {
                     throw GopaySDKException(
                         errorCode = GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID,
-                        message = "payment_credentials rejected: HTTP $status",
+                        message = "payment_credentials rejected: HTTP $status" +
+                            GatewayErrorBody.messageSuffix(e.httpContext?.gatewayError),
                         // The gateway's HTTP error itself, as the iOS SDK keeps it.
                         cause = e,
                         httpContext = e.httpContext

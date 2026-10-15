@@ -2,6 +2,7 @@ package cz.gopay.sdk.modules.network
 
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.exception.HttpErrorContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
@@ -56,11 +57,22 @@ internal class SessionAuthInterceptor(
 
         val retryResponse = chain.proceed(originalRequest.withBearer(refreshed))
         if (retryResponse.code == 401) {
+            // Read before closing: the gateway's error body says why, as on every other error.
+            val body = retryResponse.peekBody(MAX_ERROR_BODY_BYTES).string()
+            val gatewayError = GatewayErrorBody.parse(body)
             retryResponse.close()
             throw SdkIOException(
                 GopaySDKException(
                     errorCode = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
-                    message = "Payment-scoped token still rejected after re-authentication"
+                    message = "Payment-scoped token still rejected after re-authentication" +
+                        GatewayErrorBody.messageSuffix(gatewayError),
+                    httpContext = HttpErrorContext(
+                        statusCode = 401,
+                        responseBody = body,
+                        requestUrl = originalRequest.url.toString(),
+                        requestMethod = originalRequest.method,
+                        gatewayError = gatewayError
+                    )
                 )
             )
         }
@@ -87,4 +99,9 @@ internal class SessionAuthInterceptor(
 
     private fun Request.withBearer(token: String): Request =
         newBuilder().header("Authorization", "Bearer $token").build()
+
+    private companion object {
+        /** An error body is a few hundred bytes; more than this is not the gateway's. */
+        const val MAX_ERROR_BODY_BYTES = 64L * 1024
+    }
 }

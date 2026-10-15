@@ -153,6 +153,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Authentication issues
   - Rate limiting
 - **Developer Action**:
+  - Read `httpContext.gatewayError`: the gateway's `error`, `message` and `detail` say what was wrong; the `message` is in the exception's message too
   - Check request parameters
   - Verify authentication
   - Implement rate limiting handling
@@ -637,6 +638,8 @@ val config = GopayConfig(
 ```kotlin
 catch (e: GopaySDKException) {
     e.httpContext?.let { httpContext ->
+        // What the gateway said, from its error body: error type, message and detail.
+        log(httpContext.gatewayError)
         when (httpContext.statusCode) {
             401 -> handleUnauthorized()
             429 -> handleRateLimit()
@@ -645,6 +648,11 @@ catch (e: GopaySDKException) {
     }
 }
 ```
+
+`httpContext.gatewayError` holds the gateway's error body (`error`, `message`, `detail`, each
+nullable) when the response carried one, and the gateway's `message` is appended to the
+exception's own message. The gateway has no finer business codes than `error`, which follows the
+HTTP status.
 
 ## Support
 
