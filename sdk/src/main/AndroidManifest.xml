@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <application
-        android:usesCleartextTraffic="false"
-        >
+    <!-- Declared here rather than left to arrive through Google Play services. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- No application attributes: the cleartext policy and the like belong to the host. -->
+    <application>
         <activity
             android:name="cz.gopay.sdk.ui.PaymentVerificationActivity"
             android:exported="false"

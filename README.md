@@ -677,7 +677,9 @@ repo root, then run the app from Android Studio or with `./gradlew :app:installD
   It is deliberately kept after a *failed* encryption so the user can retry without retyping.
   `CardData`'s `toString()` is masked, so a stray log never prints the PAN or CVV. JVM strings
   cannot be securely overwritten, so clearing releases the references rather than zeroing bytes.
-- Network: HTTPS only.
+- Network: both built-in environments are HTTPS. The SDK sets no cleartext policy of its own, so
+  your manifest decides it; a `DEVELOPMENT` gateway on `http://` needs cleartext allowed there.
+  The SDK declares the `INTERNET` permission itself.
 - Certificate pinning is plumbed all the way through `NetworkManager`/`NetworkModule`, but is
   **not reachable from the public API today**: the `CertificatePinner` is a parameter of
   `GopaySDK`'s private constructor and `GopaySDK.initialize(config)` never passes one.
