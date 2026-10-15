@@ -19,6 +19,10 @@ internal class GooglePayLauncherActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A recreation, a rotation while the sheet is up above all, finds the sheet still open
+        // and its result still on the way to onActivityResult. Asking again would put a second
+        // sheet on top of the first.
+        if (savedInstanceState != null) return
         val json = intent.getStringExtra(EXTRA_PAYMENT_REQUEST_JSON) ?: run {
             GooglePayBridge.cancel(IllegalArgumentException("Missing payment request JSON"))
             finish()
