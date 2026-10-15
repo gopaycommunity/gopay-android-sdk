@@ -1,7 +1,11 @@
 package cz.gopay.sdk.ui
 
 import android.annotation.SuppressLint
+import android.content.res.Configuration
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.View
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -12,6 +16,10 @@ import android.widget.FrameLayout
 import android.widget.ProgressBar
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.core.graphics.ColorUtils
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import cz.gopay.sdk.util.SdkLog
 
 internal class PaymentVerificationActivity : ComponentActivity() {
@@ -19,7 +27,13 @@ internal class PaymentVerificationActivity : ComponentActivity() {
     companion object {
         const val EXTRA_REDIRECT_URL = "redirect_url"
         const val EXTRA_RETURN_URL = "return_url"
+
+        /** The navigation bar scrim `enableEdgeToEdge` uses where dark icons are not possible. */
+        private const val DARK_NAVIGATION_SCRIM = 0x801b1b1b.toInt()
     }
+
+    /** The view behind the system bars, painted by [applySystemBars]. */
+    private var container: View? = null
 
     /** Set once the challenge has actually drawn; see [reportLoadFailure]. */
     private var hasRenderedChallenge = false
@@ -106,6 +120,10 @@ internal class PaymentVerificationActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Edge to edge on every version, not only where the host's targetSdk forces it (35 and up
+        // on Android 15), so the challenge lays out the same everywhere; the insets below keep it
+        // clear of the bars and the keyboard, and applySystemBars makes the bars see-through.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         // Which verification this activity belongs to. Nothing to serve means the caller is
         // already done with it, typically a system recreation after the verification ended, and
@@ -227,7 +245,21 @@ internal class PaymentVerificationActivity : ComponentActivity() {
             })
         }
 
+        // Edge to edge, the window no longer shrinks for the system bars or the keyboard, so the
+        // challenge would sit under the status bar and its submit button under the keyboard.
+        ViewCompat.setOnApplyWindowInsetsListener(container) { view, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or
+                    WindowInsetsCompat.Type.displayCutout() or
+                    WindowInsetsCompat.Type.ime()
+            )
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            WindowInsetsCompat.CONSUMED
+        }
+
         setContentView(container)
+        this.container = container
+        applySystemBars()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -235,6 +267,57 @@ internal class PaymentVerificationActivity : ComponentActivity() {
                 finish()
             }
         })
+    }
+
+    /**
+     * Makes the system bars see-through over the challenge and picks icons that read on what is
+     * behind them. `androidx.activity`'s `enableEdgeToEdge` does the same, but the SDK depends on
+     * an older version that lacks it, so this is done by hand.
+     *
+     * Below Android 15 a window that does not fit the system windows still draws the bar colors of
+     * the host's theme, which can be anything, so both are cleared here. What shows through is the
+     * container, painted with the theme's `colorBackground`, and the icons follow that color's
+     * luminance rather than the night mode, so they stay readable on a host theme that ignores it.
+     * Below Android 8 the navigation bar cannot have dark icons and keeps a dark scrim instead.
+     */
+    @Suppress("DEPRECATION")
+    private fun applySystemBars() {
+        val container = container ?: return
+        val value = TypedValue()
+        val resolved = theme.resolveAttribute(android.R.attr.colorBackground, value, true) &&
+            value.type in TypedValue.TYPE_FIRST_COLOR_INT..TypedValue.TYPE_LAST_COLOR_INT
+        val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        val background = when {
+            resolved -> value.data
+            night -> Color.BLACK
+            else -> Color.WHITE
+        }
+        container.setBackgroundColor(background)
+        val lightBackground = ColorUtils.calculateLuminance(background) > 0.5
+
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O -> Color.TRANSPARENT
+            else -> DARK_NAVIGATION_SCRIM
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isStatusBarContrastEnforced = false
+        }
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = lightBackground
+            isAppearanceLightNavigationBars =
+                lightBackground && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+        }
+    }
+
+    /**
+     * `uiMode` is among the activity's `configChanges`, so a switch to or from dark mode lands here
+     * rather than recreating the challenge, and the bars are worked out again.
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applySystemBars()
     }
 
     /**
