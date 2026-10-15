@@ -85,7 +85,7 @@ internal object NetworkModule {
         return Retrofit.Builder()
             .baseUrl(normalizedBaseUrl)
             .client(client)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .addConverterFactory(ReadingConverterFactory(MoshiConverterFactory.create(moshi)))
             .build()
     }
 }

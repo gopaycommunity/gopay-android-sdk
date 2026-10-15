@@ -166,12 +166,10 @@ session holds no `Context` to read the WebView's own, so use `deviceDefault(acti
 that one. Only fields that are still `null` are filled: a value you set on
 `BrowserData` stays, and when `ip` and `accept_header` are both set the gateway is not
 asked. When the fetch fails the charge is not sent; the error carries the underlying code
-(`NETWORK_002` for an HTTP error, `NETWORK_007` for a transport failure,
+(an HTTP or transport code as listed under [Error handling](#error-handling),
 `AUTH_SHAREABLE_KEY_MISSING` when `clientId` and `shareableKey` are not configured) with the
-original exception as its cause. `NETWORK_007` is mapped only on this step: the charge request
-itself, like every other call on the session, still lets a transport failure through as the bare
-`IOException`. `session.completeBrowserData(browserData)` runs the same step on its own
-when you want to log what goes out; pass its result to the charge unchanged.
+original exception as its cause. `session.completeBrowserData(browserData)` runs the same step
+on its own when you want to log what goes out; pass its result to the charge unchanged.
 
 ## `GopaySDK` API
 
@@ -192,7 +190,7 @@ when you want to log what goes out; pass its result to the charge unchanged.
 
 A `PaymentSession` is the per-payment auth context. Construct it via `startPaymentSession`;
 **never** instantiate directly. All methods are `suspend` and propagate `GopaySDKException` on
-auth or HTTP errors.
+auth, HTTP or transport errors.
 
 | Method | Maps to |
 | --- | --- |
@@ -495,59 +493,8 @@ both labels first and hands every field the height of the tallest one as a floor
 stay on one line whichever label wraps. The label itself is never clipped or shortened for it, and
 the iOS SDK reserves the row's label height the same way.
 
-#### Migrating from 1.x
-
-`PaymentCardFormTheme` in 2.0 is a new set of parameters. The composed `TextStyle` values are gone,
-so every call site is a compile error rather than a silent change of appearance — deliberately, as
-two parameters kept their names and changed their meaning. The last two rows are API outside the
-form that 2.0 changed.
-
-| 1.x | 2.0 |
-|---|---|
-| `labelTextStyle` | `labelColor` + `labelFontSize` + `labelFontWeight` (+ `fontFamily`) |
-| `inputTextStyle` | `inputTextColor` + `inputFontSize` + `inputFontWeight` |
-| `errorTextStyle` | `errorTextColor` + `errorFontSize` |
-| `helperTextStyle` | `helperTextColor` + `helperFontSize` |
-| `placeholderTextStyle` | `placeholderColor` — only the color survives, and unset now means the host theme's `textColorHint`; the placeholder inherits the rest of the input typography |
-| `loadingTextStyle` | removed without replacement; it was never rendered |
-| `inputShape` | `inputBorderRadius: Dp` |
-| `inputPadding` | `inputPaddingVertical` + `inputPaddingHorizontal` |
-| `inputBorderColor`, `inputErrorBorderColor`, `inputBorderWidth` | same name, same default |
-| `inputBackgroundColor` | same name; the default is `Color.Transparent` instead of `Color.White` |
-| `fieldSpacing` (gap between the rows) | `groupSpacing` — **the meaning moved** |
-| `groupSpacing` (gap between expiry and CVV) | `groupSpacing` — one value now covers both gaps |
-| the hard-coded `4.dp` under a label | `fieldSpacing` — **the name is reused for a new meaning** |
-| `getPublicEncryptionKey()`, `EncryptionService`, `Jwk`, `JweHeader` | Gone or internal: a key fetched ahead of time, or a JWE built outside the SDK, would carry the device's clock. Call `encryptCardData` or use `PaymentCardForm`. |
-| An exhaustive `when` over `ChargeState`, `ChargeActionType`, `Emv3dsState`, `CardScheme`, `PaymentState` or `Currency` | Each has an `UNKNOWN` constant for a value the gateway added later; add a branch; for a state, treat it as not final. |
-
-Eight parameters that 2.0 carried in an earlier preview are gone again, because rendering them
-would mean painting the field rather than asking the platform for it. Nothing replaces them:
-
-| Removed | What it did |
-|---|---|
-| `inputBorderStyle` | Chose a bottom line instead of a border; every field is a box now |
-| `inputBorderCollapse` | Merged the borders of neighbouring fields into one block |
-| `focusRingWidth`, `focusRingColor` | Drew a ring outside the focused field |
-| `focusGradientStart`, `focusGradientEnd` | Colored the focused field; nothing marks it now |
-| `inputLetterSpacing` | Tracking of the entered text, dropped for parity with iOS |
-| `inputLineHeight` | Never did anything on a single-line field |
-
-The default form is close to the 1.x one, because both are simply the platform look: the same type
-sizes, the same border and the same `12.dp` padding. Two things differ:
-
-```kotlin
-PaymentCardFormTheme(
-    // 1.x painted the field white, which broke on a dark background
-    inputBackgroundColor = Color.White
-)
-```
-
-The second is not a value: `groupSpacing` is one parameter for both gaps, so it cannot hold the old
-pair (`2.dp` between the rows, `16.dp` between expiry and CVV). It keeps `16.dp`, so the gap between
-the rows grows from `2.dp` to `16.dp`.
-
-One behaviour changes as well: the label of an invalid field stays in `labelColor` instead of
-turning red, which is what the hosted form does too.
+A 1.x theme stops compiling in 2.0; what to write instead is under
+[Card form theme](#card-form-theme) in [Migrating from 1.x](#migrating-from-1x).
 
 ### Localizing the form
 
@@ -624,11 +571,18 @@ when you have been given a gateway that is neither — see
 ## Error handling
 
 Every API call may throw `GopaySDKException` with a structured error code (`AUTH_*`,
-`NETWORK_*`, `PAYMENT_*`, `CONFIG_*`, …). Codes most likely to surface in the per-payment flow:
+`NETWORK_*`, `PAYMENT_*`, `CONFIG_*`, …). No transport failure reaches you bare: the original
+exception is the `cause`. A coroutine cancellation stays a `CancellationException` and is never
+mapped. Codes most likely to surface in the per-payment flow:
 
 | Code | When |
 | --- | --- |
-| `AUTH_PAYMENT_CREDENTIALS_INVALID` | `payment_id`/`payment_secret` rejected by `/oauth2/token` |
+| `NETWORK_TIMEOUT` | The request timed out |
+| `NETWORK_NO_CONNECTION` | The gateway could not be reached: offline, DNS failure, connection refused |
+| `NETWORK_SSL_ERROR` | The gateway's certificate failed the check or does not match its host name; a TLS connection that drops is `NETWORK_IO_ERROR` |
+| `NETWORK_IO_ERROR` | Any other transport failure, e.g. the connection dropped mid-response |
+| `NETWORK_CLIENT_ERROR` / `NETWORK_SERVER_ERROR` | The gateway answered with a 4xx / 5xx; the status is in `httpContext` |
+| `AUTH_PAYMENT_CREDENTIALS_INVALID` | `/oauth2/token` turned the `payment_id`/`payment_secret` pair down (HTTP 400, 401 or 403). Any other failure there keeps its `NETWORK_*` code, or `INTERNAL_*` when the answer cannot be read, so an offline device is not told the payment is bad |
 | `AUTH_PAYMENT_TOKEN_EXPIRED` | JWT still rejected after a single re-auth retry — fetch fresh creds from backend |
 | `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` | `startPaymentSession` called for a `paymentId` that already has a live session |
 | `AUTH_PAYMENT_SESSION_CLOSED` | API call on a session after `close()`; a charge is refused this way before the browser data is fetched |
@@ -655,6 +609,84 @@ throws.
 Every code, with its causes and what to do about it, is in
 [`sdk/docs/ERROR_CODES.md`](sdk/docs/ERROR_CODES.md). The codes are shared with the iOS SDK, which
 throws a subset of the same catalog.
+
+## Migrating from 1.x
+
+What 2.0 changes for code written against 1.x, in four parts: the error contract, card encryption,
+the response enums and the card form theme.
+
+### Error contract
+
+| 1.x | 2.0 |
+| --- | --- |
+| A transport failure (offline, timeout, TLS) reached you bare (`IOException`) | `GopaySDKException` with `NETWORK_001`, `NETWORK_004`, `NETWORK_005` or `NETWORK_007`; the original error is the `cause` |
+| An HTTP 5xx was `NETWORK_002` | `NETWORK_003` |
+| Any failure of the token request in `startPaymentSession` was `AUTH_010` | `AUTH_010` only when the gateway turns the pair down (HTTP 400, 401 or 403); anything else keeps its `NETWORK_*` code |
+| An unexpected failure while exchanging the payment credentials was `AUTH_010` | `INTERNAL_001` |
+| A 2xx without a body was `AUTH_005` | `INTERNAL_003`, as a body the SDK cannot read |
+
+### Card encryption
+
+| 1.x | 2.0 |
+| --- | --- |
+| `getPublicEncryptionKey()`, `EncryptionService`, `Jwk`, `JweHeader` | Gone or internal: a key fetched ahead of time, or a JWE built outside the SDK, would carry the device's clock. Call `encryptCardData` or use `PaymentCardForm`. |
+
+### Response enums
+
+| 1.x | 2.0 |
+| --- | --- |
+| An exhaustive `when` over `ChargeState`, `ChargeActionType`, `Emv3dsState`, `CardScheme`, `PaymentState` or `Currency` | Each has an `UNKNOWN` constant for a value the gateway added later; add a branch; for a state, treat it as not final. |
+
+### Card form theme
+
+`PaymentCardFormTheme` in 2.0 is a new set of parameters. The composed `TextStyle` values are gone,
+so every call site is a compile error rather than a silent change of appearance — deliberately, as
+two parameters kept their names and changed their meaning.
+
+| 1.x | 2.0 |
+| --- | --- |
+| `labelTextStyle` | `labelColor` + `labelFontSize` + `labelFontWeight` (+ `fontFamily`) |
+| `inputTextStyle` | `inputTextColor` + `inputFontSize` + `inputFontWeight` |
+| `errorTextStyle` | `errorTextColor` + `errorFontSize` |
+| `helperTextStyle` | `helperTextColor` + `helperFontSize` |
+| `placeholderTextStyle` | `placeholderColor` — only the color survives, and unset now means the host theme's `textColorHint`; the placeholder inherits the rest of the input typography |
+| `loadingTextStyle` | removed without replacement; it was never rendered |
+| `inputShape` | `inputBorderRadius: Dp` |
+| `inputPadding` | `inputPaddingVertical` + `inputPaddingHorizontal` |
+| `inputBorderColor`, `inputErrorBorderColor`, `inputBorderWidth` | same name, same default |
+| `inputBackgroundColor` | same name; the default is `Color.Transparent` instead of `Color.White` |
+| `fieldSpacing` (gap between the rows) | `groupSpacing` — **the meaning moved** |
+| `groupSpacing` (gap between expiry and CVV) | `groupSpacing` — one value now covers both gaps |
+| the hard-coded `4.dp` under a label | `fieldSpacing` — **the name is reused for a new meaning** |
+
+Eight parameters that 2.0 carried in an earlier preview are gone again, because rendering them
+would mean painting the field rather than asking the platform for it. Nothing replaces them:
+
+| Removed | What it did |
+| --- | --- |
+| `inputBorderStyle` | Chose a bottom line instead of a border; every field is a box now |
+| `inputBorderCollapse` | Merged the borders of neighbouring fields into one block |
+| `focusRingWidth`, `focusRingColor` | Drew a ring outside the focused field |
+| `focusGradientStart`, `focusGradientEnd` | Colored the focused field; nothing marks it now |
+| `inputLetterSpacing` | Tracking of the entered text, dropped for parity with iOS |
+| `inputLineHeight` | Never did anything on a single-line field |
+
+The default form is close to the 1.x one, because both are simply the platform look: the same type
+sizes, the same border and the same `12.dp` padding. Two things differ:
+
+```kotlin
+PaymentCardFormTheme(
+    // 1.x painted the field white, which broke on a dark background
+    inputBackgroundColor = Color.White
+)
+```
+
+The second is not a value: `groupSpacing` is one parameter for both gaps, so it cannot hold the old
+pair (`2.dp` between the rows, `16.dp` between expiry and CVV). It keeps `16.dp`, so the gap between
+the rows grows from `2.dp` to `16.dp`.
+
+One behaviour changes as well: the label of an invalid field stays in `labelColor` instead of
+turning red, which is what the hosted form does too.
 
 ## Example app
 

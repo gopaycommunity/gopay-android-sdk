@@ -8,6 +8,7 @@ import cz.gopay.sdk.modules.network.NetworkModule
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.SessionAuthInterceptor
 import cz.gopay.sdk.modules.network.TokenResponse
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import okhttp3.Dispatcher
 import okhttp3.Interceptor
@@ -18,6 +19,7 @@ import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -92,7 +94,7 @@ class PaymentSessionTransportTest {
     }
 
     @Test
-    fun `a token refresh that fails offline throws AUTH_010 without a crash`() {
+    fun `a token refresh that fails offline throws NETWORK_004 without a crash`() {
         val gateway = Gateway { chain -> response(chain, 401, "{}") }
         val session = session(gateway, refresh = { throw java.net.UnknownHostException("offline") })
 
@@ -100,9 +102,78 @@ class PaymentSessionTransportTest {
             runBlocking { session.getChargeState() }
         }
 
-        // The code is what 2.0 reports for any failed token request; only the crash is fixed here.
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID, e.errorCode)
+        // Offline is not bad credentials: the host should retry, not fetch a new payment.
+        assertEquals(GopayErrorCodes.NETWORK_NO_CONNECTION, e.errorCode)
         assertNoCrash()
+    }
+
+    @Test
+    fun `the token endpoint answers AUTH_010 only when it turns the credentials down`() {
+        val cases = listOf<Pair<() -> retrofit2.Response<TokenResponse>, String>>(
+            { httpError(400) } to GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID,
+            { httpError(401) } to GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID,
+            // A payment_secret past its seven days, per the GoPay guide.
+            { httpError(403) } to GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID,
+            { httpError(404) } to GopayErrorCodes.NETWORK_CLIENT_ERROR,
+            { httpError(429) } to GopayErrorCodes.NETWORK_CLIENT_ERROR,
+            { httpError(503) } to GopayErrorCodes.NETWORK_SERVER_ERROR,
+            { throw java.net.UnknownHostException("offline") } to GopayErrorCodes.NETWORK_NO_CONNECTION,
+            { throw java.net.SocketTimeoutException("timeout") } to GopayErrorCodes.NETWORK_TIMEOUT
+        )
+        cases.forEachIndexed { index, (answer, code) ->
+            val e = assertThrows("case #$index", GopaySDKException::class.java) {
+                runBlocking { start(answer) }
+            }
+            assertEquals("case #$index", code, e.errorCode)
+        }
+    }
+
+    @Test
+    fun `AUTH_010 keeps the gateway's HTTP error as its cause`() {
+        val e = assertThrows(GopaySDKException::class.java) {
+            runBlocking { start { httpError(401) } }
+        }
+
+        val cause = e.cause as GopaySDKException
+        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, cause.errorCode)
+        assertEquals(401, cause.httpContext?.statusCode)
+    }
+
+    @Test
+    fun `a 204 without a body is INTERNAL_003`() {
+        val session = session(Gateway { chain -> response(chain, 204, "") })
+
+        val e = assertThrows(GopaySDKException::class.java) {
+            runBlocking { session.getChargeState() }
+        }
+
+        assertEquals(GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.errorCode)
+        assertNoCrash()
+    }
+
+    @Test
+    fun `a 200 with an empty or unreadable body is INTERNAL_003, not a transport failure`() {
+        for (body in listOf("", "<html>captive portal</html>")) {
+            val session = session(Gateway { chain -> response(chain, 200, body) })
+
+            val e = assertThrows(body, GopaySDKException::class.java) {
+                runBlocking { session.getChargeState() }
+            }
+
+            assertEquals(body, GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.errorCode)
+        }
+        assertNoCrash()
+    }
+
+    @Test
+    fun `a cancelled token request stays a cancellation`() {
+        val cancellation = CancellationException("host left")
+
+        val e = assertThrows(CancellationException::class.java) {
+            runBlocking { start { throw cancellation } }
+        }
+
+        assertSame(cancellation, e)
     }
 
     @Test
@@ -195,7 +266,28 @@ class PaymentSessionTransportTest {
         ).create(paymentId = "pay-1", paymentSecret = "secret", scope = PaymentSession.DEFAULT_SCOPE) {}
     }
 
+    /** Opens a session whose very first token request is answered by [answer]. */
+    private suspend fun start(answer: () -> retrofit2.Response<TokenResponse>): PaymentSession =
+        PaymentSession.Factory(
+            authApi = object : AuthApi {
+                override suspend fun token(
+                    authorization: String,
+                    grantType: String,
+                    scope: String?
+                ): retrofit2.Response<TokenResponse> = answer()
+            },
+            // Built by the session's constructor, never called: the session fails before.
+            paymentApiBuilder = {
+                NetworkModule.createRetrofit(OkHttpClient(), "https://gw.example/api/")
+                    .create(PaymentApi::class.java)
+            },
+            publicApi = { throw IOException("not used") }
+        ).create(paymentId = "pay-1", paymentSecret = "secret", scope = PaymentSession.DEFAULT_SCOPE) {}
+
     private companion object {
+        fun httpError(code: Int): retrofit2.Response<TokenResponse> =
+            retrofit2.Response.error(code, "{}".toResponseBody("application/json".toMediaType()))
+
         fun token(accessToken: String = "jwt") =
             retrofit2.Response.success(TokenResponse(accessToken = accessToken, tokenType = "Bearer"))
 

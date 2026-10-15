@@ -77,7 +77,10 @@ class GopaySDK private constructor(
      * existing one.
      *
      * @param scope OAuth scopes to request. Defaults to [PaymentSession.DEFAULT_SCOPE]
-     *              (`payment:charge payment:read`). Override only when a wider scope is needed.
+     *              (`payment:charge payment:read`), which are the only two scopes the gateway
+     *              grants for payment credentials; any other answers with
+     *              [cz.gopay.sdk.exception.GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID].
+     *              Pass a narrower one, e.g. `payment:read` alone, to only read the payment.
      */
     suspend fun startPaymentSession(
         paymentId: String,

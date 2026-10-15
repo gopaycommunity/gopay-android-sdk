@@ -32,12 +32,12 @@ import cz.gopay.sdk.ui.PaymentVerificationPolicy
 import cz.gopay.sdk.util.Base64Utils
 import cz.gopay.sdk.util.JwtUtils
 import cz.gopay.sdk.util.SdkLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.IOException
 
 /**
  * A live, per-payment authentication context.
@@ -114,21 +114,28 @@ class PaymentSession internal constructor(
                         scope = scope
                     )
                 }
+            } catch (e: CancellationException) {
+                // The caller's coroutine was cancelled; that is not a credentials problem.
+                throw e
             } catch (e: GopaySDKException) {
-                // Retag NETWORK_CLIENT_ERROR from unwrap as AUTH_PAYMENT_CREDENTIALS_INVALID,
-                // keeping the HttpErrorContext for diagnostics.
-                if (e.errorCode == GopayErrorCodes.NETWORK_CLIENT_ERROR) {
+                // Only the gateway turning the pair down means the credentials are bad: 400, 401,
+                // or 403 for a payment_secret past its seven days. A 5xx, another 4xx or a
+                // transport failure keeps the code apiCall gave it, so a host that is merely
+                // offline is not told to fetch a new payment.
+                val status = e.httpContext?.statusCode
+                if (status == 400 || status == 401 || status == 403) {
                     throw GopaySDKException(
                         errorCode = GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID,
-                        message = "payment_credentials rejected: HTTP ${e.httpContext?.statusCode}",
-                        cause = e.cause,
+                        message = "payment_credentials rejected: HTTP $status",
+                        // The gateway's HTTP error itself, as the iOS SDK keeps it.
+                        cause = e,
                         httpContext = e.httpContext
                     )
                 }
                 throw e
             } catch (e: Exception) {
                 throw GopaySDKException(
-                    errorCode = GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID,
+                    errorCode = GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR,
                     message = "Failed to acquire payment-scoped token: ${e.message}",
                     cause = e
                 )
@@ -190,13 +197,10 @@ class PaymentSession internal constructor(
      * [charge] calls this itself; call it directly when you want to see or log the values
      * before they go out, and pass the result to the charge unchanged.
      *
-     * @throws GopaySDKException when the fetch fails, with the underlying error's code
-     *         ([GopayErrorCodes.NETWORK_CLIENT_ERROR] for an HTTP error,
-     *         [GopayErrorCodes.NETWORK_IO_ERROR] for a transport failure,
+     * @throws GopaySDKException when the fetch fails, with the underlying error's code (an
+     *         HTTP or transport code from the `NETWORK_*` range, or
      *         [GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING] without the key) and the original
-     *         exception as its cause. A transport failure is mapped to a code only on this
-     *         step; the charge request itself lets an [IOException] through as before, like
-     *         every other call on the session.
+     *         exception as its cause.
      */
     suspend fun completeBrowserData(browserData: BrowserData): BrowserData {
         val userAgent = browserData.userAgent ?: syntheticUserAgent().also {
@@ -231,15 +235,9 @@ class PaymentSession internal constructor(
             errorCode = e.errorCode,
             message = "Failed to charge payment: browser data could not be fetched " +
                 "(${e.message})",
-            cause = e,
+            // The transport failure apiCall wrapped, not the wrapper; an HTTP error has none.
+            cause = e.cause ?: e,
             httpContext = e.httpContext
-        )
-    } catch (e: IOException) {
-        throw GopaySDKException(
-            errorCode = GopayErrorCodes.NETWORK_IO_ERROR,
-            message = "Failed to charge payment: browser data could not be fetched " +
-                "(${e.message})",
-            cause = e
         )
     }
 
@@ -495,9 +493,9 @@ class PaymentSession internal constructor(
 
     companion object {
         /**
-         * Minimal scope sufficient to read a payment and charge it. Override by passing a
-         * different `scope` to [cz.gopay.sdk.GopaySDK.startPaymentSession] when extra scopes
-         * are required.
+         * The scope to read a payment and charge it, and the widest the gateway grants for
+         * payment credentials: `payment:read` and `payment:charge` are the only two. Pass a
+         * narrower one to [cz.gopay.sdk.GopaySDK.startPaymentSession] to only read the payment.
          */
         const val DEFAULT_SCOPE: String = "payment:charge payment:read"
 

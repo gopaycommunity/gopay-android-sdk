@@ -150,15 +150,16 @@ class CardEncryptionTest {
     }
 
     @Test
-    fun `a transport failure on the key fetch reaches the caller as before`() {
+    fun `a transport failure on the key fetch surfaces as NETWORK_007 with the cause kept`() {
         val io = IOException("unreachable")
         val api = FakePublicApi { throw io }
 
-        val e = assertThrows(IOException::class.java) {
+        val e = assertThrows(GopaySDKException::class.java) {
             runBlocking { encryption(api).encrypt(cardData, CLIENT_ID) }
         }
 
-        assertSame(io, e)
+        assertEquals(GopayErrorCodes.NETWORK_IO_ERROR, e.errorCode)
+        assertSame(io, e.cause)
     }
 
     private fun encryption(api: PublicApi) =

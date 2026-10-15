@@ -101,10 +101,12 @@ This document provides a comprehensive reference for all error codes used in the
   - Start a new `PaymentSession` for the payment
 
 ### AUTH_010: Invalid Payment Credentials
-- **Description**: The `payment_id` / `payment_secret` pair was rejected by `/oauth2/token`
+- **Description**: The `payment_id` / `payment_secret` pair was rejected by `/oauth2/token` with HTTP 400, 401 or 403. Any other failure of that request keeps its own code: `NETWORK_003` for a 5xx, `NETWORK_002` for another 4xx, a transport code (`NETWORK_001`, `004`, `005`, `007`) when the gateway was not reached, and `INTERNAL_*` when the answer cannot be read. The gateway's HTTP error is the `cause`
 - **Common Causes**:
   - Pair belongs to a different environment
   - Payment already closed or expired on the gateway
+  - `payment_secret` older than seven days, which the gateway refuses with a 403 according to the GoPay guide
+  - A `scope` the gateway does not accept for payment credentials, passed to `startPaymentSession` (only `payment:read` and `payment:charge` are)
 - **Developer Action**:
   - Re-fetch the pair from your merchant backend
   - Confirm the SDK points at the same environment that created the payment
@@ -134,7 +136,7 @@ This document provides a comprehensive reference for all error codes used in the
 ## Network Errors (NETWORK_XXX)
 
 ### NETWORK_001: Connection Timeout
-- **Description**: Network request timed out
+- **Description**: Network request timed out; the timeout exception is the `cause`
 - **Common Causes**:
   - Slow network connection
   - Server overload
@@ -167,7 +169,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Contact support if persistent
 
 ### NETWORK_004: No Internet Connection
-- **Description**: No internet connection is available
+- **Description**: The gateway could not be reached: no connection, a DNS failure or a refused connection; the original exception is the `cause`
 - **Common Causes**:
   - Device offline
   - WiFi/cellular disabled
@@ -178,11 +180,10 @@ This document provides a comprehensive reference for all error codes used in the
   - Queue requests for later retry
 
 ### NETWORK_005: SSL/TLS Error
-- **Description**: SSL/TLS handshake failed
+- **Description**: The gateway's certificate failed validation, or it does not match the gateway's host name; the original exception is the `cause`. A TLS connection that is reset or dropped is `NETWORK_007`
 - **Common Causes**:
   - Certificate issues
-  - Outdated TLS version
-  - Network proxy interference
+  - A proxy or captive portal presenting its own certificate
 - **Developer Action**:
   - Check certificate validity
   - Update TLS configuration
@@ -209,7 +210,7 @@ This document provides a comprehensive reference for all error codes used in the
   - Retry request
   - Check network stability
   - Implement robust error handling
-- **Note**: The SDK raises it only on `GET /cards/browser-data`, the step every `charge(...)` runs first; the `IOException` is the exception's `cause`. Every other call, the charge request included, lets a transport failure through as the bare `IOException`.
+- **Note**: Any transport failure that is not a timeout, a missing connection or a certificate failure, a TLS connection reset or dropped midway included. The `IOException` is the exception's `cause`. No call lets a transport failure through bare.
 
 ### NETWORK_008: Request Cancelled
 - **Description**: Network request was cancelled
@@ -552,6 +553,7 @@ This document provides a comprehensive reference for all error codes used in the
 - **Description**: Data serialization/deserialization failed
 - **Common Causes**:
   - Invalid data format
+  - A 2xx answer that is empty, has no body at all (204, 205) or is not JSON, e.g. a captive portal's page
   - Version incompatibility
   - Encoding issues
 - **Developer Action**:
