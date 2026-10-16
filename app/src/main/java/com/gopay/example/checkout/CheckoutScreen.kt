@@ -245,6 +245,7 @@ private fun OrderSummary(cart: DemoCart) {
 
         TotalRow("Subtotal", cart.formatted(cart.subtotal), emphasized = false)
         TotalRow("Shipping", cart.formatted(cart.shipping), emphasized = false)
+        TotalRow("Demo discount", cart.formatted(-cart.discount), emphasized = false)
         TotalRow("Total", cart.formatted(cart.total), emphasized = true)
     }
 }

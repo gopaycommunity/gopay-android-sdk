@@ -24,10 +24,15 @@ data class DemoCart(
     val items: List<CartItem>,
     /** Minor units. */
     val shipping: Int,
+    /**
+     * Minor units taken off the order, shown as the "Demo discount" row. The sample uses it to
+     * bring the total down to 1 Kč, because the demo charges real cards on production too.
+     */
+    val discount: Int = 0,
     val currency: String = "CZK"
 ) {
     val subtotal: Int get() = items.sumOf { it.lineTotal }
-    val total: Int get() = subtotal + shipping
+    val total: Int get() = subtotal + shipping - discount
 
     /** Formats minor units as a localized currency amount (`1 234 Kč`). */
     fun formatted(minorUnits: Long): String {
@@ -47,7 +52,9 @@ data class DemoCart(
                 CartItem("☕️", "Single-origin beans", "Ethiopia · 500 g", 39_000, 2),
                 CartItem("📓", "Dotted notebook", "A5 · Sage", 24_900, 1)
             ),
-            shipping = 9_900
+            shipping = 9_900,
+            // 3 519 Kč of goods + 99 Kč shipping - 3 617 Kč = 1 Kč charged.
+            discount = 361_700
         )
     }
 }
