@@ -105,6 +105,9 @@ class CheckoutController {
 
     private var session: PaymentSession? = null
 
+    /** The `callback.return_url` the current payment was created with, from the backend. */
+    private var paymentReturnUrl: String? = null
+
     /** Whether the current attempt's charge has gone out, which decides what a closed window means. */
     private var chargeSent = false
 
@@ -171,6 +174,7 @@ class CheckoutController {
         session?.close()
         session = null
         paymentId = null
+        paymentReturnUrl = null
     }
 
     /** Re-reads the charge and resumes polling — used by the pending result screen. */
@@ -313,7 +317,9 @@ class CheckoutController {
             val redirect = response.action?.redirectUrl
             if (redirect != null && handledRedirects.add(redirect)) {
                 busyLabel = "Verifying with your bank…"
-                session.handle3dsVerification(activity, redirect, response.returnUrl)
+                // The address the payment was created with, not the charge response's, which GoPay
+                // is removing.
+                session.handle3dsVerification(activity, redirect, paymentReturnUrl)
             }
 
             when (response.state) {
@@ -353,6 +359,7 @@ class CheckoutController {
         )
         session = started
         paymentId = created.paymentId
+        paymentReturnUrl = created.returnUrl
         return started
     }
 

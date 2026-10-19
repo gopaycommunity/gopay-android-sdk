@@ -202,10 +202,10 @@ class GopaySDK private constructor(
 
         /**
          * Fallback return URL for charge verification. [PaymentSession.handle3dsVerification]
-         * watches for the `returnUrl` it is given, which is the charge response's
-         * [cz.gopay.sdk.model.ChargePaymentResponse.returnUrl]: the address your backend created
-         * the payment with. Only without a usable one does it wait for this address instead, and
-         * then your backend has to pass it as the payment's `callback.return_url`; the gateway
+         * watches for the `returnUrl` it is given: the address your backend created the payment
+         * with as `callback.return_url`, which the app gets from its backend, not from the charge
+         * response. Only without a usable one does it wait for this address instead, and then
+         * your backend has to pass it as the payment's `callback.return_url`; the gateway
          * accepts only an absolute `http(s)` address there. The 3DS WebView intercepts any
          * navigation that starts with the address it watches for and never loads it. Mirrors
          * `GopaySDK.chargeReturnURL` on iOS.

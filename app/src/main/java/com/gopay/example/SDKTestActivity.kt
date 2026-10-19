@@ -98,8 +98,9 @@ fun SDKTestScreen() {
     var cardToken by remember { mutableStateOf("") }
     var jwe by remember { mutableStateOf("") }
     var pending3dsUrl by remember { mutableStateOf<String?>(null) }
-    // The return_url of the response pending3dsUrl came from; handle3dsVerification watches for it.
-    var pending3dsReturnUrl by remember { mutableStateOf<String?>(null) }
+    // The callback.return_url the payment was created with; handle3dsVerification watches for it.
+    // Blank leaves the SDK waiting for GopaySDK.CHARGE_RETURN_URL.
+    var returnUrl by remember { mutableStateOf("") }
     var responseText by remember { mutableStateOf("Ready.") }
     var busyLabel by remember { mutableStateOf<String?>(null) }
 
@@ -192,7 +193,6 @@ fun SDKTestScreen() {
                     log("// poll $poll -> ${resp.state}\nAction: ${action.actionType} (${action.state})\nRedirect: ${action.redirectUrl ?: "N/A"}")
                     action.redirectUrl?.let {
                         pending3dsUrl = it
-                        pending3dsReturnUrl = resp.returnUrl
                         log("3DS required — tap \"Handle 3DS verification\" now, the window is short.")
                     }
                     true
@@ -243,10 +243,7 @@ fun SDKTestScreen() {
             "Action: ${it.actionType} (${it.state})\nRedirect: ${it.redirectUrl ?: "N/A"}"
         } ?: "Action: none"
         log("// $callLabel -> ChargePaymentResponse\nCharge ID: ${response.id}\nState: ${response.state}\n$actionInfo")
-        response.action?.redirectUrl?.let {
-            pending3dsUrl = it
-            pending3dsReturnUrl = response.returnUrl
-        }
+        response.action?.redirectUrl?.let { pending3dsUrl = it }
         if (pending3dsUrl == null) watchForAction(s)
         else log("3DS required — tap \"Handle 3DS verification\" to continue.")
     }
@@ -278,11 +275,13 @@ fun SDKTestScreen() {
                     val created = MerchantBackendSimulator.createPayment(amount = 100, currency = "CZK")
                     paymentId = created.paymentId
                     paymentSecret = created.paymentSecret
-                    log("// merchant backend created a 1 CZK payment\npayment_id: ${created.paymentId}\npayment_secret: ${created.paymentSecret}")
+                    returnUrl = created.returnUrl
+                    log("// merchant backend created a 1 CZK payment\npayment_id: ${created.paymentId}\npayment_secret: ${created.paymentSecret}\nreturn_url: ${created.returnUrl}")
                 }
             }
             LabeledField("payment_id", paymentId, enabled = !isBusy) { paymentId = it }
             LabeledField("payment_secret", paymentSecret, enabled = !isBusy) { paymentSecret = it }
+            LabeledField("return_url", returnUrl, enabled = !isBusy) { returnUrl = it }
         }
 
         // === SECTION 2: PAYMENT SESSION ===
@@ -404,10 +403,7 @@ fun SDKTestScreen() {
                             "Action: ${it.actionType} (${it.state})\nRedirect: ${it.redirectUrl ?: "N/A"}"
                         } ?: "Action: none"
                         log("// getChargeState() -> ChargePaymentResponse\nState: ${resp.state}\nCharge ID: ${resp.id}\n$actionInfo")
-                        resp.action?.redirectUrl?.let {
-                            pending3dsUrl = it
-                            pending3dsReturnUrl = resp.returnUrl
-                        }
+                        resp.action?.redirectUrl?.let { pending3dsUrl = it }
                     }
                 }
 
@@ -421,7 +417,11 @@ fun SDKTestScreen() {
                         // dismissed one the link stays armed, so the same challenge can be
                         // tried again, which the SDK describes as the right answer to a
                         // challenge that never opened.
-                        s.handle3dsVerification(context as Activity, url, pending3dsReturnUrl)
+                        s.handle3dsVerification(
+                            context as Activity,
+                            url,
+                            returnUrl.trim().ifEmpty { null }
+                        )
                         pending3dsUrl = null
                         val finalState = s.getChargeState()
                         log("// getChargeState() after 3DS -> ChargePaymentResponse\nState: ${finalState.state}\nCharge ID: ${finalState.id}")

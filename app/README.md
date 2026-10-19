@@ -64,7 +64,8 @@ The screen is split into four numbered sections. Sections 3 and 4 appear once a 
 
 1. Tap **Developer sandbox** on the main screen.
 2. **1. Merchant backend (simulated)** — tap **Create payment on "server"**. Creates a 1 CZK
-   payment (amount `100`, in minor units) and fills in the `payment_id` / `payment_secret` fields.
+   payment (amount `100`, in minor units) and fills in the `payment_id` / `payment_secret` fields
+   and `return_url`, the address the payment was created with, which 3DS verification watches for.
 3. **2. Payment session** — tap **Start session**. Auth happens eagerly, so bad credentials fail
    here. A "Session live: …" row with a **Close** button appears.
 4. **3. Operations** —

@@ -428,10 +428,11 @@ class PaymentSession internal constructor(
      * [redirectUrl] has to be an `http(s)` address; anything else, including an empty string,
      * throws [GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE] before the challenge is opened.
      *
-     * @param returnUrl the [ChargePaymentResponse.returnUrl] of the response [redirectUrl] came
-     *        from: the address your backend created the payment with, as `callback.return_url`.
-     *        The challenge counts as answered once the WebView navigates to an address starting
-     *        with it. When it is null, blank or not an `http(s)` address with a host, the SDK
+     * @param returnUrl the address your backend created the payment with, as
+     *        `callback.return_url`; the app gets it from its backend together with `payment_id`
+     *        and `payment_secret`. GoPay is removing `return_url` from the charge response, so do
+     *        not rely on it there. The challenge counts as answered once the WebView navigates to
+     *        an address starting with it. When it is null, blank or not an `http(s)` address with a host, the SDK
      *        waits for [cz.gopay.sdk.GopaySDK.CHARGE_RETURN_URL] instead, and then the payment
      *        has to have been created with that address. It should carry no fragment (`#…`):
      *        what the gateway appends lands in front of it, and the address no longer matches.

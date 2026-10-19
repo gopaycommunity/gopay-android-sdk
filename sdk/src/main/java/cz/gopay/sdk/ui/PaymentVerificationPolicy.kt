@@ -89,8 +89,8 @@ internal object PaymentVerificationPolicy {
      *        ACS embedded would otherwise be able to throw the user out of the payment on its
      *        own. A subframe is left to the WebView, which quietly declines a scheme it cannot
      *        load.
-     * @param returnUrl the `return_url` the charge response carried, the address the backend
-     *        created the payment with. Null, or one [completionUrlFor] cannot use, falls back to
+     * @param returnUrl the address the backend created the payment with (`callback.return_url`),
+     *        as the caller passed it. Null, or one [completionUrlFor] cannot use, falls back to
      *        [GopaySDK.CHARGE_RETURN_URL].
      */
     fun navigationFor(

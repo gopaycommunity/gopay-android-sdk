@@ -106,10 +106,11 @@ does, as the GoPay guide describes it
    3DS screen closes when the challenge comes back to `return_url` (see
    [3DS verification](#3ds-verification)), so the URL does not have to serve anything to the app.
    `notification_url` must be reachable from GoPay's servers.
-3. **Give the app `id` and `payment_secret`**, nothing else; the app passes them to
-   `startPaymentSession`. According to the GoPay guide, `payment_secret` must not be stored,
-   logged or put in a URL, and it is valid for seven days, after which the gateway refuses it
-   with a 403.
+3. **Give the app `id`, `payment_secret` and `return_url`**, nothing else; the app passes the
+   first two to `startPaymentSession` and `return_url` to `handle3dsVerification`. GoPay is
+   removing `return_url` from the charge response, so the app should get it only from you.
+   According to the GoPay guide, `payment_secret` must not be stored, logged or put in a URL, and
+   it is valid for seven days, after which the gateway refuses it with a 403.
 4. **Settle the payment on the server.** What the app reports is not proof of payment. GoPay
    sends a `GET` to `notification_url` with the payment `id` on every state change; answer `204`
    and read the payment with `GET /payments/{id}`. The GoPay guide treats this webhook as the
@@ -192,8 +193,9 @@ class CheckoutViewModel : ViewModel() {
     val screen = MutableStateFlow<Activity?>(null)
     private suspend fun currentScreen(): Activity = screen.filterNotNull().first()
 
-    // paymentId + paymentSecret come from YOUR backend after it creates the payment.
-    fun pay(paymentId: String, paymentSecret: String, cardToken: String) {
+    // paymentId, paymentSecret and returnUrl (its callback.return_url) come from YOUR backend
+    // after it creates the payment.
+    fun pay(paymentId: String, paymentSecret: String, returnUrl: String, cardToken: String) {
         viewModelScope.launch {
             val session = try {
                 GopaySDK.getInstance().startPaymentSession(
@@ -212,7 +214,7 @@ class CheckoutViewModel : ViewModel() {
                     // chargeWithCardToken derives the spec-required BrowserData from the activity.
                     val charge = session.chargeWithCardToken(currentScreen(), cardToken)
                     charge.action?.redirectUrl?.let {
-                        session.handle3dsVerification(currentScreen(), it, charge.returnUrl)
+                        session.handle3dsVerification(currentScreen(), it, returnUrl)
                     }
                 } catch (e: GopaySDKException) {
                     // Closed before it returned: the charge was sent, the state below decides.
@@ -371,17 +373,19 @@ val charge = session.chargeWithEncryptedCard(
     payload = jwe,
     challengePreference = ChallengePreference.AUTO
 )
-charge.action?.redirectUrl?.let { session.handle3dsVerification(activity, it, charge.returnUrl) }
+// returnUrl: the callback.return_url your backend created the payment with.
+charge.action?.redirectUrl?.let { session.handle3dsVerification(activity, it, returnUrl) }
 val finalState = session.getChargeState()
 ```
 
 ### 3DS verification
 
 `handle3dsVerification(activity, redirectUrl, returnUrl)` opens the challenge in an SDK-managed
-WebView and suspends. Pass `returnUrl` from the same charge response as `redirectUrl`: it is the
-address your backend created the payment with (`callback.return_url`), and the ACS comes back to
-it once the user has answered. Without a usable one (null, blank, or not an `http(s)` address
-with a host) the SDK waits for `GopaySDK.CHARGE_RETURN_URL` instead, and then the payment has to
+WebView and suspends. Pass `returnUrl` the address your backend created the payment with
+(`callback.return_url`), which the app gets from its backend together with `payment_id` and
+`payment_secret`. GoPay is removing `return_url` from the charge response, so do not rely on it
+there. The ACS comes back to the address once the user has answered. Without a usable one (null,
+blank, or not an `http(s)` address with a host) the SDK waits for `GopaySDK.CHARGE_RETURN_URL` instead, and then the payment has to
 have been created with that address. The return URL should carry no fragment (`#…`): what the
 gateway appends lands in front of it, and the address no longer matches. The call has three ends,
 not two:
@@ -411,7 +415,7 @@ process at a time; a second one throws `PAYMENT_VERIFICATION_IN_PROGRESS`.
 
 ```kotlin
 try {
-    session.handle3dsVerification(activity, redirectUrl, charge.returnUrl)
+    session.handle3dsVerification(activity, redirectUrl, returnUrl)   // from your backend
 } catch (e: GopaySDKException) {
     when (e.errorCode) {
         GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE -> retryCharge()
@@ -733,7 +737,8 @@ val strings = GopaySDK.getInstance().currentLocaleStrings(locale = "cs")
 val info = session.getGooglePayInfo()
 if (GopaySDK.getInstance().isGooglePayAvailable(activity, info)) {
     val charge = session.chargeWithGooglePay(activity)
-    charge.action?.redirectUrl?.let { session.handle3dsVerification(activity, it, charge.returnUrl) }
+    // returnUrl: the callback.return_url your backend created the payment with.
+    charge.action?.redirectUrl?.let { session.handle3dsVerification(activity, it, returnUrl) }
     val finalState = session.getChargeState()
 }
 ```
@@ -875,6 +880,7 @@ the response enums and the card form theme.
 | Closing the Google Pay sheet or the 3DS challenge threw `CancellationException` | `PAYMENT_CANCELLED` (`PAYMENT_011`); a `CancellationException` now comes only from cancelling your own coroutine, which also closes the 3DS challenge |
 | `HttpErrorContext` had four properties | It gains `gatewayError`, the gateway's error body, as a fifth with a default; source that uses it compiles as before, only code compiled against 1.x has to be rebuilt |
 | Codes in `GopayErrorCodes` that the SDK never throws | Deprecated: neither SDK throws them, and 3.0 removes them; ERROR_CODES marks each |
+| `charge.returnUrl` was the address to pass `handle3dsVerification` | Deprecated: GoPay is removing `return_url` from the charge response, so do not rely on it. Pass the `callback.return_url` your backend created the payment with |
 
 ### Card encryption
 

@@ -277,30 +277,28 @@ data class ChargeAction(
  * `return_url` are required; instrument details and follow-up action are absent in early
  * states, and `fail_reason` is only present when `state == FAILED`.
  *
- * [returnUrl] decodes as null when the gateway omits it, which it does from the `charge` block
- * of `GET /payments/{payment_id}` despite its own spec; see [ChargePaymentResponseAdapter].
+ * GoPay is removing `return_url` from the charge response, whatever the spec says, so
+ * [returnUrl] is deprecated and decodes as null when it is missing; see
+ * [ChargePaymentResponseAdapter].
  */
 data class ChargePaymentResponse(
     val id: String,
     val state: ChargeState,
     /**
-     * The address the backend created the payment with (`callback.return_url`), where the
-     * browser goes once verification finishes. Pass it to
-     * [cz.gopay.sdk.session.PaymentSession.handle3dsVerification] together with
-     * `action.redirectUrl`, so the challenge closes when the ACS comes back to it.
+     * The `return_url` the charge response used to repeat. GoPay is removing it from the charge
+     * response, so do not rely on it; 2.0 keeps the field so code that reads it still compiles.
      *
-     * The charge endpoints return it. It is nullable because the charge block nested in
-     * `GET /payments/{payment_id}` arrives as just `{id, state, href}`, without it. The type
-     * says so rather than substituting an empty string, which
-     * silently broke the obvious use: `url.startsWith(charge.returnUrl)` matches every URL
-     * against `""`, so the first navigation of a challenge page reads as a finished
-     * verification. For the same reason a blank `return_url` from the gateway decodes as null
-     * too, and is reported like an omitted one.
-     *
-     * Without it [cz.gopay.sdk.session.PaymentSession.handle3dsVerification] waits for
+     * The address [cz.gopay.sdk.session.PaymentSession.handle3dsVerification] needs is the one
+     * your backend created the payment with, `callback.return_url`, and the app gets it from its
+     * backend together with `payment_id` and `payment_secret`. Without one the SDK waits for
      * [cz.gopay.sdk.GopaySDK.CHARGE_RETURN_URL], and the payment then has to have been created
-     * with that address. If you run your own WebView, do the same.
+     * with that address. A blank value decodes as null too: `url.startsWith("")` matches every
+     * URL, so the first page of a challenge would read as a finished verification.
      */
+    @Deprecated(
+        "GoPay is removing return_url from the charge response; do not rely on it. Pass " +
+            "handle3dsVerification the callback.return_url your backend created the payment with."
+    )
     @Json(name = "return_url") val returnUrl: String? = null,
     @Json(name = "payment_instrument") val paymentInstrument: PaymentInstrumentData? = null,
     val action: ChargeAction? = null,

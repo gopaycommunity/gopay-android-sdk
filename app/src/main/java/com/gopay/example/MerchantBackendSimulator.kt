@@ -13,15 +13,20 @@ import java.net.URL
  *
  * In a real app these calls happen on YOUR server, authenticated with merchant
  * `client_credentials`; the app never sees the client secret. The app receives only the
- * resulting `payment_id` + `payment_secret` and hands those to the SDK
- * (`GopaySDK.getInstance().startPaymentSession`). This object fakes that server so the
+ * resulting `payment_id` + `payment_secret`, which it hands to the SDK
+ * (`GopaySDK.getInstance().startPaymentSession`), and the `return_url` the payment was created
+ * with, which it hands to `handle3dsVerification`. This object fakes that server so the
  * demo is self-contained.
  *
  * Mirrors the iOS example's `MerchantBackendSimulator`.
  */
 object MerchantBackendSimulator {
 
-    data class CreatedPayment(val paymentId: String, val paymentSecret: String)
+    /** The `callback.return_url` every demo payment is created with. */
+    private const val RETURN_URL = GopaySDK.CHARGE_RETURN_URL
+
+    /** What a merchant backend gives the app: the session pair and the payment's return URL. */
+    data class CreatedPayment(val paymentId: String, val paymentSecret: String, val returnUrl: String)
 
     /** Authenticates as the merchant and creates a payment, returning the pair the SDK needs. */
     suspend fun createPayment(amount: Int, currency: String): CreatedPayment =
@@ -81,17 +86,18 @@ object MerchantBackendSimulator {
             .put(
                 "callback", JSONObject()
                     .put("notification_url", "https://example.com/gopay/notify")
-                    // The charge response echoes this as return_url, and the demo passes it to
-                    // handle3dsVerification. A real backend puts its own address here; the
-                    // SDK constant is also what the WebView falls back to without one. The
-                    // gateway accepts only an absolute http(s) return_url.
-                    .put("return_url", GopaySDK.CHARGE_RETURN_URL)
+                    // Returned to the app as CreatedPayment.returnUrl, which the demo passes to
+                    // handle3dsVerification; GoPay is removing it from the charge response. A real
+                    // backend puts its own address here; the SDK constant is also what the
+                    // WebView falls back to without one. The gateway accepts only an absolute
+                    // http(s) return_url.
+                    .put("return_url", RETURN_URL)
             )
         conn.outputStream.use { it.write(body.toString().toByteArray()) }
         val resp = readResponse(conn, "create payment")
         val paymentId = resp.get("id").toString()
         val paymentSecret = resp.getString("payment_secret")
-        return CreatedPayment(paymentId = paymentId, paymentSecret = paymentSecret)
+        return CreatedPayment(paymentId = paymentId, paymentSecret = paymentSecret, returnUrl = RETURN_URL)
     }
 
     /**
