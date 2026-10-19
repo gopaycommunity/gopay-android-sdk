@@ -124,15 +124,15 @@ class PaymentSession internal constructor(
                 // or 403 for a payment_secret past its seven days. A 5xx, another 4xx or a
                 // transport failure keeps the code apiCall gave it, so a host that is merely
                 // offline is not told to fetch a new payment.
-                val status = e.httpContext?.statusCode
-                if (status == 400 || status == 401 || status == 403) {
+                val context = e.httpContext
+                if (context != null && context.statusCode in setOf(400, 401, 403)) {
                     throw GopaySDKException(
                         errorCode = GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID,
-                        message = "payment_credentials rejected: HTTP $status" +
-                            GatewayErrorBody.messageSuffix(e.httpContext?.gatewayError),
+                        message = "payment_credentials rejected: HTTP ${context.statusCode}" +
+                            GatewayErrorBody.messageSuffix(context.gatewayError),
                         // The gateway's HTTP error itself, as the iOS SDK keeps it.
                         cause = e,
-                        httpContext = e.httpContext
+                        httpContext = context
                     )
                 }
                 throw e
