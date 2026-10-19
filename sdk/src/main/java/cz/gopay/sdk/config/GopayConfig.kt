@@ -38,8 +38,8 @@ data class GopayConfig(
 
     /**
      * Whether to enable debug mode: SDK warnings and the HTTP traffic, bodies included, go to
-     * Logcat. The `Authorization` header, the JWT, card tokens, the card JWE and the Google Pay
-     * payment data are masked in that log. Keep it off in release builds.
+     * Logcat. The `Authorization` header, `payment_secret`, the JWT, card tokens, the card JWE and
+     * the Google Pay payment data are masked in that log. Keep it off in release builds.
      */
     val debug: Boolean = false,
 

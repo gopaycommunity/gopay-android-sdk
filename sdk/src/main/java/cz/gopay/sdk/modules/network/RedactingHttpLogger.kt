@@ -10,6 +10,8 @@ import okhttp3.logging.HttpLoggingInterceptor
  * [NetworkModule.loggingInterceptor]); it carries `payment_id:payment_secret` on the token
  * request; the GoPay spec says of `payment_secret` that it must not be logged
  * (`Payment-Details.payment_secret`). What is left are body values:
+ * - `payment_secret`, which `GET /payments/{payment_id}` answers with as well, for the same
+ *   reason;
  * - `access_token`, the payment-scoped JWT the token request answers with;
  * - `card_token`, which another payment of the same merchant can be charged with;
  * - `payload`, the card JWE, which the GoPay guide says must not be logged
@@ -31,7 +33,10 @@ internal class RedactingHttpLogger(
 
         private val SECRET_JSON_VALUE =
             // Possessive, so a long escaped value cannot make the matcher backtrack.
-            Regex("(\"(?:access_token|card_token|payload|signedMessage)\"\\s*+:\\s*+)\"(?:[^\"\\\\]++|\\\\.)*+\"")
+            Regex(
+                "(\"(?:payment_secret|access_token|card_token|payload|signedMessage)\"\\s*+:\\s*+)" +
+                    "\"(?:[^\"\\\\]++|\\\\.)*+\""
+            )
 
         fun redact(line: String): String =
             SECRET_JSON_VALUE.replace(line) { "${it.groupValues[1]}\"$MASK\"" }

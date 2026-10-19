@@ -65,6 +65,28 @@ class RedactingHttpLoggerTest {
         assertTrue(log, log.contains("\"expires_in\":900"))
     }
 
+    @Test
+    fun `a payment status read logs the payment without its payment_secret`() {
+        // Payment-Details as GET /payments/{payment_id} answers it; payment_secret is required there.
+        val log = logOf(
+            Request.Builder()
+                .url("https://gw.sandbox.gopay.com/gp-gw/api/4.0/payments/3000000001")
+                .build(),
+            """{"id":3000000001,"order_number":"ord-1","state":"CREATED","amount":10000,""" +
+                """"currency":"CZK","customer":{"email":"shopper@example.com"},""" +
+                """"gw_url":"https://gw.sandbox.gopay.com/gw/v3/abc","payment_secret":"ps_abc123"}"""
+        )
+
+        assertFalse(log, log.contains("ps_abc123"))
+        assertTrue(log, log.contains("\"payment_secret\":\"██\""))
+        assertTrue(log, log.contains("\"id\":3000000001"))
+        assertTrue(log, log.contains("\"order_number\":\"ord-1\""))
+        assertTrue(log, log.contains("\"state\":\"CREATED\""))
+        assertTrue(log, log.contains("\"amount\":10000"))
+        assertTrue(log, log.contains("\"email\":\"shopper@example.com\""))
+        assertTrue(log, log.contains("\"gw_url\":\"https://gw.sandbox.gopay.com/gw/v3/abc\""))
+    }
+
     /** Sends [request] as the SDK sends a charge: serialized by its own Moshi, through the log. */
     private fun chargeLog(request: ChargePaymentRequest): String = logOf(
         Request.Builder()
