@@ -367,29 +367,27 @@ compiles with a warning, and 3.0 removes them.
   - Offer alternative payment methods
 - **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
-### PAYMENT_006: Payment Declined
-- **Description**: Payment was declined by the payment processor
+### PAYMENT_006: Charge Failed
+- **Description**: The charge ended `FAILED`. Thrown by `awaitChargeState()` only, which polls the charge for you; the manual path reads the same state from `getChargeState()` without an error
 - **Common Causes**:
-  - Bank declined transaction
+  - The issuer declined the card
+  - 3DS authentication failed or was refused
   - Fraud prevention
-  - Invalid payment details
 - **Developer Action**:
-  - Inform user of decline
-  - Suggest verifying payment details
-  - Offer alternative payment methods
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
+  - Read the charge on `GopaySDKException.chargeState`, set on `PAYMENT_006` and `PAYMENT_007`; its `failReason`, when the gateway gives one, is also in the message
+  - Inform the user and offer another payment method
+  - Create a new payment to try again: a payment is charged once, so a retry means a new `payment_id`
+- **Note**: thrown by both SDKs since 2.1; the iOS SDK exposes the same `chargeState`
 
-### PAYMENT_007: Payment Timeout
-- **Description**: Payment processing timed out
+### PAYMENT_007: Charge Timeout
+- **Description**: The charge stayed `REQUESTED` / `PROCESSING` / `UNKNOWN` for the whole initial timeout of `awaitChargeState()` (`initialTimeoutMs`, 30 s by default), counted from the call; the state the deadline read returned is on `GopaySDKException.chargeState`. A 3DS challenge has no time limit: in `ThreeDSMode.AUTOMATIC` the timeout starts over once the challenge returns, in `ThreeDSMode.MANUAL` the first reported address cancels it for good
 - **Common Causes**:
-  - Slow payment processor
-  - Network issues
-  - Server overload
+  - A slow issuer or acquirer
+  - Gateway load
 - **Developer Action**:
-  - Retry payment
-  - Check payment status
-  - Implement timeout handling
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
+  - Not a failed payment: the gateway may still decide it. Do not offer a new payment right away
+  - Read `getChargeState()` again, or call `awaitChargeState()` again, or wait for the notification GoPay sends your backend (`notification_url`), which the GoPay guide treats as the authoritative signal
+- **Note**: thrown by both SDKs since 2.1, and not reported through `errorCallback`, like `PAYMENT_011`: nothing failed. The read on the deadline decides: a charge still undecided there is this code, one that moved is handled as that state
 
 ### PAYMENT_008: Verification Already In Progress
 - **Description**: A 3DS verification is already running; only one can run at a time
@@ -521,7 +519,8 @@ compiles with a warning, and 3.0 removes them.
   - Card form submitted with fields that fail validation
 - **Developer Action**:
   - Validate inputs before calling, and surface the form's own validation state
-- **Note**: the Android SDK does not throw this code; the iOS SDK does, so it stays in the shared catalog
+  - `awaitChargeState()` refuses an `intervalMs` or `initialTimeoutMs` that is not positive, and `ThreeDSMode.AUTOMATIC` without an `activity`, before anything is sent
+- **Note**: the Android SDK throws it only from `awaitChargeState()`; the iOS SDK also validates the session credentials with it
 
 ## Security Errors (SECURITY_XXX)
 
@@ -709,6 +708,6 @@ If you encounter errors not covered in this documentation or need additional ass
 3. Enable debug logging to get more details
 4. Contact support with the error code and context
 
-To receive every exception the SDK throws, except `PAYMENT_011`, which is not an error, register an
-analytics callback via `GopayConfig.errorCallback`.
+To receive every exception the SDK throws, except `PAYMENT_011` and `PAYMENT_007`, which are not
+errors, register an analytics callback via `GopayConfig.errorCallback`.
  

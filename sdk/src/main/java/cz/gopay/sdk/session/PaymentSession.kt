@@ -269,6 +269,85 @@ class PaymentSession internal constructor(
     suspend fun getChargeState(): ChargePaymentResponse =
         apiCall("get charge state") { paymentApi.getChargeState(paymentId) }
 
+    /**
+     * Waits for the charge to end, polling `GET /payments/{payment_id}/charge` the way the GoPay
+     * browser SDK's `awaitChargeState` does, and returns the `SUCCEEDED` state. Call it after any
+     * of the `charge*` methods, or instead of the loop over [getChargeState] you would write
+     * yourself; the manual path, [getChargeState] and [handle3dsVerification], stays available.
+     * The iOS SDK has the same method with the matching options, in seconds.
+     *
+     * The first read goes out at once, each next one [AwaitChargeOptions.intervalMs] after the
+     * previous answer arrived. Every state read is handed to [AwaitChargeOptions.onStateChange],
+     * the last one before the call returns or throws. Then:
+     * - `SUCCEEDED` returns the state;
+     * - `FAILED` throws [GopayErrorCodes.PAYMENT_DECLINED], with the state on
+     *   [GopaySDKException.chargeState] and the gateway's `fail_reason` in the message;
+     * - `REQUESTED`, `PROCESSING` and `UNKNOWN` are waited out. When they last past
+     *   [AwaitChargeOptions.initialTimeoutMs], counted from the call, the read on the deadline
+     *   decides: still one of them throws [GopayErrorCodes.PAYMENT_TIMEOUT], with that state on
+     *   [GopaySDKException.chargeState]. The gateway may still decide the charge, so read
+     *   [getChargeState] or wait for your backend's notification before offering a new payment;
+     * - `ACTION_REQUIRED` with a non-empty `redirect_url` not seen before calls
+     *   [AwaitChargeOptions.onActionRequired] and, in [ThreeDSMode.AUTOMATIC], runs
+     *   [handle3dsVerification] with [AwaitChargeOptions.activity] and
+     *   [AwaitChargeOptions.returnUrl], then polls on with the initial timeout started over from
+     *   the challenge's return. In [ThreeDSMode.MANUAL] the first reported address cancels the
+     *   timeout for good and the host runs the challenge. The same address is never run or
+     *   reported twice; an `ACTION_REQUIRED` without an address is waited out like `PROCESSING`.
+     *
+     * Any error of a read or of the challenge ends the call with that error unchanged: the
+     * `NETWORK_*` codes, [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] after [close],
+     * [GopayErrorCodes.PAYMENT_CANCELLED] when the user closed the challenge (the charge was sent,
+     * so read [getChargeState] before paying again), [GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE]
+     * and [GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS]. An exception thrown by
+     * [AwaitChargeOptions.onStateChange] or [AwaitChargeOptions.onActionRequired] ends the call
+     * the same way, unchanged, before any challenge is opened. Cancelling the calling coroutine
+     * stops the polling at once, closes a challenge that is up, and ends the call with that
+     * [CancellationException]; no request or timer outlives the call. Each error reaches
+     * `errorCallback` once, where it is thrown, except [GopayErrorCodes.PAYMENT_TIMEOUT], which
+     * is not a failed payment and is never reported, like [GopayErrorCodes.PAYMENT_CANCELLED].
+     *
+     * The timeout is measured on the device's monotonic clock, while the waits between reads
+     * are `delay` calls: in a `runTest` with virtual time the deadline still passes only after
+     * real seconds.
+     *
+     * Two calls on the same session poll independently; in [ThreeDSMode.AUTOMATIC] only one of
+     * them can open the challenge, the other ends with
+     * [GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS].
+     *
+     * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] before anything is
+     *         sent when [AwaitChargeOptions.intervalMs] or [AwaitChargeOptions.initialTimeoutMs]
+     *         is not positive, or when [ThreeDSMode.AUTOMATIC] is asked for without an
+     *         [AwaitChargeOptions.activity].
+     */
+    suspend fun awaitChargeState(
+        options: AwaitChargeOptions = AwaitChargeOptions()
+    ): ChargePaymentResponse {
+        if (options.intervalMs <= 0 || options.initialTimeoutMs <= 0) {
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
+                message = "awaitChargeState needs a positive intervalMs and initialTimeoutMs"
+            )
+        }
+        // The one place the 3DS mode is decided: the poller runs a challenge when it is given
+        // one, and leaves it to the host when it is not.
+        val verify: (suspend (String) -> Unit)? = when (options.threeDSMode) {
+            ThreeDSMode.AUTOMATIC -> {
+                val activity = options.activity ?: throw GopaySDKException(
+                    errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
+                    message = "awaitChargeState needs an activity to run the 3DS challenge in " +
+                        "ThreeDSMode.AUTOMATIC; pass one or use ThreeDSMode.MANUAL"
+                )
+                val handler: suspend (String) -> Unit = { redirectUrl ->
+                    handle3dsVerification(activity, redirectUrl, options.returnUrl)
+                }
+                handler
+            }
+            ThreeDSMode.MANUAL -> null
+        }
+        return ChargePoller(options, read = { getChargeState() }, verify = verify).run()
+    }
+
     /** GET /payments/{payment_id}/qr-payment/info */
     suspend fun getQrPaymentInfo(format: QrCodeFormat? = null): QrPaymentDetails =
         apiCall("get QR payment info") { paymentApi.getQrPaymentInfo(paymentId, format?.name?.lowercase()) }

@@ -141,12 +141,22 @@ object GopayErrorCodes {
     @Deprecated(NOT_THROWN)
     const val PAYMENT_INSUFFICIENT_FUNDS = "PAYMENT_005"
     
-    /** Payment was declined */
-    @Deprecated(NOT_THROWN)
+    /**
+     * The charge ended `FAILED`. Thrown by [cz.gopay.sdk.session.PaymentSession.awaitChargeState]
+     * only, with the charge on [GopaySDKException.chargeState] and the gateway's `fail_reason`,
+     * when there is one, in the message. A new payment is needed to try again: a payment is
+     * charged once.
+     */
     const val PAYMENT_DECLINED = "PAYMENT_006"
-    
-    /** Payment timeout */
-    @Deprecated(NOT_THROWN)
+
+    /**
+     * The charge stayed `REQUESTED`, `PROCESSING` or `UNKNOWN` for the whole initial timeout of
+     * [cz.gopay.sdk.session.PaymentSession.awaitChargeState]; the state the deadline read
+     * returned is on [GopaySDKException.chargeState]. Not a failed payment: the gateway may
+     * still decide it. Read `getChargeState()` or wait for the payment notification on your
+     * backend before offering a new payment. Never passed to `errorCallback`, like
+     * [PAYMENT_CANCELLED]: nothing failed.
+     */
     const val PAYMENT_TIMEOUT = "PAYMENT_007"
 
     /** A 3DS verification is already in progress; only one can run at a time */

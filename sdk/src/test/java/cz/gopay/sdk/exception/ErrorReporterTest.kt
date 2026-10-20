@@ -51,6 +51,18 @@ class ErrorReporterTest {
     }
 
     @Test
+    fun `PAYMENT_TIMEOUT is not reported, PAYMENT_DECLINED is`() {
+        val received = mutableListOf<GopaySDKException>()
+        ErrorReporter.setErrorCallback { received.add(it) }
+
+        GopaySDKException(GopayErrorCodes.PAYMENT_TIMEOUT, "Charge did not leave PROCESSING")
+        assertTrue("an undecided charge is not an error", received.isEmpty())
+
+        GopaySDKException(GopayErrorCodes.PAYMENT_DECLINED, "Charge failed")
+        assertEquals(listOf(GopayErrorCodes.PAYMENT_DECLINED), received.map { it.errorCode })
+    }
+
+    @Test
     fun `no callback means report is a no-op`() {
         // No callback configured — must not throw when an exception is created.
         GopaySDKException("NETWORK_002", "boom")

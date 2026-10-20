@@ -1,5 +1,7 @@
 package cz.gopay.sdk.exception
 
+import cz.gopay.sdk.model.ChargePaymentResponse
+import cz.gopay.sdk.model.ChargeState
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -83,6 +85,28 @@ class GopaySDKExceptionTest {
         ).toString()
         assertTrue(withCtx.contains("httpContext="))
         assertTrue(withCtx.contains("418"))
+        assertFalse(withCtx.contains("chargeState="))
+
+        val withCharge = GopaySDKException(
+            errorCode = "PAYMENT_006",
+            message = "Charge failed",
+            chargeState = ChargePaymentResponse(id = "ch-1", state = ChargeState.FAILED)
+        ).toString()
+        assertTrue(withCharge.contains("chargeState="))
+        assertTrue(withCharge.contains("FAILED"))
+    }
+
+    @Test
+    fun `the 2_0_0 constructor is still in the bytecode for hosts compiled against it`() {
+        val compat = GopaySDKException::class.java.getConstructor(
+            String::class.java, String::class.java, Throwable::class.java,
+            HttpErrorContext::class.java, Map::class.java
+        )
+
+        val e = compat.newInstance("AUTH_001", "boom", null, null, null)
+
+        assertEquals("AUTH_001", e.errorCode)
+        assertNull(e.chargeState)
     }
 
     @Test

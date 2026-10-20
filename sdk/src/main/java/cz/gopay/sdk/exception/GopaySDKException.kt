@@ -1,5 +1,7 @@
 package cz.gopay.sdk.exception
 
+import cz.gopay.sdk.model.ChargePaymentResponse
+
 /**
  * Unified exception class for all Gopay SDK errors.
  * Provides structured error codes, HTTP context, and optional error reporting.
@@ -9,14 +11,32 @@ package cz.gopay.sdk.exception
  * @param cause Original exception that caused this error (if any)
  * @param httpContext HTTP-specific error context (status code, response body, etc.)
  * @param additionalData Additional context data for debugging
+ * @param chargeState The charge as [cz.gopay.sdk.session.PaymentSession.awaitChargeState] last
+ *        read it, set on [GopayErrorCodes.PAYMENT_DECLINED] (the `FAILED` state, with its
+ *        `failReason`) and [GopayErrorCodes.PAYMENT_TIMEOUT] (the undecided state the deadline
+ *        read returned). Null on every other error. The iOS SDK exposes the same field.
  */
 class GopaySDKException(
     val errorCode: String,
     message: String,
     cause: Throwable? = null,
     val httpContext: HttpErrorContext? = null,
-    val additionalData: Map<String, Any>? = null
+    val additionalData: Map<String, Any>? = null,
+    val chargeState: ChargePaymentResponse? = null
 ) : Exception(message, cause) {
+
+    /**
+     * The constructor 2.0.0 shipped, kept in the bytecode so a host compiled against 2.0.0 keeps
+     * running on 2.1 without a `NoSuchMethodError`; new code sees only the primary one.
+     */
+    @Deprecated("Binary compatibility with 2.0.0", level = DeprecationLevel.HIDDEN)
+    constructor(
+        errorCode: String,
+        message: String,
+        cause: Throwable? = null,
+        httpContext: HttpErrorContext? = null,
+        additionalData: Map<String, Any>? = null
+    ) : this(errorCode, message, cause, httpContext, additionalData, null)
 
     init {
         // Report error via callback if configured
@@ -53,13 +73,10 @@ class GopaySDKException(
      */
     fun getHttpStatusCode(): Int? = httpContext?.statusCode
 
-    override fun toString(): String {
-        val baseString = "GopaySDKException(errorCode='$errorCode', message='$message')"
-        return if (httpContext != null) {
-            "$baseString, httpContext=$httpContext"
-        } else {
-            baseString
-        }
+    override fun toString(): String = buildString {
+        append("GopaySDKException(errorCode='$errorCode', message='$message')")
+        if (httpContext != null) append(", httpContext=$httpContext")
+        if (chargeState != null) append(", chargeState=$chargeState")
     }
 }
 

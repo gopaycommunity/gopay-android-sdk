@@ -107,8 +107,9 @@ does, as the GoPay guide describes it
    [3DS verification](#3ds-verification)), so the URL does not have to serve anything to the app.
    `notification_url` must be reachable from GoPay's servers.
 3. **Give the app `id`, `payment_secret` and `return_url`**, nothing else; the app passes the
-   first two to `startPaymentSession` and `return_url` to `handle3dsVerification`. GoPay is
-   removing `return_url` from the charge response, so the app should get it only from you.
+   first two to `startPaymentSession` and `return_url` to `awaitChargeState` or
+   `handle3dsVerification`. GoPay is removing `return_url` from the charge response, so the app
+   should get it only from you.
    According to the GoPay guide, `payment_secret` must not be stored, logged or put in a URL, and
    it is valid for seven days, after which the gateway refuses it with a 403.
 4. **Settle the payment on the server.** What the app reports is not proof of payment. GoPay
@@ -181,6 +182,7 @@ import androidx.lifecycle.viewModelScope
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.session.AwaitChargeOptions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
@@ -212,25 +214,26 @@ class CheckoutViewModel : ViewModel() {
             try {
                 try {
                     // chargeWithCardToken derives the spec-required BrowserData from the activity.
-                    val charge = session.chargeWithCardToken(currentScreen(), cardToken)
-                    charge.action?.redirectUrl?.let {
-                        session.handle3dsVerification(currentScreen(), it, returnUrl)
-                    }
+                    session.chargeWithCardToken(currentScreen(), cardToken)
+                    // Polls the charge once a second and runs the 3DS challenge itself, from the
+                    // activity given here, until the charge is SUCCEEDED.
+                    val charge = session.awaitChargeState(
+                        AwaitChargeOptions(activity = currentScreen(), returnUrl = returnUrl)
+                    )
+                    showResult(charge)
                 } catch (e: GopaySDKException) {
-                    // Closed before it returned: the charge was sent, the state below decides.
-                    if (e.errorCode != GopayErrorCodes.PAYMENT_CANCELLED) {
-                        showError(e)   // the charge failed
-                        return@launch
+                    when (e.errorCode) {
+                        // The charge ended FAILED; e.chargeState carries it, with fail_reason.
+                        GopayErrorCodes.PAYMENT_DECLINED -> showDeclined(e.chargeState)
+                        // Still REQUESTED, PROCESSING or UNKNOWN after 30 s (e.chargeState): not
+                        // a failure, ask again or wait for the notification on your backend, and
+                        // do not offer a new payment yet.
+                        GopayErrorCodes.PAYMENT_TIMEOUT -> askBackendForState()
+                        // The 3DS screen closed before it returned, but the charge was sent:
+                        // only its state may say what to offer next (see Reading the result).
+                        GopayErrorCodes.PAYMENT_CANCELLED -> showStateAfterClosedChallenge(session)
+                        else -> showError(e)   // the charge or a read failed
                     }
-                }
-                // Read the state while the session is open, before offering anything else.
-                try {
-                    showResult(settle(session))   // see Reading the result
-                } catch (e: GopaySDKException) {
-                    if (e.getHttpStatusCode() == 404) offerPaymentAgain()   // no charge went out
-                    else askBackendForState()   // could not be read: the charge may be through
-                } catch (e: PaymentStillPending) {
-                    askBackendForState()        // not decided yet
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -239,6 +242,20 @@ class CheckoutViewModel : ViewModel() {
             } finally {
                 session.close()  // wipes the secret + JWT from memory
             }
+        }
+    }
+
+    // The user closed the challenge, so the SDK will not open the same one again: read the
+    // state by hand (settle is in Reading the result) and offer a new payment only when the
+    // gateway has no charge at all.
+    private suspend fun showStateAfterClosedChallenge(session: PaymentSession) {
+        try {
+            showResult(settle(session))
+        } catch (e: GopaySDKException) {
+            if (e.getHttpStatusCode() == 404) offerPaymentAgain()   // no charge went out
+            else askBackendForState()   // could not be read: the charge may be through
+        } catch (e: PaymentStillPending) {
+            askBackendForState()        // not decided yet
         }
     }
 }
@@ -315,6 +332,7 @@ auth, HTTP or transport errors.
 | `chargeWithCardToken(activity, cardToken, browserData?, challengePreference?)` | `charge(...)` with a card token + device-derived `BrowserData` |
 | `chargeWithEncryptedCard(activity, payload, browserData?, challengePreference?)` | `charge(...)` with a JWE + device-derived `BrowserData` |
 | `getChargeState()` | `GET /payments/{payment_id}/charge` |
+| `awaitChargeState(options?)` | Polls `GET /payments/{payment_id}/charge` once a second until the charge is `SUCCEEDED` (returned) or `FAILED` (`PAYMENT_DECLINED`), running the 3DS challenge itself; see [Reading the result](#reading-the-result) |
 | `getQrPaymentInfo(format?)` | `GET /payments/{payment_id}/qr-payment/info` |
 | `getGooglePayInfo()` | `GET /payments/{payment_id}/google-pay/info` |
 | `chargeWithGooglePay(activity)` | Managed flow: GP info → Google Pay sheet → `charge(...)` |
@@ -373,9 +391,9 @@ val charge = session.chargeWithEncryptedCard(
     payload = jwe,
     challengePreference = ChallengePreference.AUTO
 )
-// returnUrl: the callback.return_url your backend created the payment with.
-charge.action?.redirectUrl?.let { session.handle3dsVerification(activity, it, returnUrl) }
-val finalState = session.getChargeState()
+// returnUrl: the callback.return_url your backend created the payment with. Polls the charge
+// and runs the 3DS challenge; see Reading the result for the manual path.
+val finalState = session.awaitChargeState(AwaitChargeOptions(activity = activity, returnUrl = returnUrl))
 ```
 
 ### 3DS verification
@@ -430,13 +448,70 @@ val finalState = session.getChargeState()
 
 ### Reading the result
 
-After a charge, and again after `handle3dsVerification` returns or throws `PAYMENT_011`, ask for
-the state with `getChargeState()`. Only `SUCCEEDED` and `FAILED` are results; `ACTION_REQUIRED`
-means a 3DS challenge is waiting. `REQUESTED` and `PROCESSING` mean the gateway has not decided
-yet, which can take a while after a 3DS challenge, so keep asking; the GoPay guide recommends once
-a second ([Payment states and lifecycle](https://api-docs.gopay.com/en/docs/02-payment-lifecycle.md)).
-`UNKNOWN` is a state this SDK does not know, so treat it like `PROCESSING`. Stop after a limit of
-your own and leave the payment to your backend then.
+A charge comes back `REQUESTED` or `PROCESSING` and is decided later; only `SUCCEEDED` and
+`FAILED` are results, `ACTION_REQUIRED` means a 3DS challenge is waiting, and `UNKNOWN` is a state
+this SDK does not know, to be treated like `PROCESSING`. The GoPay guide recommends asking once a
+second and treating the notification it sends your backend as the authoritative signal
+([Payment states and lifecycle](https://api-docs.gopay.com/en/docs/02-payment-lifecycle.md)).
+There are two ways to wait for the result; both work after any of the `charge*` methods.
+
+**`awaitChargeState`** does the waiting for you, the way the GoPay browser SDK's method of the
+same name does:
+
+```kotlin
+try {
+    val charge = session.awaitChargeState(
+        AwaitChargeOptions(
+            intervalMs = 1_000,                  // default: the cadence GoPay recommends
+            initialTimeoutMs = 30_000,           // default: how long REQUESTED/PROCESSING/UNKNOWN may last
+            threeDSMode = ThreeDSMode.AUTOMATIC, // default: the SDK runs the challenge itself
+            activity = activity,                 // the challenge is started from it
+            returnUrl = returnUrl,               // the callback.return_url from your backend
+            onStateChange = { showProgress(it.state) },
+            onActionRequired = { redirectUrl -> /* once per new challenge address */ }
+        )
+    )
+    showPaid(charge)                                       // SUCCEEDED
+} catch (e: GopaySDKException) {
+    when (e.errorCode) {
+        GopayErrorCodes.PAYMENT_DECLINED -> showDeclined(e.chargeState)  // FAILED, fail_reason in the message
+        GopayErrorCodes.PAYMENT_TIMEOUT -> askBackendForState()         // still undecided after 30 s; e.chargeState is the last state
+        GopayErrorCodes.PAYMENT_CANCELLED -> showStateAfterClosedChallenge(session) // the charge was sent; see the quick start
+        else -> showError(e)                                            // a read or the challenge failed
+    }
+}
+```
+
+It reads the charge at once and then one `intervalMs` after each answer, hands every state to
+`onStateChange`, and ends with the first result: `SUCCEEDED` is returned, `FAILED` throws
+`PAYMENT_DECLINED` (`PAYMENT_006`) with the charge on `GopaySDKException.chargeState` and its
+`fail_reason` in the message. `REQUESTED`, `PROCESSING` and `UNKNOWN` are waited out; when they
+last past `initialTimeoutMs`, counted from the call, the read on the deadline decides, and a charge
+still undecided there throws `PAYMENT_TIMEOUT` (`PAYMENT_007`) with that state on `chargeState`.
+The gateway may still decide it, so read the state again or wait for your backend's notification
+rather than offering a new payment; the SDK does not pass this code to `errorCallback`, as nothing
+failed. A 3DS challenge takes as long as the user takes, so it is not timed: for each new, non-empty
+`redirect_url` the call reports it through `onActionRequired` and, in `ThreeDSMode.AUTOMATIC`,
+runs `handle3dsVerification` with the `activity` and `returnUrl` from the options, then polls on
+with the timeout started over from the challenge's return; in `ThreeDSMode.MANUAL` the first
+reported address cancels the timeout for good and you run the challenge. The same address is never
+run or reported twice. The challenge's own errors end the call unchanged: `PAYMENT_CANCELLED` when
+the user closed it, `PAYMENT_VERIFICATION_UNREACHABLE`, `PAYMENT_VERIFICATION_IN_PROGRESS`. So does
+a failed read, with its `NETWORK_*` code, and an exception thrown by one of the callbacks.
+Cancelling the coroutine stops the polling at once, closes a challenge that is up, and stays a
+`CancellationException`. `AUTOMATIC` without an `activity`, or an interval or timeout that is not
+positive, is refused with `VALIDATION_INVALID_INPUT` before anything is sent. Two calls on the same
+session poll independently; only one of them can open the challenge. The iOS SDK has the same
+method with the matching options (milliseconds on Android, seconds on iOS).
+
+The `activity` is held for the duration of the call, as `chargeWithGooglePay` holds its one: the
+SDK stores nothing, and the call ends with your scope. Pass the activity on screen when you call,
+and read [Rotation and process death](#rotation-and-process-death) for the scope to call from.
+
+**By hand**, ask for the state with `getChargeState()` after a charge, and again after
+`handle3dsVerification` returns or throws `PAYMENT_011`. Keep asking while it is `REQUESTED`,
+`PROCESSING` or `UNKNOWN`, which can take a while after a 3DS challenge, and stop after a limit of
+your own, leaving the payment to your backend then:
 
 ```kotlin
 suspend fun settle(session: PaymentSession): ChargePaymentResponse {
@@ -468,7 +543,9 @@ the SDK keeps nothing on disk. Two things follow:
   activity's scope is cancelled with it; for `handle3dsVerification` that also closes the
   challenge. The `activity` you pass starts the SDK's screen and gives the device's browser data.
   `handle3dsVerification` and the card charges use it only when the call starts;
-  `chargeWithGooglePay` keeps it until the sheet returns, because it reads the browser data then.
+  `chargeWithGooglePay` keeps it until the sheet returns, because it reads the browser data then,
+  and `awaitChargeState` keeps the one in its options until the charge is decided, because it
+  starts the challenge from it whenever the gateway asks.
   So pass the one on screen at that moment and do not keep one captured in the coroutine, as the
   [quick start](#3-start-a-session-and-charge) shows. The SDK's own screens keep their state
   across a rotation.
@@ -736,10 +813,9 @@ val strings = GopaySDK.getInstance().currentLocaleStrings(locale = "cs")
 ```kotlin
 val info = session.getGooglePayInfo()
 if (GopaySDK.getInstance().isGooglePayAvailable(activity, info)) {
-    val charge = session.chargeWithGooglePay(activity)
+    session.chargeWithGooglePay(activity)
     // returnUrl: the callback.return_url your backend created the payment with.
-    charge.action?.redirectUrl?.let { session.handle3dsVerification(activity, it, returnUrl) }
-    val finalState = session.getChargeState()
+    val finalState = session.awaitChargeState(AwaitChargeOptions(activity = activity, returnUrl = returnUrl))
 }
 ```
 
@@ -811,6 +887,9 @@ mapped. Codes most likely to surface in the per-payment flow:
 | `PAYMENT_VERIFICATION_IN_PROGRESS` | A second 3DS WebView attempted while one is open |
 | `PAYMENT_VERIFICATION_UNREACHABLE` | The 3DS challenge never reached the user: the page would not load, e.g. the redirect URL is dead or is not a web address, or no app took the hand-off |
 | `PAYMENT_CANCELLED` | The Google Pay sheet or the 3DS screen closed before it finished, or the 3DS page failed after it had drawn; read the charge before paying again |
+| `PAYMENT_DECLINED` | `awaitChargeState` saw the charge end `FAILED`; the charge is on `chargeState`, its `fail_reason` in the message. A retry needs a new payment |
+| `PAYMENT_TIMEOUT` | `awaitChargeState` saw the charge stay `REQUESTED`/`PROCESSING`/`UNKNOWN` for the whole `initialTimeoutMs`; the last state is on `chargeState`. Not a failure and not passed to `errorCallback`: read the state again or wait for the notification |
+| `VALIDATION_INVALID_INPUT` | `awaitChargeState` called with a non-positive interval or timeout, or in `ThreeDSMode.AUTOMATIC` without an `activity` |
 
 ```kotlin
 try {
@@ -855,7 +934,7 @@ sheet is discarded and nothing is charged. Do not catch `CancellationException` 
 sheet; rethrow it.
 
 Plug an analytics callback via `GopayConfig.errorCallback` to receive every exception the SDK
-throws, except `PAYMENT_CANCELLED`, which is not an error.
+throws, except `PAYMENT_CANCELLED` and `PAYMENT_TIMEOUT`, which are not errors.
 
 Every code, with its causes and what to do about it, is in
 [`sdk/docs/ERROR_CODES.md`](sdk/docs/ERROR_CODES.md). The codes are shared with the iOS SDK. Codes
