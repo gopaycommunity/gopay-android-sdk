@@ -1,3 +1,11 @@
+# [2.1.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/2.0.0...2.1.0) (2026-10-20)
+
+
+### Features
+
+* await the charge in the demo checkout and console GPMOB-159 ([73cf758](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/73cf75871748966a129ea7bc3f5fd2d93e3087b7))
+* wait for the charge with awaitChargeState GPMOB-159 ([5376666](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/5376666f59e0e5d8063fb7f83591bf5f5d08bef0))
+
 # [2.0.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/1.11.0...2.0.0) (2026-10-20)
 
 A major release with a new error contract, a rebuilt card form theme and a changed 3DS flow; see [Migrating from 1.x](README.md#migrating-from-1x) in the README before upgrading.
