@@ -56,6 +56,7 @@ import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.model.deviceDefault
 import cz.gopay.sdk.model.QrCodeFormat
+import cz.gopay.sdk.session.AwaitChargeOptions
 import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.ui.CardEncryptionResult
 import cz.gopay.sdk.ui.PaymentCardForm
@@ -128,6 +129,7 @@ fun SDKTestScreen() {
                     return@launch
                 }
                 log("Error [${e.errorCode}]: ${e.message}" +
+                    e.chargeState?.let { "\nCharge ${it.id} ended ${it.state}" }.orEmpty() +
                     e.httpContext?.let { "\nHTTP ${it.statusCode} ${it.requestMethod} ${it.requestUrl}" +
                         (it.responseBody?.takeIf { b -> b.isNotEmpty() }?.let { b -> "\n${b.take(300)}" } ?: "") }.orEmpty())
             } catch (e: CancellationException) {
@@ -404,6 +406,25 @@ fun SDKTestScreen() {
                         } ?: "Action: none"
                         log("// getChargeState() -> ChargePaymentResponse\nState: ${resp.state}\nCharge ID: ${resp.id}\n$actionInfo")
                         resp.action?.redirectUrl?.let { pending3dsUrl = it }
+                    }
+                }
+
+                DemoButton("Await charge state", enabled = !isBusy) {
+                    run("Await charge state") {
+                        // The SDK's own polling: one read a second, the 3DS challenge opened by
+                        // the SDK itself for each new redirect, PAYMENT_006 for FAILED and
+                        // PAYMENT_007 when the charge does not move within 30 s. The manual
+                        // 3DS link is dropped first: the SDK opens the challenge from here on.
+                        pending3dsUrl = null
+                        val resp = s.awaitChargeState(
+                            AwaitChargeOptions(
+                                activity = context as Activity,
+                                returnUrl = returnUrl.trim().ifEmpty { null },
+                                onStateChange = { log("// awaitChargeState poll -> ${it.state}") },
+                                onActionRequired = { log("// 3DS required, the SDK opens it: $it") }
+                            )
+                        )
+                        log("// awaitChargeState() -> ChargePaymentResponse\nState: ${resp.state}\nCharge ID: ${resp.id}")
                     }
                 }
 

@@ -15,19 +15,20 @@ import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.model.QrPaymentDetails
+import cz.gopay.sdk.session.AwaitChargeOptions
 import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.ui.CardEncryptionResult
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 
 /**
  * Owns the whole checkout flow. This is the file to read if you want to see, in one place, how an
  * integration wires the SDK together:
  *
- *     create payment (your server) -> startPaymentSession -> charge(...) -> 3DS -> final state
+ *     create payment (your server) -> startPaymentSession -> charge(...) -> awaitChargeState()
  *
  * Every payment method funnels into the same [runCharge] tail, because 3DS and result handling are
- * identical regardless of how the card data arrived.
+ * identical regardless of how the card data arrived: `awaitChargeState` polls the charge and runs
+ * the 3DS challenge itself.
  *
  * Each tap of the pay button starts that sequence from the top with a brand-new payment — a
  * payment is single-use, so a retry after a decline needs a new one.
@@ -151,8 +152,9 @@ class CheckoutController {
             // The checkout's own scope going away, not the user: nothing left to show it on.
             throw e
         } catch (e: GopaySDKException) {
-            if (e.errorCode == GopayErrorCodes.PAYMENT_CANCELLED) {
-                afterClosedWindow(activity, session)
+            // Once the charge went out, no error may lead to a new payment: the charge decides.
+            if (chargeSent || e.errorCode == GopayErrorCodes.PAYMENT_CANCELLED) {
+                afterInterruptedCharge(activity, session, e)
                 return
             }
             fail("[${e.errorCode}] ${e.message}")
@@ -177,24 +179,24 @@ class CheckoutController {
         paymentReturnUrl = null
     }
 
-    /** Re-reads the charge and resumes polling — used by the pending result screen. */
+    /** Waits for the charge again — used by the pending result screen. */
     suspend fun refreshChargeState(activity: Activity) {
         val current = session ?: return
         busyLabel = "Refreshing…"
         try {
-            val charge = current.getChargeState()
-            val settled = settle(activity, current, charge)
-            outcome = Outcome(settled.state, settled, settled.failReason)
+            outcome = settle(activity, current)
         } catch (e: CancellationException) {
             throw e
         } catch (e: GopaySDKException) {
-            if (e.errorCode == GopayErrorCodes.PAYMENT_CANCELLED) {
-                afterClosedWindow(activity, current)
-            } else {
-                banner = "[${e.errorCode}] ${e.message}"
-            }
+            // The charge is out: read it, and show what went wrong on the result screen, which is
+            // the one on screen, rather than in the checkout's banner behind it.
+            afterInterruptedCharge(activity, current, e)
         } catch (e: Exception) {
-            banner = e.message ?: "Something went wrong"
+            outcome = Outcome(
+                state = outcome?.state ?: ChargeState.UNKNOWN,
+                response = outcome?.response,
+                message = "Couldn't check the payment: ${e.message}"
+            )
         } finally {
             busyLabel = null
         }
@@ -286,53 +288,51 @@ class CheckoutController {
         session: PaymentSession,
         charge: suspend () -> ChargePaymentResponse
     ) {
-        val response = charge()
+        charge()
         chargeSent = true
-        val settled = settle(activity, session, response)
-        outcome = Outcome(settled.state, settled, settled.failReason)
+        outcome = settle(activity, session)
     }
 
     /**
-     * Drives a charge to a terminal state, exactly the way a merchant backend would: poll
-     * `GET /payments/{id}/charge` on an interval until the gateway reports SUCCEEDED or FAILED.
+     * Drives the charge to its result with the SDK's own polling: `awaitChargeState` reads
+     * `GET /payments/{id}/charge` once a second until the gateway reports SUCCEEDED or FAILED.
      *
-     * `ACTION_REQUIRED` is a normal step of that loop, not a failure — whenever the gateway hands
-     * back a 3DS `redirectUrl` we haven't seen yet, the SDK's verification WebView is presented
-     * inline and polling continues afterwards. Each redirect is run once so a gateway that keeps
-     * echoing the same action can't loop the shopper through the challenge repeatedly.
-     *
-     * If the charge is still in flight when the budget runs out we return the last response as-is;
-     * the result screen then shows "pending" with a Refresh button that re-enters this loop.
+     * `ACTION_REQUIRED` is a normal step of that loop, not a failure: in the default automatic
+     * 3DS mode the SDK presents its verification WebView for each new `redirectUrl` itself, with
+     * the `callback.return_url` the payment was created with, and polls on afterwards. A charge
+     * that ends `FAILED` arrives as `PAYMENT_006` with the state attached; one still in flight
+     * after the initial timeout (30 s) as `PAYMENT_007`. Both become an outcome here: the result
+     * screen shows "failed", or "pending" with a Refresh button that re-enters this method. A
+     * closed challenge (`PAYMENT_011`) and every other error propagate to the caller.
      */
-    private suspend fun settle(
-        activity: Activity,
-        session: PaymentSession,
-        initial: ChargePaymentResponse
-    ): ChargePaymentResponse {
-        var response = initial
-        val handledRedirects = mutableSetOf<String>()
-        var attempts = 0
-
-        while (true) {
-            val redirect = response.action?.redirectUrl
-            if (redirect != null && handledRedirects.add(redirect)) {
-                busyLabel = "Verifying with your bank…"
-                // The address the payment was created with, not the charge response's, which GoPay
-                // is removing.
-                session.handle3dsVerification(activity, redirect, paymentReturnUrl)
+    private suspend fun settle(activity: Activity, session: PaymentSession): Outcome {
+        busyLabel = "Confirming payment…"
+        var lastRead: ChargePaymentResponse? = null
+        return try {
+            val charge = session.awaitChargeState(
+                AwaitChargeOptions(
+                    activity = activity,
+                    // The address the payment was created with, not the charge response's, which
+                    // GoPay is removing.
+                    returnUrl = paymentReturnUrl,
+                    onStateChange = { state ->
+                        lastRead = state
+                        // Back from "Verifying with your bank…" once the challenge is answered.
+                        if (state.state != ChargeState.ACTION_REQUIRED) busyLabel = "Confirming payment…"
+                    },
+                    onActionRequired = { busyLabel = "Verifying with your bank…" }
+                )
+            )
+            Outcome(charge.state, charge, null)
+        } catch (e: GopaySDKException) {
+            when (e.errorCode) {
+                GopayErrorCodes.PAYMENT_DECLINED ->
+                    Outcome(ChargeState.FAILED, e.chargeState, e.chargeState?.failReason ?: e.message)
+                // Not decided yet: the pending screen, whose Refresh waits again.
+                GopayErrorCodes.PAYMENT_TIMEOUT ->
+                    Outcome(lastRead?.state ?: ChargeState.PROCESSING, lastRead, null)
+                else -> throw e
             }
-
-            when (response.state) {
-                ChargeState.SUCCEEDED, ChargeState.FAILED -> return response
-                else -> Unit
-            }
-
-            if (attempts >= MAX_POLL_ATTEMPTS) return response
-            attempts++
-
-            busyLabel = if (attempts == 1) "Confirming payment…" else "Still confirming… ($attempts)"
-            delay(POLL_INTERVAL_MS)
-            response = session.getChargeState()
         }
     }
 
@@ -364,16 +364,26 @@ class CheckoutController {
     }
 
     /**
-     * A payment window closed before it finished (`PAYMENT_011`). Closing the Google Pay sheet
-     * sends no charge, so a soft banner is all it takes. Closing the 3DS challenge comes after the
-     * charge went out, and the issuer may have authorised it already: offering a new payment then
-     * could charge the shopper twice, so the charge decides first. A result is shown, an undecided
-     * charge is polled, and only a charge the gateway does not have (404) or that did not go
-     * through gets the banner. When the charge cannot be read, the pending screen offers Refresh
-     * rather than a new payment. The iOS demo does the same.
+     * The charge was interrupted: a payment window closed before it finished (`PAYMENT_011`), or
+     * waiting for the charge failed with anything but a result (`NETWORK_*`, `PAYMENT_008`,
+     * `PAYMENT_010`, `AUTH_*`, …). Closing the Google Pay sheet sends no charge, so a soft banner
+     * is all it takes. Once the charge went out the issuer may have authorised it already, so
+     * offering a new payment could charge the shopper twice, and the charge decides first: a
+     * result is shown, an undecided charge is waited for again, and only a charge the gateway
+     * does not have (404) or that did not go through gets the banner. When the charge cannot be
+     * read, the pending screen offers Refresh rather than a new payment. The iOS demo does the
+     * same.
      */
-    private suspend fun afterClosedWindow(activity: Activity, session: PaymentSession?) {
-        val cancelled = "Payment cancelled. Pick a method and try again."
+    private suspend fun afterInterruptedCharge(
+        activity: Activity,
+        session: PaymentSession?,
+        error: GopaySDKException
+    ) {
+        val cancelled = if (error.errorCode == GopayErrorCodes.PAYMENT_CANCELLED) {
+            "Payment cancelled. Pick a method and try again."
+        } else {
+            "[${error.errorCode}] ${error.message}. Pick a method and try again."
+        }
         if (!chargeSent || session == null) {
             banner = cancelled
             return
@@ -385,10 +395,8 @@ class CheckoutController {
             val charge = session.getChargeState().also { lastRead = it }
             when (charge.state) {
                 ChargeState.SUCCEEDED -> outcome = Outcome(charge.state, charge, null)
-                ChargeState.REQUESTED, ChargeState.PROCESSING, ChargeState.UNKNOWN -> {
-                    val settled = settle(activity, session, charge)
-                    outcome = Outcome(settled.state, settled, settled.failReason)
-                }
+                ChargeState.REQUESTED, ChargeState.PROCESSING, ChargeState.UNKNOWN ->
+                    outcome = settle(activity, session)
                 else -> {
                     // Not through: back to the checkout, also from the pending screen's Refresh.
                     outcome = null
@@ -422,10 +430,4 @@ class CheckoutController {
     }
 
     // endregion
-
-    private companion object {
-        /** ~45 s of polling — long enough for a slow issuer, short enough to not strand the user. */
-        const val POLL_INTERVAL_MS = 1_500L
-        const val MAX_POLL_ATTEMPTS = 30
-    }
 }
