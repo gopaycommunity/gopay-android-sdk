@@ -282,7 +282,8 @@ class PaymentSession internal constructor(
      * - `SUCCEEDED` returns the state;
      * - `FAILED` throws [GopayErrorCodes.PAYMENT_DECLINED], with the state on
      *   [GopaySDKException.chargeState] and the gateway's `fail_reason` in the message;
-     * - `REQUESTED`, `PROCESSING` and `UNKNOWN` are waited out. When they last past
+     * - `REQUESTED`, `PROCESSING`, `UNKNOWN` and an `ACTION_REQUIRED` without a new address are
+     *   waited out as undecided. When they last past
      *   [AwaitChargeOptions.initialTimeoutMs], counted from the call, the read on the deadline
      *   decides: still one of them throws [GopayErrorCodes.PAYMENT_TIMEOUT], with that state on
      *   [GopaySDKException.chargeState]. The gateway may still decide the charge, so read
@@ -293,7 +294,9 @@ class PaymentSession internal constructor(
      *   [AwaitChargeOptions.returnUrl], then polls on with the initial timeout started over from
      *   the challenge's return. In [ThreeDSMode.MANUAL] the first reported address cancels the
      *   timeout for good and the host runs the challenge. The same address is never run or
-     *   reported twice; an `ACTION_REQUIRED` without an address is waited out like `PROCESSING`.
+     *   reported twice; an `ACTION_REQUIRED` without an address, with an empty one or with one
+     *   already reported is waited out like `PROCESSING`, and can end in
+     *   [GopayErrorCodes.PAYMENT_TIMEOUT] the same way.
      *
      * Any error of a read or of the challenge ends the call with that error unchanged: the
      * `NETWORK_*` codes, [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] after [close],

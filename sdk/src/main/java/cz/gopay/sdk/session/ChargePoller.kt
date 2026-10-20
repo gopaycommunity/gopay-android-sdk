@@ -15,12 +15,12 @@ import kotlin.coroutines.coroutineContext
  *
  * The next read always comes [AwaitChargeOptions.intervalMs] after the previous answer arrived,
  * never on a fixed cadence, and after a 3DS challenge the same wait applies. While the charge
- * is undecided ([ChargeState.REQUESTED], [ChargeState.PROCESSING] or [ChargeState.UNKNOWN]) the
- * initial timeout runs: the last wait before the deadline is cut to what is left of it, so one
- * read lands on the deadline and decides. A charge still undecided there is
- * [GopayErrorCodes.PAYMENT_TIMEOUT], with that state on the error; one that moved is handled as
- * that state, and so is an answer that arrives after the deadline, since a read is never cut
- * off.
+ * is undecided ([ChargeState.REQUESTED], [ChargeState.PROCESSING], [ChargeState.UNKNOWN], or
+ * [ChargeState.ACTION_REQUIRED] without a new address) the initial timeout runs: the last wait
+ * before the deadline is cut to what is left of it, so one read lands on the deadline and
+ * decides. A charge still undecided there is [GopayErrorCodes.PAYMENT_TIMEOUT], with that state
+ * on the error; one that moved is handled as that state, and so is an answer that arrives after
+ * the deadline, since a read is never cut off.
  *
  * An [ChargeState.ACTION_REQUIRED] state counts only with a non-empty `redirect_url`, as in the
  * browser SDK; without one nothing is reported or opened and the timeout runs on. A new address

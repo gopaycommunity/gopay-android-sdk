@@ -380,7 +380,7 @@ compiles with a warning, and 3.0 removes them.
 - **Note**: thrown by both SDKs since 2.1; the iOS SDK exposes the same `chargeState`
 
 ### PAYMENT_007: Charge Timeout
-- **Description**: The charge stayed `REQUESTED` / `PROCESSING` / `UNKNOWN` for the whole initial timeout of `awaitChargeState()` (`initialTimeoutMs`, 30 s by default), counted from the call; the state the deadline read returned is on `GopaySDKException.chargeState`. A 3DS challenge has no time limit: in `ThreeDSMode.AUTOMATIC` the timeout starts over once the challenge returns, in `ThreeDSMode.MANUAL` the first reported address cancels it for good
+- **Description**: The charge stayed undecided, `REQUESTED` / `PROCESSING` / `UNKNOWN` or `ACTION_REQUIRED` without a new address (no `redirect_url`, an empty one, or one already reported), for the whole initial timeout of `awaitChargeState()` (`initialTimeoutMs`, 30 s by default), counted from the call; the state the deadline read returned is on `GopaySDKException.chargeState`. A 3DS challenge has no time limit: in `ThreeDSMode.AUTOMATIC` the timeout starts over once the challenge returns, in `ThreeDSMode.MANUAL` the first reported address cancels it for good
 - **Common Causes**:
   - A slow issuer or acquirer
   - Gateway load

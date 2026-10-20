@@ -485,7 +485,8 @@ try {
 It reads the charge at once and then one `intervalMs` after each answer, hands every state to
 `onStateChange`, and ends with the first result: `SUCCEEDED` is returned, `FAILED` throws
 `PAYMENT_DECLINED` (`PAYMENT_006`) with the charge on `GopaySDKException.chargeState` and its
-`fail_reason` in the message. `REQUESTED`, `PROCESSING` and `UNKNOWN` are waited out; when they
+`fail_reason` in the message. `REQUESTED`, `PROCESSING`, `UNKNOWN` and an `ACTION_REQUIRED` without
+a new address (none, empty, or one already reported) are waited out as undecided; when they
 last past `initialTimeoutMs`, counted from the call, the read on the deadline decides, and a charge
 still undecided there throws `PAYMENT_TIMEOUT` (`PAYMENT_007`) with that state on `chargeState`.
 The gateway may still decide it, so read the state again or wait for your backend's notification
@@ -888,7 +889,7 @@ mapped. Codes most likely to surface in the per-payment flow:
 | `PAYMENT_VERIFICATION_UNREACHABLE` | The 3DS challenge never reached the user: the page would not load, e.g. the redirect URL is dead or is not a web address, or no app took the hand-off |
 | `PAYMENT_CANCELLED` | The Google Pay sheet or the 3DS screen closed before it finished, or the 3DS page failed after it had drawn; read the charge before paying again |
 | `PAYMENT_DECLINED` | `awaitChargeState` saw the charge end `FAILED`; the charge is on `chargeState`, its `fail_reason` in the message. A retry needs a new payment |
-| `PAYMENT_TIMEOUT` | `awaitChargeState` saw the charge stay `REQUESTED`/`PROCESSING`/`UNKNOWN` for the whole `initialTimeoutMs`; the last state is on `chargeState`. Not a failure and not passed to `errorCallback`: read the state again or wait for the notification |
+| `PAYMENT_TIMEOUT` | `awaitChargeState` saw the charge stay undecided (`REQUESTED`/`PROCESSING`/`UNKNOWN`, or `ACTION_REQUIRED` without a new address) for the whole `initialTimeoutMs`; the last state is on `chargeState`. Not a failure and not passed to `errorCallback`: read the state again or wait for the notification |
 | `VALIDATION_INVALID_INPUT` | `awaitChargeState` called with a non-positive interval or timeout, or in `ThreeDSMode.AUTOMATIC` without an `activity` |
 
 ```kotlin

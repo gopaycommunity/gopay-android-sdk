@@ -30,7 +30,8 @@ enum class ThreeDSMode {
  * @param intervalMs how long to wait after one charge state arrives before asking for the next,
  *        in milliseconds. Has to be positive.
  * @param initialTimeoutMs how long, in milliseconds from the call, the charge may stay
- *        `REQUESTED`, `PROCESSING` or `UNKNOWN` before the call gives up with
+ *        undecided (`REQUESTED`, `PROCESSING`, `UNKNOWN`, or `ACTION_REQUIRED` without a new
+ *        address) before the call gives up with
  *        [cz.gopay.sdk.exception.GopayErrorCodes.PAYMENT_TIMEOUT]. A 3DS challenge has no time
  *        limit: in [ThreeDSMode.AUTOMATIC] the timeout starts over once the challenge returns,
  *        in [ThreeDSMode.MANUAL] the first reported address cancels it for good. Measured on

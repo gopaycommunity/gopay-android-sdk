@@ -150,7 +150,8 @@ object GopayErrorCodes {
     const val PAYMENT_DECLINED = "PAYMENT_006"
 
     /**
-     * The charge stayed `REQUESTED`, `PROCESSING` or `UNKNOWN` for the whole initial timeout of
+     * The charge stayed undecided, `REQUESTED`, `PROCESSING`, `UNKNOWN` or `ACTION_REQUIRED`
+     * without a new address, for the whole initial timeout of
      * [cz.gopay.sdk.session.PaymentSession.awaitChargeState]; the state the deadline read
      * returned is on [GopaySDKException.chargeState]. Not a failed payment: the gateway may
      * still decide it. Read `getChargeState()` or wait for the payment notification on your
