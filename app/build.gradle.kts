@@ -5,17 +5,21 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
-// Demo gateway and merchant values, read from a `-P` project property or, failing that, the
-// gitignored `local.properties` in the repo root. A missing key is an empty string, so the build
-// works without them.
-val demoProperties = Properties().apply {
+// The demo's own settings (`gopay.demo.*`, `gopay.sdk.source`) are read from a `-P` project property
+// or, failing that, the gitignored `local.properties` in the repo root. `sdk.version` is not, see
+// below.
+val localProperties = Properties().apply {
     val file = rootProject.file("local.properties")
     if (file.exists()) file.inputStream().use { load(it) }
 }
 
+fun localProperty(key: String): String? =
+    (project.findProperty(key) as String? ?: localProperties.getProperty(key))?.trim()
+
+// Demo gateway and merchant values. A missing key is an empty string, so the build works without
+// them.
 fun demoProperty(key: String): String =
-    (project.findProperty(key) as String? ?: demoProperties.getProperty(key) ?: "")
-        .trim()
+    (localProperty(key) ?: "")
         // The value is interpolated into a Java string literal in the generated BuildConfig.
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
@@ -30,6 +34,30 @@ require(
         demoBaseUrl.startsWith("http://", ignoreCase = true) ||
         demoBaseUrl.startsWith("https://", ignoreCase = true)
 ) { "gopay.demo.baseUrl must be empty or an http(s) URL, got '$demoBaseUrl'" }
+
+// Which SDK the demo builds against. `local` (the default) is the `:sdk` module in this repo, which
+// development and CI build against. `released` is the published `cz.gopay:sdk`, to check that the
+// demo integrates with the released artifact exactly as the README describes.
+val sdkSource = localProperty("gopay.sdk.source")?.ifEmpty { null } ?: "local"
+require(sdkSource == "local" || sdkSource == "released") {
+    "gopay.sdk.source must be 'local' or 'released', got '$sdkSource'"
+}
+
+// The released version is the one the SDK module publishes, so the demo and the SDK move together:
+// `sdk.version` from `sdk/gradle.properties`. A `-Psdk.version` overrides it for both, as it does for
+// the SDK's own publication.
+val sdkVersion = (
+    project.findProperty("sdk.version") as String?
+        ?: Properties().apply {
+            val file = rootProject.file("sdk/gradle.properties")
+            if (file.exists()) file.inputStream().use { load(it) }
+        }.getProperty("sdk.version")
+)?.trim()
+if (sdkSource == "released") {
+    require(!sdkVersion.isNullOrEmpty()) {
+        "sdk.version is not set (sdk/gradle.properties or -Psdk.version)"
+    }
+}
 
 android {
     namespace = "com.gopay.example"
@@ -97,8 +125,12 @@ android {
 val materialIconsVersion = "1.5.4"
 
 dependencies {
-    // Use local SDK module to test in-progress SDK API changes.
-    implementation(project(":sdk"))
+    if (sdkSource == "released") {
+        implementation("cz.gopay:sdk:$sdkVersion")
+    } else {
+        // The local SDK module, to test in-progress SDK API changes.
+        implementation(project(":sdk"))
+    }
     
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
