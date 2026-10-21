@@ -58,6 +58,13 @@ somewhere else by editing `local.properties` and launching again.
 `gopay.demo.clientSecret` is a merchant secret, used only by the simulated backend. A real app
 never carries one.
 
+## SDK source
+
+The demo builds against the `:sdk` module in this repo, which development and CI use. Set
+`gopay.sdk.source=released` (`-P` or `local.properties`) to build it against the published
+`cz.gopay:sdk` at `sdk.version` from `sdk/gradle.properties` instead. See
+[Demo app](../README.md#demo-app) in the top-level README, also for trying an unreleased build.
+
 ## Typical flow in the test screen
 
 The screen is split into four numbered sections. Sections 3 and 4 appear once a session is live.

@@ -88,9 +88,34 @@ Use the latest version listed on
 [Maven Central](https://central.sonatype.com/artifact/cz.gopay/sdk). Of the 1.x line only 1.0.0
 was ever published there; later 1.x versions exist only as tags in this repository.
 
-Inside this repo the demo app consumes the SDK as a Gradle module (`implementation(project(":sdk"))`).
 To publish a build of your own to a local Maven repository, see
 [`sdk/docs/PUBLISHING.md`](sdk/docs/PUBLISHING.md#publishing-locally).
+
+### Demo app
+
+By default the demo app in [`app/`](app/) builds against the SDK module next to it
+(`implementation(project(":sdk"))`), so it always runs the SDK code in the same checkout. Development
+and CI build it that way. To build it against the released `cz.gopay:sdk` from Maven Central
+instead, the way an integration following this section does, pass `-Pgopay.sdk.source=released`
+or put `gopay.sdk.source=released` in `local.properties`:
+
+```bash
+./gradlew :app:installDebug -Pgopay.sdk.source=released
+```
+
+The version is `sdk.version` from `sdk/gradle.properties`, the version this repo last released.
+Between releases the demo may already use API that version lacks, and the `released` build then
+fails to compile.
+
+To try an unreleased build the same way, publish it to the local repository `sdk/build/repo` with
+`publishToLocalRepo`, not `publishToMavenLocal` (the demo does not read `~/.m2`), under a version
+that is not on Maven Central (the remote repositories are searched before the local one), and pass
+that version to both commands:
+
+```bash
+./gradlew :sdk:publishToLocalRepo -Psdk.version=dev
+./gradlew :app:installDebug -Pgopay.sdk.source=released -Psdk.version=dev
+```
 
 ## Your backend
 
