@@ -5,9 +5,12 @@ import cz.gopay.sdk.model.JweHeader
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.util.Base64Utils
 import cz.gopay.sdk.util.JsonUtils
+import cz.gopay.sdk.exception.GopayErrorCodes
+import cz.gopay.sdk.exception.GopaySDKException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -97,9 +100,31 @@ class EncryptionServiceTest {
         assertNotEquals("Ciphertext should differ", firstParts[3], secondParts[3])
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun `malformed JWK modulus throws IllegalArgumentException`() {
-        val badJwk = jwk.copy(n = "this is not valid base64url @@@")
-        service.createJweEncryptedPayload(cardData, badJwk, testClientId, issuedAt)
+    @Test
+    fun `a malformed JWK modulus throws INTERNAL_001 with the cause, as on iOS`() {
+        val badJwk = jwk.copy(n = "not-base64url-!!!")
+
+        val e = assertThrows(GopaySDKException::class.java) {
+            service.createJweEncryptedPayload(cardData, badJwk, testClientId, issuedAt)
+        }
+
+        assertEquals(GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR, e.errorCode)
+        assertTrue(e.message!!.startsWith("Card encryption failed: the public key could not be built"))
+        assertNotNull("the original failure is the cause", e.cause)
+    }
+
+    @Test
+    fun `a key the cipher refuses throws INTERNAL_001 with the cause`() {
+        // A 512-bit key is too short for RSA-OAEP-256 to wrap a 256-bit CEK, so the cipher
+        // itself fails rather than the JWK parsing. That failure must leave as the shared code.
+        val weakJwk = TestJwe(keySize = 512).jwk
+
+        val e = assertThrows(GopaySDKException::class.java) {
+            service.createJweEncryptedPayload(cardData, weakJwk, testClientId, issuedAt)
+        }
+
+        assertEquals(GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR, e.errorCode)
+        assertTrue(e.message!!.startsWith("Card encryption failed: the JWE could not be built"))
+        assertNotNull(e.cause)
     }
 }

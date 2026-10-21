@@ -1,5 +1,7 @@
 package cz.gopay.sdk.service
 
+import cz.gopay.sdk.exception.GopayErrorCodes
+import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.CardJwePayload
 import cz.gopay.sdk.model.JweHeader
@@ -28,6 +30,10 @@ import javax.crypto.spec.PSource
  * The JWK and the issue time are supplied at call time: [CardEncryption] fetches the key from
  * `GET /cards/public-key` for every encryption and takes the time from that response's `Date`
  * header. Neither is persisted by the SDK.
+ *
+ * Anything that goes wrong in here, a key the JWK does not describe or a cipher the platform
+ * refuses, is [GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR] with the original exception as the
+ * cause, the code the iOS SDK's `JweUtils` reports for the same failures.
  */
 internal class EncryptionService {
 
@@ -46,18 +52,28 @@ internal class EncryptionService {
      * returned JWE to `POST /cards/tokens` with merchant credentials.
      *
      * @param issuedAt the JWE `iat` in Unix seconds; `exp` is 600 seconds later.
+     * @throws GopaySDKException [GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR] when the key cannot be
+     *         built from [jwk] or the encryption fails, with the original exception as the cause.
      */
     fun createJweEncryptedPayload(
         cardData: CardData,
         jwk: Jwk,
         clientId: String,
         issuedAt: Long
-    ): String {
+    ): String = try {
+        encrypt(cardData, jwk, clientId, issuedAt)
+    } catch (e: GopaySDKException) {
+        throw e
+    } catch (e: Exception) {
+        throw jweError("the JWE could not be built: ${e.message}", e)
+    }
+
+    private fun encrypt(cardData: CardData, jwk: Jwk, clientId: String, issuedAt: Long): String {
         val publicKey = jwkToPublicKey(jwk)
 
         val jweHeader = JweHeader(kid = jwk.kid)
         val headerJson = JsonUtils.toJson(jweHeader)
-            ?: throw IllegalStateException("Failed to serialize JWE header")
+            ?: throw jweError("the JWE header could not be serialized")
         val encodedHeader = base64UrlEncode(headerJson.toByteArray(Charsets.UTF_8))
 
         val cek = generateContentEncryptionKey()
@@ -75,7 +91,7 @@ internal class EncryptionService {
             jti = "android-${UUID.randomUUID()}"
         )
         val cardDataJson = JsonUtils.toJson(payload)
-            ?: throw IllegalStateException("Failed to serialize card data")
+            ?: throw jweError("the card data could not be serialized")
         val (ciphertext, authTag) = encryptCardDataWithAAD(
             cardDataJson,
             cek,
@@ -99,9 +115,16 @@ internal class EncryptionService {
             
             return keyFactory.generatePublic(rsaPublicKeySpec)
         } catch (e: Exception) {
-            throw IllegalArgumentException("Failed to create public key from JWK", e)
+            throw jweError("the public key could not be built from the JWK: ${e.message}", e)
         }
     }
+
+    /** `Card encryption failed: <step>`, the shape the iOS `JweUtils` gives the same code. */
+    private fun jweError(step: String, cause: Throwable? = null) = GopaySDKException(
+        errorCode = GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR,
+        message = "Card encryption failed: $step",
+        cause = cause
+    )
 
     /**
      * Generates a random 256-bit Content Encryption Key for AES-GCM

@@ -2,8 +2,11 @@ package cz.gopay.sdk
 
 import cz.gopay.sdk.config.Environment
 import cz.gopay.sdk.config.GopayConfig
+import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocales
+import cz.gopay.sdk.model.CardData
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -91,6 +94,69 @@ class GopaySDKTest {
         GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX, debug = false))
 
         assertFalse(GopaySDK.getInstance().isDebugEnabled())
+    }
+
+    @Test
+    fun `an empty paymentId or paymentSecret is VALIDATION_007 before anything is sent`() {
+        // The iOS SDK validates the pair the same way; a bare IllegalArgumentException was the
+        // one platform-only exception on this path. SANDBOX is never reached: the check comes
+        // before the token request.
+        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX))
+        val sdk = GopaySDK.getInstance()
+
+        for ((id, secret) in listOf("" to "secret", " " to "secret", "pay-1" to "", "pay-1" to "\t")) {
+            val e = assertThrows("'$id' / '$secret'", GopaySDKException::class.java) {
+                runBlocking { sdk.startPaymentSession(id, secret) }
+            }
+            assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, e.errorCode)
+            assertTrue(e.message!!.endsWith("must not be empty"))
+        }
+    }
+
+    @Test
+    fun `card data that fails validation is VALIDATION_007 before the key is fetched`() {
+        // No clientId/shareableKey on purpose: a card that got past validation would fail with
+        // AUTH_011 on the key fetch, so VALIDATION_007 proves the check runs first.
+        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX))
+        val sdk = GopaySDK.getInstance()
+        val good = CardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
+        val bad = mapOf(
+            "Card PAN cannot be empty" to good.copy(cardPan = ""),
+            "Card PAN must be 13-19 digits" to good.copy(cardPan = "444444444444"),
+            "Card PAN must contain only digits" to good.copy(cardPan = "4444 4444 4444 4448"),
+            "Expiration month must be 01-12" to good.copy(expMonth = "13"),
+            "Expiration year must be 2-4 digits" to good.copy(expYear = "2"),
+            "CVV must be 3-4 digits" to good.copy(cvv = "12")
+        )
+
+        for ((message, card) in bad) {
+            val e = assertThrows(message, GopaySDKException::class.java) {
+                runBlocking { sdk.encryptCardData(card) }
+            }
+            assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, e.errorCode)
+            assertEquals(message, e.message)
+        }
+        // The rules are the same as on iOS: a 13-digit PAN and a 4-digit CVV pass validation and
+        // reach the key fetch, which fails for the missing credentials, not the card.
+        val e = assertThrows(GopaySDKException::class.java) {
+            runBlocking { sdk.encryptCardData(good.copy(cardPan = "4444444444448", cvv = "1234", expYear = "2028")) }
+        }
+        assertEquals(GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING, e.errorCode)
+    }
+
+    @Test
+    fun `a development URL the HTTP client refuses is CONFIG_006 from initialize`() {
+        // Environment.DEVELOPMENT checks the scheme only; Retrofit's own check used to throw a
+        // bare IllegalArgumentException out of initialize.
+        val e = assertThrows(GopaySDKException::class.java) {
+            GopaySDK.initialize(
+                GopayConfig(environment = Environment.DEVELOPMENT.create("http://gw.exa mple.com/api/"))
+            )
+        }
+
+        assertEquals(GopayErrorCodes.CONFIG_INVALID_BASE_URL, e.errorCode)
+        assertTrue(e.cause is IllegalArgumentException)
+        assertFalse("a failed initialize leaves no instance behind", GopaySDK.isInitialized())
     }
 
     @Test

@@ -81,14 +81,26 @@ class GopaySDK private constructor(
      *              grants for payment credentials; any other answers with
      *              [cz.gopay.sdk.exception.GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID].
      *              Pass a narrower one, e.g. `payment:read` alone, to only read the payment.
+     * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] for an empty
+     *         [paymentId] or [paymentSecret], before anything is sent, as on iOS.
      */
     suspend fun startPaymentSession(
         paymentId: String,
         paymentSecret: String,
         scope: String = PaymentSession.DEFAULT_SCOPE
     ): PaymentSession {
-        require(paymentId.isNotBlank()) { "paymentId must not be blank" }
-        require(paymentSecret.isNotBlank()) { "paymentSecret must not be blank" }
+        if (paymentId.isBlank()) {
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
+                message = "paymentId must not be empty"
+            )
+        }
+        if (paymentSecret.isBlank()) {
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
+                message = "paymentSecret must not be empty"
+            )
+        }
 
         val session = paymentSessionFactory.create(
             paymentId = paymentId,
@@ -134,8 +146,13 @@ class GopaySDK private constructor(
      * Logcat while [GopayConfig.debug] is on. Neither the key nor card data is persisted.
      *
      * @return JWE compact serialization (RFC 7516) ready to send to the merchant backend.
-     * @throws IllegalArgumentException if [cardData] fails basic validation.
-     * @throws GopaySDKException if `clientId`/`shareableKey` are missing or the public key fetch fails.
+     * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] when [cardData] fails
+     *         basic validation (PAN of 13 to 19 digits, month `01` to `12`, year of 2 to 4 digits,
+     *         CVV of 3 or 4 digits), before anything is sent;
+     *         [GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING] without `clientId`/`shareableKey`; a
+     *         `NETWORK_*` code when the public key fetch fails;
+     *         [GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR] when the key or the encryption itself
+     *         fails, with the original exception as the cause. The iOS SDK throws the same codes.
      */
     suspend fun encryptCardData(cardData: CardData): String {
         validateCardData(cardData)
@@ -152,14 +169,20 @@ class GopaySDK private constructor(
     fun currentLocaleStrings(preferred: String? = null): GopayLocaleStrings =
         GopayLocales.resolve(preferred)
 
+    /** The same rules and messages as the iOS SDK's `validateCardData`. */
     private fun validateCardData(cardData: CardData) {
-        require(cardData.cardPan.isNotBlank()) { "Card PAN cannot be empty" }
-        require(cardData.cardPan.length in 13..19) { "Card PAN must be 13-19 digits" }
-        require(cardData.cardPan.all { it.isDigit() }) { "Card PAN must contain only digits" }
-        require(cardData.expMonth.matches(Regex("^(0[1-9]|1[0-2])$"))) { "Expiration month must be 01-12" }
-        require(cardData.expYear.matches(Regex("^[0-9]{2,4}$"))) { "Expiration year must be 2-4 digits" }
-        require(cardData.cvv.matches(Regex("^[0-9]{3,4}$"))) { "CVV must be 3-4 digits" }
+        if (cardData.cardPan.isBlank()) throw invalidCard("Card PAN cannot be empty")
+        if (cardData.cardPan.length !in 13..19) throw invalidCard("Card PAN must be 13-19 digits")
+        if (!cardData.cardPan.all { it.isDigit() }) throw invalidCard("Card PAN must contain only digits")
+        if (!cardData.expMonth.matches(Regex("^(0[1-9]|1[0-2])$"))) throw invalidCard("Expiration month must be 01-12")
+        if (!cardData.expYear.matches(Regex("^[0-9]{2,4}$"))) throw invalidCard("Expiration year must be 2-4 digits")
+        if (!cardData.cvv.matches(Regex("^[0-9]{3,4}$"))) throw invalidCard("CVV must be 3-4 digits")
     }
+
+    private fun invalidCard(message: String) = GopaySDKException(
+        errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
+        message = message
+    )
 
     /**
      * Checks whether Google Pay is available and ready on this device using the allowed payment

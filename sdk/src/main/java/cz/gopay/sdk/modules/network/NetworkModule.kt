@@ -1,6 +1,8 @@
 package cz.gopay.sdk.modules.network
 
 import cz.gopay.sdk.config.NetworkConfig
+import cz.gopay.sdk.exception.GopayErrorCodes
+import cz.gopay.sdk.exception.GopaySDKException
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import cz.gopay.sdk.model.ChargePaymentResponseAdapter
@@ -79,11 +81,24 @@ internal object NetworkModule {
     /**
      * Creates a Retrofit instance with the provided OkHttpClient and baseUrl, reusing the shared
      * [moshi] converter.
+     *
+     * @throws GopaySDKException [GopayErrorCodes.CONFIG_INVALID_BASE_URL] for a base URL the
+     *         HTTP client cannot use, which [cz.gopay.sdk.config.Environment.DEVELOPMENT] lets
+     *         through: it checks the scheme only. Retrofit would otherwise throw a bare
+     *         `IllegalArgumentException` out of `GopaySDK.initialize`.
      */
     internal fun createRetrofit(client: OkHttpClient, baseUrl: String): Retrofit {
         val normalizedBaseUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
-        return Retrofit.Builder()
-            .baseUrl(normalizedBaseUrl)
+        val builder = try {
+            Retrofit.Builder().baseUrl(normalizedBaseUrl)
+        } catch (e: IllegalArgumentException) {
+            throw GopaySDKException(
+                errorCode = GopayErrorCodes.CONFIG_INVALID_BASE_URL,
+                message = "Invalid API base URL '$normalizedBaseUrl': ${e.message}",
+                cause = e
+            )
+        }
+        return builder
             .client(client)
             .addConverterFactory(ReadingConverterFactory(MoshiConverterFactory.create(moshi)))
             .build()

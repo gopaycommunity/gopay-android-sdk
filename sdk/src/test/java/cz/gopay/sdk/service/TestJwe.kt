@@ -14,11 +14,15 @@ import javax.crypto.spec.OAEPParameterSpec
 import javax.crypto.spec.PSource
 import javax.crypto.spec.SecretKeySpec
 
-/** A throwaway RSA keypair standing in for the merchant key; [jwk] is what the SDK gets. */
-internal class TestJwe {
+/**
+ * A throwaway RSA keypair standing in for the merchant key; [jwk] is what the SDK gets.
+ *
+ * @param keySize 2048 like the gateway's key; a shorter one makes the OAEP wrap fail on purpose.
+ */
+internal class TestJwe(keySize: Int = 2048) {
 
     private val keyPair: KeyPair = KeyPairGenerator.getInstance("RSA")
-        .apply { initialize(2048) }
+        .apply { initialize(keySize) }
         .generateKeyPair()
 
     val jwk: Jwk = (keyPair.public as RSAPublicKey).let { pub ->

@@ -424,6 +424,9 @@ class PaymentSession internal constructor(
             val tokenJson = deferred.await().getOrElse { throw GooglePayBridge.failureFor(it) }
             val input = try {
                 GooglePayHelper.parseGooglePayToken(tokenJson)
+            } catch (e: GopaySDKException) {
+                // Already PAYMENT_003 with the parse failure as its cause.
+                throw e
             } catch (e: Exception) {
                 throw GooglePayBridge.failureFor(e)
             }

@@ -1,6 +1,9 @@
 package cz.gopay.sdk.config
 
+import cz.gopay.sdk.exception.GopayErrorCodes
+import cz.gopay.sdk.exception.GopaySDKException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -56,16 +59,21 @@ class EnvironmentTest {
         assertEquals("HTTPS://localhost:8080/", developmentEnv.apiBaseUrl)
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun testDevelopmentEnvironmentWithEmptyUrl() {
-        // Verify development environment rejects empty URL
-        Environment.DEVELOPMENT.create("")
+        // An empty URL is the shared CONFIG_006, the code iOS reports for a base URL it cannot
+        // use, not a bare IllegalArgumentException.
+        val e = assertThrows(GopaySDKException::class.java) { Environment.DEVELOPMENT.create("") }
+        assertEquals(GopayErrorCodes.CONFIG_INVALID_BASE_URL, e.errorCode)
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun testDevelopmentEnvironmentWithInvalidUrl() {
-        // Verify development environment rejects invalid URL
-        Environment.DEVELOPMENT.create("invalid-url")
+        val e = assertThrows(GopaySDKException::class.java) {
+            Environment.DEVELOPMENT.create("invalid-url")
+        }
+        assertEquals(GopayErrorCodes.CONFIG_INVALID_BASE_URL, e.errorCode)
+        assertTrue(e.message!!.contains("http://"))
     }
 
     @Test

@@ -1,6 +1,8 @@
 package cz.gopay.sdk.service
 
 import com.squareup.moshi.Json
+import cz.gopay.sdk.exception.GopayErrorCodes
+import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.GooglePayAllowedMethod
 import cz.gopay.sdk.model.GooglePayDataRequest
 import cz.gopay.sdk.model.GooglePayInfoResponse
@@ -48,29 +50,34 @@ object GooglePayHelper {
      * Where the nested token string contains `protocolVersion`, `signature`,
      * `intermediateSigningKey`, and `signedMessage`.
      *
-     * @throws IllegalArgumentException if the JSON is malformed or required fields are missing
+     * @throws GopaySDKException [GopayErrorCodes.PAYMENT_PROCESSING_FAILED] if the JSON is
+     *         malformed or required fields are missing, the code the iOS SDK reports for an Apple
+     *         Pay token it cannot read; a parse failure is the cause.
      */
     fun parseGooglePayToken(paymentDataJson: String): PaymentCardInput {
         val outerAdapter = moshi.adapter(GooglePayOuterData::class.java)
         val outer = try {
             outerAdapter.fromJson(paymentDataJson)!!
         } catch (e: Exception) {
-            throw IllegalArgumentException("Failed to parse Google Pay PaymentData JSON: ${e.message}", e)
+            throw unreadableToken("Failed to parse Google Pay PaymentData JSON: ${e.message}", e)
         }
 
         val tokenJson = outer.paymentMethodData?.tokenizationData?.token
-            ?: throw IllegalArgumentException("Missing paymentMethodData.tokenizationData.token in Google Pay PaymentData")
+            ?: throw unreadableToken("Missing paymentMethodData.tokenizationData.token in Google Pay PaymentData")
 
         val tokenAdapter = moshi.adapter(GooglePayTokenContent::class.java)
-        val token = tokenAdapter.fromJson(tokenJson)
-            ?: throw IllegalArgumentException("Failed to parse Google Pay token JSON")
+        val token = try {
+            tokenAdapter.fromJson(tokenJson)
+        } catch (e: Exception) {
+            throw unreadableToken("Failed to parse Google Pay token JSON: ${e.message}", e)
+        } ?: throw unreadableToken("Failed to parse Google Pay token JSON")
 
         val protocolVersion = token.protocolVersion
-            ?: throw IllegalArgumentException("Missing protocolVersion in Google Pay token")
+            ?: throw unreadableToken("Missing protocolVersion in Google Pay token")
         val signature = token.signature
-            ?: throw IllegalArgumentException("Missing signature in Google Pay token")
+            ?: throw unreadableToken("Missing signature in Google Pay token")
         val signedMessage = token.signedMessage
-            ?: throw IllegalArgumentException("Missing signedMessage in Google Pay token")
+            ?: throw unreadableToken("Missing signedMessage in Google Pay token")
 
         return PaymentCardInput.googlePay(
             protocolVersion = protocolVersion,
@@ -101,6 +108,12 @@ object GooglePayHelper {
         )
         return moshi.adapter(IsReadyToPayRequest::class.java).toJson(request)
     }
+
+    private fun unreadableToken(message: String, cause: Throwable? = null) = GopaySDKException(
+        errorCode = GopayErrorCodes.PAYMENT_PROCESSING_FAILED,
+        message = "Google Pay failed: $message",
+        cause = cause
+    )
 
     // --- Private models ---
 

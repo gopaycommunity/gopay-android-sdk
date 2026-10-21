@@ -8,8 +8,12 @@ import cz.gopay.sdk.model.GooglePayMerchantInfo
 import cz.gopay.sdk.model.GooglePayMethodParameters
 import cz.gopay.sdk.model.GooglePayTokenizationSpec
 import cz.gopay.sdk.model.GooglePayTransactionInfo
+import cz.gopay.sdk.exception.GopayErrorCodes
+import cz.gopay.sdk.exception.GopaySDKException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -78,18 +82,27 @@ class GooglePayHelperTest {
         assertEquals("MEYCIQCO2EIi48s8VTH+ilMEpoXLFfkxAw==", key?.signatures?.get(0))
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun `parseGooglePayToken throws on malformed JSON`() {
-        GooglePayHelper.parseGooglePayToken("not valid json at all {{{")
+    /** A token the SDK cannot read is PAYMENT_003, as an unreadable Apple Pay token is on iOS. */
+    private fun assertUnreadable(json: String): GopaySDKException {
+        val e = assertThrows(GopaySDKException::class.java) { GooglePayHelper.parseGooglePayToken(json) }
+        assertEquals(GopayErrorCodes.PAYMENT_PROCESSING_FAILED, e.errorCode)
+        assertTrue(e.message!!.startsWith("Google Pay failed: "))
+        return e
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun `parseGooglePayToken throws when paymentMethodData is missing`() {
-        GooglePayHelper.parseGooglePayToken("""{"apiVersion":2}""")
+    @Test
+    fun `parseGooglePayToken throws PAYMENT_003 on malformed JSON, with the parse failure as cause`() {
+        val e = assertUnreadable("not valid json at all {{{")
+        assertNotNull(e.cause)
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun `parseGooglePayToken throws when token field is missing`() {
+    @Test
+    fun `parseGooglePayToken throws PAYMENT_003 when paymentMethodData is missing`() {
+        assertUnreadable("""{"apiVersion":2}""")
+    }
+
+    @Test
+    fun `parseGooglePayToken throws PAYMENT_003 when token field is missing`() {
         val json = """
             {
               "paymentMethodData": {
@@ -97,21 +110,22 @@ class GooglePayHelperTest {
               }
             }
         """.trimIndent()
-        GooglePayHelper.parseGooglePayToken(json)
+        assertUnreadable(json)
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun `parseGooglePayToken throws when nested token JSON is missing protocolVersion`() {
-        val tokenJson = """{"signature":"sig","signedMessage":"msg"}"""
-        val json = buildPaymentDataJsonWithToken(tokenJson)
-        GooglePayHelper.parseGooglePayToken(json)
+    @Test
+    fun `parseGooglePayToken throws PAYMENT_003 when nested token JSON is missing protocolVersion`() {
+        assertUnreadable(buildPaymentDataJsonWithToken("""{"signature":"sig","signedMessage":"msg"}"""))
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun `parseGooglePayToken throws when nested token JSON is missing signature`() {
-        val tokenJson = """{"protocolVersion":"ECv2","signedMessage":"msg"}"""
-        val json = buildPaymentDataJsonWithToken(tokenJson)
-        GooglePayHelper.parseGooglePayToken(json)
+    @Test
+    fun `parseGooglePayToken throws PAYMENT_003 when nested token JSON is missing signature`() {
+        assertUnreadable(buildPaymentDataJsonWithToken("""{"protocolVersion":"ECv2","signedMessage":"msg"}"""))
+    }
+
+    @Test
+    fun `parseGooglePayToken throws PAYMENT_003 when the nested token is not JSON`() {
+        assertUnreadable(buildPaymentDataJsonWithToken("{not json"))
     }
 
     // --- buildIsReadyToPayRequestJson ---

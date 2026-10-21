@@ -65,8 +65,8 @@ neither — that is what the bundled demo app does.
 
 When using `Environment.DEVELOPMENT.create(customUrl)`:
 
-1. **URL must not be empty** - Will throw `IllegalArgumentException`
-2. **URL must start with `http://` or `https://`** - Will throw `IllegalArgumentException`
+1. **URL must not be empty** - Will throw `GopaySDKException` with `CONFIG_INVALID_BASE_URL` (`CONFIG_006`)
+2. **URL must start with `http://` or `https://`** - Will throw `GopaySDKException` with `CONFIG_INVALID_BASE_URL`
 3. **Trailing slash is automatically added** - If your URL doesn't end with `/`, one will be added automatically
 
 ## Example Usage
@@ -98,19 +98,21 @@ not set by you — see [`GopayConfig.kt`](sdk/src/main/java/cz/gopay/sdk/config/
 
 ## Error Handling
 
-The development environment will validate the provided URL and throw `IllegalArgumentException` for:
+The development environment validates the provided URL and throws `GopaySDKException` with the
+shared code `CONFIG_INVALID_BASE_URL` (`CONFIG_006`), the code the iOS SDK reports for a base URL
+it cannot use, for:
 
 - Empty URLs
 - URLs that don't start with `http://` or `https://`
-- Invalid URL formats
 
 ```kotlin
-// This will throw IllegalArgumentException
+// Each of these throws GopaySDKException with errorCode CONFIG_INVALID_BASE_URL
 Environment.DEVELOPMENT.create("")
-
-// This will throw IllegalArgumentException
 Environment.DEVELOPMENT.create("invalid-url")
-
-// This will throw IllegalArgumentException
 Environment.DEVELOPMENT.create("ftp://localhost:8080")
 ```
+
+The constructor checks the scheme only. A URL that passes it but that the HTTP client refuses,
+say one with a space in the host, fails with the same code from `GopaySDK.initialize(config)`,
+with the client's `IllegalArgumentException` as the `cause`; the SDK stays as an earlier
+`initialize` left it (uninitialized if there was none).
