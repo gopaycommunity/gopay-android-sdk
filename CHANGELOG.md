@@ -1,3 +1,20 @@
+# [2.2.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/2.1.0...2.2.0) (2026-10-21)
+
+
+### Bug Fixes
+
+* clear the PR's SonarCloud findings GPMOB-160 ([2ff25e2](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/2ff25e22f057291fa4be4c60b595f6c906beb643))
+* report each SDK error to errorCallback once GPMOB-160 ([904d131](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/904d1315cf0da276cd72898787686a109464156d))
+* require browserData in the card helpers without an activity GPMOB-160 ([670a56a](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/670a56a46292a5e3d6da142607edb154686b5189))
+* spell out the nullable types Sonar misreads GPMOB-160 ([04d1445](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/04d1445bea494dd108473ee0c8ba9f509bbce3de))
+* throw the shared error codes instead of platform exceptions GPMOB-160 ([4fca36a](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/4fca36a894ef1eeff3ea5f397b687926023fef02))
+
+
+### Features
+
+* add the card, wallet and form API shared with Android/iOS GPMOB-160 ([29ad330](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/29ad3307a50d764a87ca50988f0731ec5832b6cd))
+* use the shared API in the demo GPMOB-160 ([b704fcc](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/b704fccea117ba1320523b6ebb754421858b2efe))
+
 # [2.1.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/2.0.0...2.1.0) (2026-10-20)
 
 
