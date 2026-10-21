@@ -9,10 +9,15 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Verifies [ErrorReporter] — the singleton that fans SDK errors out to a host-supplied callback.
+ * Verifies [ErrorReporter], the singleton that fans SDK errors out to a host-supplied callback.
  * Each test resets the global callback so state can't leak between cases (or into other suites).
+ *
+ * The rule under test is the one shared with iOS: an error reaches the callback once, where the
+ * SDK throws it, and building one reports nothing.
  */
 class ErrorReporterTest {
+
+    private val received = mutableListOf<GopaySDKException>()
 
     @Before
     fun setUp() = ErrorReporter.clear()
@@ -30,50 +35,92 @@ class ErrorReporterTest {
     }
 
     @Test
-    fun `creating an exception reports it to the callback`() {
-        val received = mutableListOf<GopaySDKException>()
+    fun `building an exception reports nothing, a host's own never reaches the callback`() {
         ErrorReporter.setErrorCallback { received.add(it) }
 
-        val ex = GopaySDKException("AUTH_001", "boom")
+        GopaySDKException("AUTH_010", "built by the host")
+
+        assertTrue(received.isEmpty())
+    }
+
+    @Test
+    fun `reporting an exception hands it to the callback once`() {
+        ErrorReporter.setErrorCallback { received.add(it) }
+        val ex = GopaySDKException("AUTH_010", "boom")
+
+        ErrorReporter.report(ex)
+        // An outer entry point the error passes through reports it again; that reaches nothing.
+        ErrorReporter.report(ex)
 
         assertEquals(1, received.size)
         assertSame(ex, received.first())
     }
 
     @Test
+    fun `reportErrors reports what the block throws and rethrows it unchanged`() {
+        ErrorReporter.setErrorCallback { received.add(it) }
+        val ex = GopaySDKException("NETWORK_002", "boom")
+
+        val thrown = runCatching { reportErrors<Unit> { throw ex } }.exceptionOrNull()
+
+        assertSame(ex, thrown)
+        assertEquals(listOf(ex), received)
+    }
+
+    @Test
+    fun `nested reportErrors blocks report once`() {
+        ErrorReporter.setErrorCallback { received.add(it) }
+        val ex = GopaySDKException("AUTH_013", "closed")
+
+        runCatching { reportErrors<Unit> { reportErrors<Unit> { throw ex } } }
+
+        assertEquals(listOf(ex), received)
+    }
+
+    @Test
+    fun `reportErrors leaves anything but an SDK error alone`() {
+        ErrorReporter.setErrorCallback { received.add(it) }
+        val cancel = kotlinx.coroutines.CancellationException("host left")
+
+        val thrown = runCatching { reportErrors<Unit> { throw cancel } }.exceptionOrNull()
+
+        assertSame(cancel, thrown)
+        assertTrue(received.isEmpty())
+        assertEquals("passes the value through", 42, reportErrors { 42 })
+    }
+
+    @Test
     fun `a closed payment window is not reported as an error`() {
-        val received = mutableListOf<GopaySDKException>()
         ErrorReporter.setErrorCallback { received.add(it) }
 
-        GopaySDKException(GopayErrorCodes.PAYMENT_CANCELLED, "Google Pay sheet was closed")
+        ErrorReporter.report(GopaySDKException(GopayErrorCodes.PAYMENT_CANCELLED, "Google Pay sheet was closed"))
 
         assertTrue(received.isEmpty())
     }
 
     @Test
     fun `PAYMENT_TIMEOUT is not reported, PAYMENT_DECLINED is`() {
-        val received = mutableListOf<GopaySDKException>()
         ErrorReporter.setErrorCallback { received.add(it) }
 
-        GopaySDKException(GopayErrorCodes.PAYMENT_TIMEOUT, "Charge did not leave PROCESSING")
+        ErrorReporter.report(GopaySDKException(GopayErrorCodes.PAYMENT_TIMEOUT, "Charge did not leave PROCESSING"))
         assertTrue("an undecided charge is not an error", received.isEmpty())
 
-        GopaySDKException(GopayErrorCodes.PAYMENT_DECLINED, "Charge failed")
+        ErrorReporter.report(GopaySDKException(GopayErrorCodes.PAYMENT_DECLINED, "Charge failed"))
         assertEquals(listOf(GopayErrorCodes.PAYMENT_DECLINED), received.map { it.errorCode })
     }
 
     @Test
     fun `no callback means report is a no-op`() {
-        // No callback configured — must not throw when an exception is created.
-        GopaySDKException("NETWORK_002", "boom")
+        ErrorReporter.report(GopaySDKException("NETWORK_002", "boom"))
     }
 
     @Test
     fun `callback exceptions are swallowed`() {
         ErrorReporter.setErrorCallback { throw RuntimeException("callback blew up") }
 
-        // Construction must still succeed despite the misbehaving callback.
+        // Reporting must still succeed despite the misbehaving callback.
         val ex = GopaySDKException("PAYMENT_003", "boom")
+        ErrorReporter.report(ex)
         assertEquals("PAYMENT_003", ex.errorCode)
     }
 
@@ -83,7 +130,7 @@ class ErrorReporterTest {
         ErrorReporter.setErrorCallback { calls++ }
         ErrorReporter.setErrorCallback(null)
 
-        GopaySDKException("AUTH_001", "boom")
+        ErrorReporter.report(GopaySDKException("AUTH_010", "boom"))
 
         assertEquals(0, calls)
         assertFalse(ErrorReporter.isEnabled())

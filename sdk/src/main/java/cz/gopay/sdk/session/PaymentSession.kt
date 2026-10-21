@@ -7,6 +7,7 @@ import com.google.android.gms.wallet.WalletConstants
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.exception.HttpErrorContext
+import cz.gopay.sdk.exception.reportErrors
 import cz.gopay.sdk.model.BrowserData
 import cz.gopay.sdk.model.BrowserDataDetected
 import cz.gopay.sdk.model.ChallengePreference
@@ -57,6 +58,11 @@ import kotlinx.coroutines.withContext
  *
  * Construction is via the suspending [Factory.create] (eager auth) so that bad credentials
  * surface at the start of the flow rather than on first API call.
+ *
+ * Every [GopaySDKException] a method here throws reaches `GopayConfig.errorCallback` once, as
+ * it leaves the method, except [GopayErrorCodes.PAYMENT_CANCELLED] and
+ * [GopayErrorCodes.PAYMENT_TIMEOUT]; a coroutine cancellation is never reported. The iOS SDK
+ * reports the same way.
  */
 class PaymentSession internal constructor(
     val paymentId: String,
@@ -84,7 +90,18 @@ class PaymentSession internal constructor(
 
     private val authMutex = Mutex()
 
-    private val paymentApi: PaymentApi = paymentApiBuilder(this)
+    /**
+     * What the session's own [PaymentApi] authenticates with. A re-authentication the
+     * interceptor runs in the middle of a call reports nothing itself: the public call it runs
+     * inside reports the error it ends with, once, like every other step on the way.
+     */
+    private val tokenProvider = object : SessionTokenProvider {
+        override fun currentToken(): String? = this@PaymentSession.currentToken()
+        override fun invalidateToken() = this@PaymentSession.invalidateToken()
+        override suspend fun reauthenticate(): String = authenticate()
+    }
+
+    private val paymentApi: PaymentApi = paymentApiBuilder(tokenProvider)
 
     /**
      * Returns the cached JWT if it's still valid, otherwise null. Lets
@@ -103,7 +120,16 @@ class PaymentSession internal constructor(
         tokenExpiresAt = 0
     }
 
-    override suspend fun reauthenticate(): String {
+    /**
+     * Acquires a payment-scoped token from the cached secret. Public because the token-provider
+     * contract is; the session authenticates on its own, so nothing an integration does needs
+     * it. Called directly it is a public call like any other: its error reaches
+     * `errorCallback` once.
+     */
+    override suspend fun reauthenticate(): String = reportErrors { authenticate() }
+
+    /** The re-authentication itself, reporting nothing: the call it serves does. */
+    internal suspend fun authenticate(): String {
         return authMutex.withLock {
             // Another caller may have refreshed the token while we were waiting.
             currentToken()?.let { return@withLock it }
@@ -150,8 +176,9 @@ class PaymentSession internal constructor(
     }
 
     /** GET /payments/{payment_id} */
-    suspend fun getStatus(): PaymentCreateResponse =
+    suspend fun getStatus(): PaymentCreateResponse = reportErrors {
         apiCall("get payment status") { paymentApi.getPaymentStatus(paymentId) }
+    }
 
     /**
      * `POST /payments/{payment_id}/charge`.
@@ -167,7 +194,7 @@ class PaymentSession internal constructor(
      * the charge could not be sent anyway, and asking for the data before saying so would
      * report the wrong thing, [GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING] without the key.
      */
-    suspend fun charge(request: ChargePaymentRequest): ChargePaymentResponse {
+    suspend fun charge(request: ChargePaymentRequest): ChargePaymentResponse = reportErrors {
         if (paymentSecret == null) throw sessionClosed()
         val instrument = request.paymentInstrument
         val completed = request.copy(
@@ -175,7 +202,7 @@ class PaymentSession internal constructor(
                 browserData = completeBrowserData(instrument.browserData)
             )
         )
-        return apiCall("charge payment") { paymentApi.chargePayment(paymentId, completed) }
+        apiCall("charge payment") { paymentApi.chargePayment(paymentId, completed) }
     }
 
     /**
@@ -205,7 +232,7 @@ class PaymentSession internal constructor(
      *         [GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING] without the key) and the original
      *         exception as its cause.
      */
-    suspend fun completeBrowserData(browserData: BrowserData): BrowserData {
+    suspend fun completeBrowserData(browserData: BrowserData): BrowserData = reportErrors {
         val userAgent = browserData.userAgent ?: syntheticUserAgent().also {
             SdkLog.w(
                 "browser_data has no user_agent, filling in a synthesized WebView User-Agent, " +
@@ -214,13 +241,13 @@ class PaymentSession internal constructor(
             )
         }
         if (browserData.ip != null && browserData.acceptHeader != null) {
-            return browserData.copy(
+            return@reportErrors browserData.copy(
                 userAgent = userAgent,
                 javascriptEnabled = browserData.javascriptEnabled ?: true
             )
         }
         val detected = fetchBrowserData(userAgent)
-        return browserData.copy(
+        browserData.copy(
             ip = browserData.ip ?: detected.ip,
             userAgent = userAgent,
             acceptHeader = browserData.acceptHeader ?: detected.acceptHeader,
@@ -266,8 +293,9 @@ class PaymentSession internal constructor(
     )
 
     /** GET /payments/{payment_id}/charge */
-    suspend fun getChargeState(): ChargePaymentResponse =
+    suspend fun getChargeState(): ChargePaymentResponse = reportErrors {
         apiCall("get charge state") { paymentApi.getChargeState(paymentId) }
+    }
 
     /**
      * Waits for the charge to end, polling `GET /payments/{payment_id}/charge` the way the GoPay
@@ -325,7 +353,7 @@ class PaymentSession internal constructor(
      */
     suspend fun awaitChargeState(
         options: AwaitChargeOptions = AwaitChargeOptions()
-    ): ChargePaymentResponse {
+    ): ChargePaymentResponse = reportErrors {
         if (options.intervalMs <= 0 || options.initialTimeoutMs <= 0) {
             throw GopaySDKException(
                 errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
@@ -348,16 +376,18 @@ class PaymentSession internal constructor(
             }
             ThreeDSMode.MANUAL -> null
         }
-        return ChargePoller(options, read = { getChargeState() }, verify = verify).run()
+        ChargePoller(options, read = { getChargeState() }, verify = verify).run()
     }
 
     /** GET /payments/{payment_id}/qr-payment/info */
-    suspend fun getQrPaymentInfo(format: QrCodeFormat? = null): QrPaymentDetails =
+    suspend fun getQrPaymentInfo(format: QrCodeFormat? = null): QrPaymentDetails = reportErrors {
         apiCall("get QR payment info") { paymentApi.getQrPaymentInfo(paymentId, format?.name?.lowercase()) }
+    }
 
     /** GET /payments/{payment_id}/google-pay/info */
-    suspend fun getGooglePayInfo(): GooglePayInfoResponse =
+    suspend fun getGooglePayInfo(): GooglePayInfoResponse = reportErrors {
         apiCall("get Google Pay info") { paymentApi.getGooglePayInfo(paymentId) }
+    }
 
     /**
      * Managed Google Pay flow: fetches Google Pay config for this payment, launches the Google
@@ -385,7 +415,7 @@ class PaymentSession internal constructor(
         activity: Activity,
         browserData: BrowserData? = null,
         challengePreference: ChallengePreference? = null
-    ): ChargePaymentResponse {
+    ): ChargePaymentResponse = reportErrors {
         val info = getGooglePayInfo()
         val paymentRequestJson = GooglePayHelper.buildPaymentDataRequestJson(info)
         val env = if (info.environment == "PRODUCTION") WalletConstants.ENVIRONMENT_PRODUCTION
@@ -430,7 +460,7 @@ class PaymentSession internal constructor(
             } catch (e: Exception) {
                 throw GooglePayBridge.failureFor(e)
             }
-            return charge(
+            charge(
                 ChargePaymentRequest(
                     paymentInstrument = PaymentChargeInstrument(
                         input = input,
@@ -498,6 +528,10 @@ class PaymentSession internal constructor(
      * non-null `action.redirectUrl`. After this returns, call [getChargeState] to read the
      * final charge result.
      *
+     * Works after [close] too: the challenge runs in the WebView and sends no request on the
+     * session, so a closed session does not stop it, on either platform. Only the
+     * [getChargeState] that follows needs a live session.
+     *
      * Only one verification can run per process at a time;
      * [GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS] is thrown if another is in flight.
      * The user closing the challenge, or the task being swiped away, throws
@@ -526,7 +560,7 @@ class PaymentSession internal constructor(
         activity: Activity,
         redirectUrl: String,
         returnUrl: String? = null
-    ) {
+    ): Unit = reportErrors {
         // Checked here rather than in the activity: the WebView is never asked to decide about
         // the URL it is handed, so a scheme it cannot load would surface only as an error with
         // nothing to attribute it to, and the caller would wait for a challenge that never
@@ -595,8 +629,8 @@ class PaymentSession internal constructor(
                 onClose = onClose
             )
             session.paymentSecret = paymentSecret
-            // Eager auth — surface bad credentials immediately.
-            session.reauthenticate()
+            // Eager auth — surface bad credentials immediately; startPaymentSession reports.
+            session.authenticate()
             return session
         }
     }

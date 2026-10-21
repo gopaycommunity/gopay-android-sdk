@@ -8,6 +8,7 @@ import cz.gopay.sdk.model.GooglePayMerchantInfo
 import cz.gopay.sdk.model.GooglePayMethodParameters
 import cz.gopay.sdk.model.GooglePayTokenizationSpec
 import cz.gopay.sdk.model.GooglePayTransactionInfo
+import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import org.junit.Assert.assertEquals
@@ -92,8 +93,15 @@ class GooglePayHelperTest {
 
     @Test
     fun `parseGooglePayToken throws PAYMENT_003 on malformed JSON, with the parse failure as cause`() {
-        val e = assertUnreadable("not valid json at all {{{")
-        assertNotNull(e.cause)
+        val reported = mutableListOf<GopaySDKException>()
+        ErrorReporter.setErrorCallback { reported.add(it) }
+        try {
+            val e = assertUnreadable("not valid json at all {{{")
+            assertNotNull(e.cause)
+            assertEquals("a public helper, so it reports its own error once", listOf(e), reported)
+        } finally {
+            ErrorReporter.clear()
+        }
     }
 
     @Test

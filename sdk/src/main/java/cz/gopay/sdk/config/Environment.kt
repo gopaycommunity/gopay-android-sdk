@@ -27,7 +27,8 @@ sealed class Environment(val apiBaseUrl: String) {
      * An empty [customUrl], or one that is not an `http(s)` address, is
      * [GopayErrorCodes.CONFIG_INVALID_BASE_URL], the code the iOS SDK reports for a base URL it
      * cannot use. A well-formed address the HTTP client still refuses, say one with a space in
-     * the host, is the same code from `GopaySDK.initialize`.
+     * the host, is the same code from `GopaySDK.initialize`. Thrown by the constructor, before
+     * `initialize`, so it is not reported through `errorCallback`; from `initialize` it is.
      *
      * @param customUrl The custom development endpoint URL
      * @throws GopaySDKException [GopayErrorCodes.CONFIG_INVALID_BASE_URL] when [customUrl] is

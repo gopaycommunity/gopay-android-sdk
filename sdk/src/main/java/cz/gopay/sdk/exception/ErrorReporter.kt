@@ -15,9 +15,21 @@ fun interface ErrorCallback {
 
 /**
  * Internal error reporter that manages error callbacks.
- * This is used internally by GopaySDKException to report errors when they occur, all but
- * [GopayErrorCodes.PAYMENT_CANCELLED] and [GopayErrorCodes.PAYMENT_TIMEOUT], which are not
- * errors.
+ *
+ * The rule, the same on iOS: every error the SDK throws reaches the callback once, where it
+ * leaves the SDK, except [GopayErrorCodes.PAYMENT_CANCELLED] and
+ * [GopayErrorCodes.PAYMENT_TIMEOUT], which are not errors, and a coroutine cancellation, which
+ * is not a [GopaySDKException]. An error the SDK only returns, such as the one inside
+ * `CardEncryptionResult.Error`, is reported the same way. An error wrapped into another on the
+ * way out, the gateway's 401 behind `AUTH_010` say, is reported as the one the host gets, not
+ * as both. Building a [GopaySDKException] reports nothing: a host constructing one for itself
+ * does not hear about it.
+ *
+ * The public entry points of the SDK run their body through [reportErrors], and an exception
+ * remembers that it was reported, so an entry point calling another, `chargeWithCardToken`
+ * calling `charge`, still reports once. `CONFIG_001` is thrown before `initialize`, when no
+ * callback is installed yet, so it reaches none; a `GopaySDKException` a constructor throws,
+ * `Environment.DEVELOPMENT` with a bad URL, is not a call of the SDK and reaches none either.
  */
 internal object ErrorReporter {
     
@@ -34,12 +46,18 @@ internal object ErrorReporter {
     }
     
     /**
-     * Reports an error to the configured callback.
-     * This method is called automatically when GopaySDKException is created.
+     * Reports an error to the configured callback, once per exception: a second call with the
+     * same instance, from an outer entry point the error passes through, reaches nothing.
      * 
      * @param exception The exception to report
      */
-    fun report(exception: GopaySDKException) {
+    fun report(exception: GopaySDKException) = reportTo(errorCallback, exception)
+
+    /**
+     * [report] to [callback] rather than the installed one: `GopaySDK.initialize` uses it for a
+     * config it could not install, whose own callback still hears why.
+     */
+    fun reportTo(callback: ErrorCallback?, exception: GopaySDKException) {
         // A payment window that closed before it finished is not an error; see PAYMENT_CANCELLED.
         // Neither is a charge the gateway has not decided yet; see PAYMENT_TIMEOUT.
         if (exception.errorCode == GopayErrorCodes.PAYMENT_CANCELLED ||
@@ -47,8 +65,9 @@ internal object ErrorReporter {
         ) {
             return
         }
+        if (!exception.reported.compareAndSet(false, true)) return
         try {
-            errorCallback?.onError(exception)
+            callback?.onError(exception)
         } catch (e: Exception) {
             // Silently ignore callback errors to prevent infinite loops
             // In a production environment, you might want to log this to a fallback system
@@ -68,4 +87,16 @@ internal object ErrorReporter {
     fun clear() {
         errorCallback = null
     }
-} 
+}
+
+/**
+ * Runs [block], the body of a public SDK entry point, and reports the [GopaySDKException] it
+ * throws through [ErrorReporter.report] on the way out, unchanged. Anything else, a coroutine
+ * cancellation above all, passes through untouched. Inline, so a `suspend` body can be wrapped.
+ */
+internal inline fun <T> reportErrors(block: () -> T): T = try {
+    block()
+} catch (e: GopaySDKException) {
+    ErrorReporter.report(e)
+    throw e
+}

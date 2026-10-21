@@ -2,6 +2,7 @@ package cz.gopay.sdk
 
 import cz.gopay.sdk.config.Environment
 import cz.gopay.sdk.config.GopayConfig
+import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocales
@@ -30,7 +31,11 @@ class GopaySDKTest {
         // that too, or a non-default locale/customLocales config here would leak into other tests.
         GopayLocales.clearCustom()
         GopayLocales.setDefaultLocale(null)
+        ErrorReporter.clear()
     }
+
+    /** Every error the SDK reported to the callback a config here registered. */
+    private val reported = mutableListOf<GopaySDKException>()
 
     @Test
     fun testInitialization() {
@@ -43,10 +48,17 @@ class GopaySDKTest {
 
     @Test
     fun testGetInstanceBeforeInitialization() {
+        // CONFIG_001 is thrown before initialize, when no callback is installed yet; a callback
+        // an earlier initialize left behind does not hear of it either.
+        ErrorReporter.setErrorCallback { reported.add(it) }
+
         val exception = assertThrows(GopaySDKException::class.java) {
             GopaySDK.getInstance()
         }
+
+        assertEquals(GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED, exception.errorCode)
         assertTrue(exception.message!!.contains("has not been initialized"))
+        assertTrue("never reported", reported.isEmpty())
     }
 
     @Test
@@ -101,7 +113,7 @@ class GopaySDKTest {
         // The iOS SDK validates the pair the same way; a bare IllegalArgumentException was the
         // one platform-only exception on this path. SANDBOX is never reached: the check comes
         // before the token request.
-        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX))
+        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX, errorCallback = { reported.add(it) }))
         val sdk = GopaySDK.getInstance()
 
         for ((id, secret) in listOf("" to "secret", " " to "secret", "pay-1" to "", "pay-1" to "\t")) {
@@ -111,6 +123,7 @@ class GopaySDKTest {
             assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, e.errorCode)
             assertTrue(e.message!!.endsWith("must not be empty"))
         }
+        assertEquals("each one reached the callback once", 4, reported.size)
     }
 
     @Test
@@ -150,13 +163,42 @@ class GopaySDKTest {
         // bare IllegalArgumentException out of initialize.
         val e = assertThrows(GopaySDKException::class.java) {
             GopaySDK.initialize(
-                GopayConfig(environment = Environment.DEVELOPMENT.create("http://gw.exa mple.com/api/"))
+                GopayConfig(
+                    environment = Environment.DEVELOPMENT.create("http://gw.exa mple.com/api/"),
+                    errorCallback = { reported.add(it) }
+                )
             )
         }
 
         assertEquals(GopayErrorCodes.CONFIG_INVALID_BASE_URL, e.errorCode)
         assertTrue(e.cause is IllegalArgumentException)
         assertFalse("a failed initialize leaves no instance behind", GopaySDK.isInitialized())
+        assertEquals("the callback from the same config hears of it once", listOf(e), reported)
+    }
+
+    @Test
+    fun `a failed initialize leaves the earlier instance and callback in place`() {
+        val earlier = mutableListOf<GopaySDKException>()
+        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX, errorCallback = { earlier.add(it) }))
+
+        val e = assertThrows(GopaySDKException::class.java) {
+            GopaySDK.initialize(
+                GopayConfig(
+                    environment = Environment.DEVELOPMENT.create("http://gw.exa mple.com/api/"),
+                    errorCallback = { reported.add(it) }
+                )
+            )
+        }
+
+        assertEquals(GopayErrorCodes.CONFIG_INVALID_BASE_URL, e.errorCode)
+        assertEquals("the failing config's own callback hears of it once", listOf(e), reported)
+        assertEquals(Environment.SANDBOX, GopaySDK.getInstance().config.environment)
+        // The earlier callback is still the installed one.
+        val later = assertThrows(GopaySDKException::class.java) {
+            runBlocking { GopaySDK.getInstance().startPaymentSession("", "secret") }
+        }
+        assertEquals(listOf(later), earlier)
+        assertEquals(listOf(e), reported)
     }
 
     @Test

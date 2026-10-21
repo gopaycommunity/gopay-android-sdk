@@ -45,9 +45,13 @@ data class GopayConfig(
 
     /**
      * Optional callback for error reporting.
-     * When set, every SDK error is reported to this callback for analytics integration, except
+     * When set, every [cz.gopay.sdk.exception.GopaySDKException] the SDK throws is reported to
+     * this callback once, where it leaves the SDK, for analytics integration, except
      * [cz.gopay.sdk.exception.GopayErrorCodes.PAYMENT_CANCELLED] and
-     * [cz.gopay.sdk.exception.GopayErrorCodes.PAYMENT_TIMEOUT], which are not errors.
+     * [cz.gopay.sdk.exception.GopayErrorCodes.PAYMENT_TIMEOUT], which are not errors, and a
+     * coroutine cancellation, which is not an SDK error. An error the SDK returns instead of
+     * throwing, inside `CardEncryptionResult.Error`, is reported the same way. Nothing else
+     * reaches it: not an exception you construct yourself. The iOS SDK follows the same rule.
      */
     val errorCallback: ErrorCallback? = null,
 

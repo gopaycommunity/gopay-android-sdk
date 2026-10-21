@@ -1,10 +1,14 @@
 package cz.gopay.sdk.exception
 
 import cz.gopay.sdk.model.ChargePaymentResponse
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Unified exception class for all Gopay SDK errors.
  * Provides structured error codes, HTTP context, and optional error reporting.
+ *
+ * One the SDK throws reaches `GopayConfig.errorCallback` once, where it leaves the SDK; see
+ * [ErrorReporter]. Constructing one reports nothing.
  *
  * @param errorCode Structured error code (e.g., "AUTH_001", "NETWORK_002")
  * @param message Human-readable error message
@@ -38,10 +42,8 @@ class GopaySDKException(
         additionalData: Map<String, Any>? = null
     ) : this(errorCode, message, cause, httpContext, additionalData, null)
 
-    init {
-        // Report error via callback if configured
-        ErrorReporter.report(this)
-    }
+    /** Set by [ErrorReporter.report] the first time, so the callback hears of this one once. */
+    internal val reported = AtomicBoolean(false)
 
     /**
      * Checks if this is an authentication-related error

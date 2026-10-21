@@ -3,6 +3,7 @@ package cz.gopay.sdk.service
 import com.squareup.moshi.Json
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.exception.reportErrors
 import cz.gopay.sdk.model.GooglePayAllowedMethod
 import cz.gopay.sdk.model.GooglePayDataRequest
 import cz.gopay.sdk.model.GooglePayInfoResponse
@@ -54,7 +55,7 @@ object GooglePayHelper {
      *         malformed or required fields are missing, the code the iOS SDK reports for an Apple
      *         Pay token it cannot read; a parse failure is the cause.
      */
-    fun parseGooglePayToken(paymentDataJson: String): PaymentCardInput {
+    fun parseGooglePayToken(paymentDataJson: String): PaymentCardInput = reportErrors {
         val outerAdapter = moshi.adapter(GooglePayOuterData::class.java)
         val outer = try {
             outerAdapter.fromJson(paymentDataJson)!!
@@ -79,7 +80,7 @@ object GooglePayHelper {
         val signedMessage = token.signedMessage
             ?: throw unreadableToken("Missing signedMessage in Google Pay token")
 
-        return PaymentCardInput.googlePay(
+        PaymentCardInput.googlePay(
             protocolVersion = protocolVersion,
             signature = signature,
             intermediateSigningKey = token.intermediateSigningKey, // null for ECv1 (PAN_ONLY)

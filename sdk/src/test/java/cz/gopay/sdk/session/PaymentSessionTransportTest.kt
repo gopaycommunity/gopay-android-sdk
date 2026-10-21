@@ -1,5 +1,6 @@
 package cz.gopay.sdk.session
 
+import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.ChargeState
@@ -54,6 +55,7 @@ class PaymentSessionTransportTest {
 
     @After
     fun restoreHandler() {
+        ErrorReporter.clear()
         // A test that failed before assertNoCrash must not leave a crash for the next one.
         dispatcherThreads.shutdown()
         dispatcherThreads.awaitTermination(5, TimeUnit.SECONDS)
@@ -193,6 +195,41 @@ class PaymentSessionTransportTest {
         }
 
         assertSame(cancellation, e)
+    }
+
+    @Test
+    fun `a refresh the gateway refuses mid-call reports AUTH_010 once, from the public call`() {
+        // The interceptor re-authenticates on the OkHttp thread; the error must not be reported
+        // from there, but once, as getChargeState throws it on the caller's thread.
+        val received = mutableListOf<Pair<GopaySDKException, Thread>>()
+        ErrorReporter.setErrorCallback { received.add(it to Thread.currentThread()) }
+        val gateway = Gateway { chain -> response(chain, 401, "{}") }
+        val session = session(gateway, refresh = { httpError(401) })
+
+        val e = assertThrows(GopaySDKException::class.java) {
+            runBlocking { session.getChargeState() }
+        }
+
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID, e.errorCode)
+        assertEquals(1, received.size)
+        assertSame(e, received.single().first)
+        assertSame("reported where the public call ended", Thread.currentThread(), received.single().second)
+        assertNoCrash()
+    }
+
+    @Test
+    fun `reauthenticate called directly on a closed session reports AUTH_013 once`() {
+        val received = mutableListOf<GopaySDKException>()
+        ErrorReporter.setErrorCallback { received.add(it) }
+        val session = session(Gateway { chain -> response(chain, 500, "{}") })
+        session.close()
+
+        val e = assertThrows(GopaySDKException::class.java) {
+            runBlocking { session.reauthenticate() }
+        }
+
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.errorCode)
+        assertEquals(listOf(e), received)
     }
 
     @Test

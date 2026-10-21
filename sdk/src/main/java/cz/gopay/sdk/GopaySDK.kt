@@ -8,6 +8,7 @@ import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.exception.reportErrors
 import cz.gopay.sdk.locales.GopayLocaleStrings
 import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.model.CardData
@@ -88,7 +89,7 @@ class GopaySDK private constructor(
         paymentId: String,
         paymentSecret: String,
         scope: String = PaymentSession.DEFAULT_SCOPE
-    ): PaymentSession {
+    ): PaymentSession = reportErrors {
         if (paymentId.isBlank()) {
             throw GopaySDKException(
                 errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
@@ -118,7 +119,7 @@ class GopaySDK private constructor(
                 message = "A PaymentSession for $paymentId already exists; close it before starting a new one."
             )
         }
-        return session
+        session
     }
 
     /**
@@ -154,9 +155,9 @@ class GopaySDK private constructor(
      *         [GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR] when the key or the encryption itself
      *         fails, with the original exception as the cause. The iOS SDK throws the same codes.
      */
-    suspend fun encryptCardData(cardData: CardData): String {
+    suspend fun encryptCardData(cardData: CardData): String = reportErrors {
         validateCardData(cardData)
-        return cardEncryption.encrypt(cardData, config.clientId)
+        cardEncryption.encrypt(cardData, config.clientId)
     }
 
     /**
@@ -239,19 +240,33 @@ class GopaySDK private constructor(
          * Initialize the SDK with the given configuration. Must be called before any other SDK
          * operation. The SDK no longer requires an Android `Context` — all credentials live in
          * memory inside [GopayConfig] and per-payment [PaymentSession] instances.
+         *
+         * @throws GopaySDKException [GopayErrorCodes.CONFIG_INVALID_BASE_URL] for a base URL the
+         *         HTTP client refuses, reported once to [GopayConfig.errorCallback] of [config];
+         *         the SDK then stays as an earlier `initialize` left it, callback included.
          */
         @JvmStatic
         fun initialize(config: GopayConfig) {
+            // Built first, so a config the SDK cannot use changes nothing: the instance, the
+            // callback and the locales of an earlier initialize all stay.
+            val sdk = try {
+                GopaySDK(config)
+            } catch (e: GopaySDKException) {
+                ErrorReporter.reportTo(config.errorCallback, e)
+                throw e
+            }
             ErrorReporter.setErrorCallback(config.errorCallback)
             GopayLocales.registerAll(config.customLocales)
             GopayLocales.setDefaultLocale(config.locale)
-            instance = GopaySDK(config)
+            instance = sdk
         }
 
         /**
          * Get the singleton instance of the SDK.
          *
-         * @throws GopaySDKException if SDK hasn't been initialized
+         * @throws GopaySDKException [GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED] if SDK hasn't
+         *         been initialized. Thrown before `initialize`, when no callback is installed
+         *         yet, so it is never reported through `errorCallback`.
          */
         @JvmStatic
         fun getInstance(): GopaySDK = instance ?: throw GopaySDKException(

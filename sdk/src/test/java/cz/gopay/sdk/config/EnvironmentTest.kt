@@ -1,5 +1,6 @@
 package cz.gopay.sdk.config
 
+import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import org.junit.Assert.assertEquals
@@ -69,11 +70,18 @@ class EnvironmentTest {
 
     @Test
     fun testDevelopmentEnvironmentWithInvalidUrl() {
-        val e = assertThrows(GopaySDKException::class.java) {
-            Environment.DEVELOPMENT.create("invalid-url")
+        val reported = mutableListOf<GopaySDKException>()
+        ErrorReporter.setErrorCallback { reported.add(it) }
+        try {
+            val e = assertThrows(GopaySDKException::class.java) {
+                Environment.DEVELOPMENT.create("invalid-url")
+            }
+            assertEquals(GopayErrorCodes.CONFIG_INVALID_BASE_URL, e.errorCode)
+            assertTrue(e.message!!.contains("http://"))
+            assertTrue("a constructor is not a call of the SDK: not reported", reported.isEmpty())
+        } finally {
+            ErrorReporter.clear()
         }
-        assertEquals(GopayErrorCodes.CONFIG_INVALID_BASE_URL, e.errorCode)
-        assertTrue(e.message!!.contains("http://"))
     }
 
     @Test
