@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.locales.GopayLocales
+import cz.gopay.sdk.ui.CardFormValidationDisplay
 import cz.gopay.sdk.ui.PaymentCardForm
 import kotlinx.coroutines.launch
 
@@ -293,14 +294,16 @@ private fun PaymentMethods(model: CheckoutController) {
                         Spacer(Modifier.weight(1f))
                         LocaleMenu(locale = model.locale, onLocaleChange = { model.locale = it })
                     }
-                    // The SDK's own component, themed to match the shop. Card data never leaves it —
-                    // the submit lambda hands back a JWE, not a PAN.
+                    // The SDK's own component, themed to match the shop. Card data never leaves it:
+                    // the form keeps it under CARD_FORM_ID and the pay button asks
+                    // GopaySDK.submitCardForm(CARD_FORM_ID) for a JWE, not a PAN. The form shows
+                    // its own localized validation errors as the user types.
                     key(model.locale) {
                         PaymentCardForm(
-                            onEncryptionComplete = { },
-                            onFormReady = { submit -> model.onCardFormReady(submit) },
                             locale = model.locale,
-                            theme = CheckoutTheme.cardForm
+                            theme = CheckoutTheme.cardForm,
+                            validation = CardFormValidationDisplay.LIVE,
+                            formId = CheckoutController.CARD_FORM_ID
                         )
                     }
                     model.cardFormError?.let { error ->

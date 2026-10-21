@@ -58,9 +58,8 @@ import cz.gopay.sdk.model.deviceDefault
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.session.AwaitChargeOptions
 import cz.gopay.sdk.session.PaymentSession
-import cz.gopay.sdk.ui.CardEncryptionResult
+import cz.gopay.sdk.ui.CardFormValidationDisplay
 import cz.gopay.sdk.ui.PaymentCardForm
-import cz.gopay.sdk.ui.PaymentFormInputs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -340,18 +339,23 @@ fun SDKTestScreen() {
                     }
                 }
 
-                DemoButton("Get Google Pay info", enabled = !isBusy) {
-                    run("Get Google Pay info") {
-                        val resp = s.getGooglePayInfo()
-                        val available = GopaySDK.getInstance().isGooglePayAvailable(context as Activity, resp)
-                        log("// getGooglePayInfo() -> GooglePayInfoResponse\nEnvironment: ${resp.environment}\nMerchant: ${resp.paymentDataRequest.merchantInfo.merchantName}\nCurrency: ${resp.paymentDataRequest.transactionInfo.currencyCode}\nAmount: ${resp.paymentDataRequest.transactionInfo.totalPrice}\nGoogle Pay available: $available")
+                DemoButton("Get wallet (Google Pay) info", enabled = !isBusy) {
+                    run("Get wallet info") {
+                        // The names shared with iOS; getGooglePayInfo / isGooglePayAvailable are
+                        // the same calls. Without info, isWalletAvailable asks for the gateway's
+                        // default methods in the environment the SDK config implies.
+                        val sdk = GopaySDK.getInstance()
+                        val defaultAvailable = sdk.isWalletAvailable(context as Activity)
+                        val resp = s.getWalletInfo()
+                        val available = sdk.isWalletAvailable(context as Activity, resp)
+                        log("// isWalletAvailable(activity) -> $defaultAvailable\n// getWalletInfo() -> GooglePayInfoResponse\nEnvironment: ${resp.environment}\nMerchant: ${resp.paymentDataRequest.merchantInfo.merchantName}\nCurrency: ${resp.paymentDataRequest.transactionInfo.currencyCode}\nAmount: ${resp.paymentDataRequest.transactionInfo.totalPrice}\n// isWalletAvailable(activity, info) -> $available")
                     }
                 }
 
-                DemoButton("Charge with Google Pay", enabled = !isBusy) {
-                    run("Charge with Google Pay") {
-                        chargeAndReport("chargeWithGooglePay()", s) {
-                            s.chargeWithGooglePay(
+                DemoButton("Charge with wallet (Google Pay)", enabled = !isBusy) {
+                    run("Charge with wallet") {
+                        chargeAndReport("chargeWithWallet()", s) {
+                            s.chargeWithWallet(
                                 activity = context as Activity,
                                 browserData = browserDataForCharge(s)
                             )
@@ -387,9 +391,9 @@ fun SDKTestScreen() {
                     enabled = !isBusy && cardToken.isNotBlank()
                 ) {
                     run("Charge payment") {
+                        // The console has the browser data, so the overload without an activity.
                         chargeAndReport("chargeWithCardToken()", s) {
                             s.chargeWithCardToken(
-                                activity = context as Activity,
                                 cardToken = cardToken.trim(),
                                 browserData = browserDataForCharge(s),
                                 challengePreference = ChallengePreference.AUTO
@@ -486,9 +490,9 @@ fun SDKTestScreen() {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                CardFormSection(isBusy = isBusy) { encrypted ->
+                CardFormSection(isBusy = isBusy, onError = { log("Error: $it") }) { encrypted ->
                     jwe = encrypted
-                    log("// submitCardForm() -> JWE (filled into the field below)\n${encrypted.take(120)}…")
+                    log("// submitCardForm(\"$CONSOLE_CARD_FORM_ID\") -> JWE (filled into the field below)\n${encrypted.take(120)}…")
                 }
 
                 LabeledField(
@@ -505,7 +509,6 @@ fun SDKTestScreen() {
                         // Charge the encrypted card directly — no POST /cards/tokens round-trip.
                         chargeAndReport("chargeWithEncryptedCard()", s) {
                             s.chargeWithEncryptedCard(
-                                activity = context as Activity,
                                 payload = jwe.trim(),
                                 browserData = browserDataForCharge(s),
                                 challengePreference = ChallengePreference.AUTO
@@ -591,33 +594,23 @@ fun SectionCard(title: String, content: @Composable () -> Unit) {
     }
 }
 
+/** The id the console's `PaymentCardForm` is composed with and `submitCardForm` reads. */
+private const val CONSOLE_CARD_FORM_ID = "console-card"
+
+/**
+ * The card form the way an integration uses it since 2.2: the form keeps the card under
+ * [CONSOLE_CARD_FORM_ID], shows its own localized validation errors as the user types, and the
+ * button below asks `GopaySDK.submitCardForm(formId)` for the JWE, the same call as on iOS.
+ */
 @Composable
-fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
+fun CardFormSection(isBusy: Boolean, onError: (String) -> Unit, onJwe: (String) -> Unit) {
     var isProcessing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var submitCardData: (suspend () -> CardEncryptionResult)? by remember { mutableStateOf(null) }
     val coroutineScope = rememberCoroutineScope()
 
     // Selected form locale; null follows the SDK/device default (which falls back to Czech).
     var selectedLocale by remember { mutableStateOf<String?>(null) }
     var localeMenuExpanded by remember { mutableStateOf(false) }
-
-    // Per-field validation errors, populated (in the active locale) by onValidationError.
-    var cardError by remember { mutableStateOf<String?>(null) }
-    var expError by remember { mutableStateOf<String?>(null) }
-    var cvvError by remember { mutableStateOf<String?>(null) }
-
-    // Active locale strings — labels come from here, and we also read the localized error messages
-    // from it below. (The form exposes the strings; the host decides how to show errors.)
-    val localeStrings = GopayLocales.resolve(selectedLocale)
-
-    // Labels/placeholders come from the locale; per-field error text is overlaid from state.
-    val baseInputs = PaymentFormInputs.from(localeStrings)
-    val inputFields = baseInputs.copy(
-        cardNumber = baseInputs.cardNumber.copy(hasError = cardError != null, errorText = cardError),
-        expirationDate = baseInputs.expirationDate.copy(hasError = expError != null, errorText = expError),
-        cvv = baseInputs.cvv.copy(hasError = cvvError != null, errorText = cvvError)
-    )
 
     // The iOS demo carries the same themes with the same values, so a parameter can be compared
     // side by side.
@@ -665,27 +658,12 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
         }
 
         PaymentCardForm(
-            onEncryptionComplete = { result ->
-                isProcessing = false
-                when (result) {
-                    is CardEncryptionResult.Success -> {
-                        errorMessage = null
-                        onJwe(result.jwe)
-                    }
-                    is CardEncryptionResult.Error -> {
-                        errorMessage = result.message
-                    }
-                }
-            },
-            onFormReady = { submitFn -> submitCardData = submitFn },
-            onValidationError = { validation ->
-                cardError = if (!validation.cardNumber.isValid) localeStrings.panErrorPattern else null
-                expError = if (!validation.expirationDate.isValid) localeStrings.expErrorPattern else null
-                cvvError = if (!validation.cvv.isValid) localeStrings.cvvErrorPattern else null
-                errorMessage = null
-            },
-            inputFields = inputFields,
+            locale = selectedLocale,
             theme = theme,
+            // The form shows the locale's own error messages under a field as soon as it holds
+            // something invalid; the host reads nothing back.
+            validation = CardFormValidationDisplay.LIVE,
+            formId = CONSOLE_CARD_FORM_ID,
             // Placed straight into the section card, the way the iOS example sits in its grey box.
             // The screen's 16dp and the card's 16dp put the fields 32dp from the screen edge under
             // the Default theme, which leaves formPadding at none; Dark and Red set it to 16.
@@ -697,19 +675,24 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
                 coroutineScope.launch {
                     isProcessing = true
                     errorMessage = null
-                    cardError = null
-                    expError = null
-                    cvvError = null
                     try {
-                        submitCardData?.invoke()
+                        // Validates the form, fetches the public key, encrypts, and empties the
+                        // form on success. VALIDATION_007 names an empty or invalid form.
+                        onJwe(GopaySDK.getInstance().submitCardForm(CONSOLE_CARD_FORM_ID))
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: GopaySDKException) {
+                        errorMessage = "[${e.errorCode}] ${e.message}"
                     } catch (e: Exception) {
-                        isProcessing = false
                         errorMessage = "Unexpected error: ${e.message}"
+                    } finally {
+                        errorMessage?.let(onError)
+                        isProcessing = false
                     }
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = submitCardData != null && !isProcessing && !isBusy
+            enabled = !isProcessing && !isBusy
         ) {
             if (isProcessing) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -717,7 +700,7 @@ fun CardFormSection(isBusy: Boolean, onJwe: (String) -> Unit) {
                     Text("Encrypting…")
                 }
             } else {
-                Text("Encrypt card → JWE")
+                Text("Encrypt card → JWE (submitCardForm)")
             }
         }
 

@@ -49,14 +49,16 @@ class CheckoutController {
         CARD(
             title = "Credit or debit card",
             subtitle = "Visa, Mastercard",
-            sdkNote = "PaymentCardForm collects the card and encrypts it into a JWE on device, then " +
-                "chargeWithEncryptedCard() sends it. The PAN never touches this app's code."
+            sdkNote = "PaymentCardForm collects the card under a formId; GopaySDK.submitCardForm(formId) " +
+                "encrypts it into a JWE on device, then chargeWithEncryptedCard() sends it. The PAN " +
+                "never touches this app's code."
         ),
         GOOGLE_PAY(
             title = "Google Pay",
             subtitle = "Pay with your saved Google account",
-            sdkNote = "chargeWithGooglePay() presents the Google Pay sheet configured from the " +
-                "gateway's /google-pay/info and charges the resulting token."
+            sdkNote = "isWalletAvailable() asks Google Pay, then chargeWithWallet() presents the sheet " +
+                "configured from the gateway's /google-pay/info and charges the resulting token. " +
+                "The Google Pay names stay as aliases."
         ),
         SAVED_CARD(
             title = "Saved card",
@@ -112,12 +114,6 @@ class CheckoutController {
     /** Whether the current attempt's charge has gone out, which decides what a closed window means. */
     private var chargeSent = false
 
-    /**
-     * The SDK's card form has no pay button of its own — it hands back a submit lambda through
-     * `onFormReady`, which the checkout's own pay button drives.
-     */
-    private var submitCardForm: (suspend () -> CardEncryptionResult)? = null
-
     val isBusy: Boolean get() = busyLabel != null
 
     val payButtonTitle: String
@@ -126,10 +122,6 @@ class CheckoutController {
             Method.GOOGLE_PAY -> "Pay with Google Pay"
             else -> "Pay ${cart.formatted(cart.total)}"
         }
-
-    fun onCardFormReady(submit: suspend () -> CardEncryptionResult) {
-        submitCardForm = submit
-    }
 
     fun dismissQr() {
         qrDetails = null
@@ -207,26 +199,26 @@ class CheckoutController {
     // region Flows
 
     private suspend fun payWithNewCard(activity: Activity) {
-        val submit = submitCardForm ?: run {
-            cardFormError = "The card form isn't ready yet."
-            return
-        }
-
+        // The SDK's card form has no pay button of its own: it keeps the card under CARD_FORM_ID
+        // and the checkout's pay button asks the SDK to encrypt it, the same call as on iOS.
         // Submit validates locally before it encrypts, so an invalid card costs no payment.
         busyLabel = "Checking your card…"
-        val jwe = when (val result = submit()) {
-            is CardEncryptionResult.Success -> result.jwe
-            is CardEncryptionResult.Error -> {
-                // An empty form right after a successful encryption is the SDK's cleanup at work
-                // (GPMOB-140). The gateway accepts each JWE only once, so a retry can't replay
-                // the previous one — the user has to enter the card again.
-                cardFormError = if (result.message == CardEncryptionResult.NO_CARD_DATA_MESSAGE) {
-                    "Please re-enter your card details and try again."
-                } else {
-                    result.message
-                }
-                return
+        val jwe = try {
+            GopaySDK.getInstance().submitCardForm(CARD_FORM_ID)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: GopaySDKException) {
+            // An empty form right after a successful encryption is the SDK's cleanup at work
+            // (GPMOB-140). The gateway accepts each JWE only once, so a retry can't replay the
+            // previous one — the user has to enter the card again. Anything else, a card that
+            // fails validation (the form shows which field, validation = LIVE) or a key fetch
+            // that failed, is shown under the form.
+            cardFormError = if (e.message == CardEncryptionResult.NO_CARD_DATA_MESSAGE) {
+                "Please re-enter your card details and try again."
+            } else {
+                e.message
             }
+            return
         }
 
         val current = startNewSession()
@@ -246,14 +238,14 @@ class CheckoutController {
         val current = startNewSession()
 
         busyLabel = "Checking Google Pay…"
-        val info = current.getGooglePayInfo()
-        if (!GopaySDK.getInstance().isGooglePayAvailable(activity, info)) {
+        val info = current.getWalletInfo()
+        if (!GopaySDK.getInstance().isWalletAvailable(activity, info)) {
             banner = "Google Pay isn't available on this device."
             return
         }
 
         busyLabel = "Waiting for Google Pay…"
-        runCharge(activity, current) { current.chargeWithGooglePay(activity) }
+        runCharge(activity, current) { current.chargeWithWallet(activity) }
     }
 
     private suspend fun payWithSavedCard(activity: Activity) {
@@ -430,4 +422,9 @@ class CheckoutController {
     }
 
     // endregion
+
+    companion object {
+        /** The id the checkout's `PaymentCardForm` is composed with and `submitCardForm` reads. */
+        const val CARD_FORM_ID = "checkout-card"
+    }
 }
