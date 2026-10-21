@@ -40,9 +40,12 @@ forward; the backend submits the JWE and gets back the card token.
 - Managed Google Pay and 3DS flows directly on the session.
 - JWE card encryption using the merchant public key, fetched for every encryption and stamped
   with the gateway's time.
-- Compose `PaymentCardForm` composable that emits a JWE.
+- Compose `PaymentCardForm` composable that holds the card under a `formId`, which
+  `GopaySDK.submitCardForm(formId)` turns into a JWE, with inline validation in three modes.
 - Localized form labels in 20 languages (device language, falling back to Czech), with per-form
   overrides and custom locale registration.
+- **One API with the iOS SDK.** The card charges, the wallet and the card form have the same
+  names and shapes on both platforms since 2.2 (see [Shared API](#shared-api-with-ios)).
 
 ## Requirements
 
@@ -261,10 +264,15 @@ class CheckoutViewModel : ViewModel() {
 }
 ```
 
-Prefer `chargeWithCardToken` / `chargeWithEncryptedCard` / `chargeWithGooglePay` over the raw
+Prefer `chargeWithCardToken` / `chargeWithEncryptedCard` / `chargeWithWallet` over the raw
 `charge(ChargePaymentRequest)`: the spec requires `browser_data` on every card charge, and the
 wrappers fill it in from the activity (locale, screen metrics, timezone, user agent). Drop to
-`charge(...)` only when you have collected more accurate browser data yourself.
+`charge(...)` only when you have collected more accurate browser data yourself. The card helpers
+also come without an `activity`, the shape the iOS SDK has: `chargeWithCardToken(cardToken,
+browserData, challengePreference)` and `chargeWithEncryptedCard(payload, browserData,
+challengePreference)`, for when you pass the browser data yourself; called without `browserData`
+they fail with `VALIDATION_INVALID_INPUT` before anything is sent, because deriving the device's
+browser data needs a `Context`.
 
 ### Browser data / User-Agent
 
@@ -315,14 +323,18 @@ on its own when you want to log what goes out; pass its result to the charge unc
 | `startPaymentSession(paymentId, paymentSecret, scope?)` | Eagerly authenticates and returns a [`PaymentSession`](sdk/src/main/java/cz/gopay/sdk/session/PaymentSession.kt). Throws `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` if one is already live for the same `paymentId`. |
 | `getPaymentSession(paymentId)` | Looks up a live session by id; `null` if absent. |
 | `closeAllPaymentSessions()` | Closes every session — wipes secrets and tokens. |
-| `encryptCardData(CardData)` | Validates the card, fetches the JWK, returns a JWE string. |
-| `isGooglePayAvailable(activity, info)` | Checks Google Pay readiness on the device using the methods from a `GooglePayInfoResponse`. |
+| `encryptCardData(CardData)` | Validates the card (`VALIDATION_INVALID_INPUT` when it fails), fetches the JWK, returns a JWE string; an encryption that fails is `INTERNAL_UNEXPECTED_ERROR`. |
+| `submitCardForm(formId?)` | Encrypts the card the `PaymentCardForm` on screen holds under `formId` (the most recently active form when null) into a JWE and empties the form; see [Card form → JWE](#card-form--jwe). |
+| `clearCardFormData(formId?)` | Drops the SDK's copy of a form's card (every form when null) and empties its fields. |
+| `isWalletAvailable(activity, info?)` | Whether Google Pay can pay on this device: with the methods from a `GooglePayInfoResponse`, or without one, before a payment exists, with the gateway's defaults in the environment the config implies. |
+| `isGooglePayAvailable(activity, info)` | The Android name of `isWalletAvailable`, the same call. |
+| `currentLocaleStrings(preferred?)` | The `GopayLocaleStrings` the form resolves for a locale code, for showing its messages yourself. |
 
 ## `PaymentSession` API
 
 A `PaymentSession` is the per-payment auth context. Construct it via `startPaymentSession`;
-**never** instantiate directly. All methods are `suspend` and propagate `GopaySDKException` on
-auth, HTTP or transport errors.
+**never** instantiate directly. All methods but `close()` are `suspend`, and every one propagates
+`GopaySDKException` on auth, HTTP or transport errors.
 
 | Method | Maps to |
 | --- | --- |
@@ -330,14 +342,21 @@ auth, HTTP or transport errors.
 | `charge(ChargePaymentRequest)` | `POST /payments/{payment_id}/charge` — low level; you supply `BrowserData`, the SDK completes `ip` and `accept_header` from `GET /cards/browser-data` first, and a missing `user_agent` before that |
 | `completeBrowserData(browserData)` | `GET /cards/browser-data` — fills the null ones of `ip` and `accept_header`, and a missing `user_agent` with a synthesized WebView one; `charge(...)` does this itself |
 | `chargeWithCardToken(activity, cardToken, browserData?, challengePreference?)` | `charge(...)` with a card token + device-derived `BrowserData` |
+| `chargeWithCardToken(cardToken, browserData?, challengePreference?)` | The same without an activity, as on iOS; `browserData` has to be given, else `VALIDATION_INVALID_INPUT` |
 | `chargeWithEncryptedCard(activity, payload, browserData?, challengePreference?)` | `charge(...)` with a JWE + device-derived `BrowserData` |
+| `chargeWithEncryptedCard(payload, browserData?, challengePreference?)` | The same without an activity, as on iOS; `browserData` has to be given, else `VALIDATION_INVALID_INPUT` |
 | `getChargeState()` | `GET /payments/{payment_id}/charge` |
 | `awaitChargeState(options?)` | Polls `GET /payments/{payment_id}/charge` once a second until the charge is `SUCCEEDED` (returned) or `FAILED` (`PAYMENT_DECLINED`), running the 3DS challenge itself; see [Reading the result](#reading-the-result) |
 | `getQrPaymentInfo(format?)` | `GET /payments/{payment_id}/qr-payment/info` |
-| `getGooglePayInfo()` | `GET /payments/{payment_id}/google-pay/info` |
-| `chargeWithGooglePay(activity)` | Managed flow: GP info → Google Pay sheet → `charge(...)` |
-| `handle3dsVerification(activity, redirectUrl, returnUrl?)` | Managed WebView; suspends until the challenge is answered, closed or found unreachable |
+| `getWalletInfo()` | `GET /payments/{payment_id}/google-pay/info`, the wallet's name shared with iOS |
+| `getGooglePayInfo()` | The Android name of `getWalletInfo()`, the same call |
+| `chargeWithWallet(activity, browserData?, challengePreference?)` | Managed flow: wallet info → Google Pay sheet → `charge(...)`, the name shared with iOS |
+| `chargeWithGooglePay(activity, browserData?, challengePreference?)` | The Android name of `chargeWithWallet`, the same call |
+| `handle3dsVerification(activity, redirectUrl, returnUrl?)` | Managed WebView; suspends until the challenge is answered, closed or found unreachable. Works after `close()` too: it sends nothing on the session |
 | `close()` | Wipes `payment_secret`, JWT; unregisters from the SDK |
+
+`getWalletInfo()` and `chargeWithWallet()` are the wallet's names shared with the iOS SDK;
+`getGooglePayInfo()` and `chargeWithGooglePay()` do the same and stay as aliases.
 
 Every enum the gateway sends back (`ChargeState`, `ChargeActionType`, `Emv3dsState`, `CardScheme`,
 `PaymentState`, `Currency`) has an `UNKNOWN` constant: a value the gateway added after this SDK
@@ -359,7 +378,59 @@ only one sheet/WebView can be visible at a time; collisions surface as
 
 The SDK collects card data and encrypts it into a JWE. The merchant backend then submits the
 JWE to `POST /cards/tokens` and receives a card token, which the app can pass to
-`session.charge(...)`.
+`session.chargeWithCardToken(...)`, or the app charges the JWE itself with
+`chargeWithEncryptedCard`.
+
+### The card form
+
+`PaymentCardForm` keeps the PAN and CVV inside the SDK, under a `formId`, and
+`GopaySDK.submitCardForm(formId)` turns them into the JWE: the card form model both SDKs share
+since 2.2. The form has no pay button of its own; yours calls `submitCardForm`.
+
+```kotlin
+import cz.gopay.sdk.GopaySDK
+import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.ui.CardFormValidationDisplay
+import cz.gopay.sdk.ui.PaymentCardForm
+
+@Composable
+fun MyCardSheet(onJwe: (String) -> Unit) {
+    val scope = rememberCoroutineScope()
+    PaymentCardForm(
+        formId = "checkout-card",                       // generated when left out
+        validation = CardFormValidationDisplay.LIVE     // inline errors as the user types
+    )
+    Button(onClick = {
+        scope.launch {
+            try {
+                onJwe(GopaySDK.getInstance().submitCardForm("checkout-card"))
+            } catch (e: GopaySDKException) {
+                showError(e.message)   // VALIDATION_INVALID_INPUT for an empty or invalid form
+            }
+        }
+    }) { Text("Pay") }
+}
+```
+
+A `submitCardForm()` without an id reads the most recently active form. The SDK drops its copy of
+the card after a successful `submitCardForm()`, when the form leaves the composition, and on
+demand through `GopaySDK.getInstance().clearCardFormData(formId)`; so call `submitCardForm()`
+while the form is on screen and forward the JWE promptly. **The visible fields are emptied too**:
+after a successful submit the form returns to its pristine state, so the user sees an empty card
+form and your own UI should move on rather than wait for further input. A failed encryption leaves
+everything as the user typed it, since nothing has been authorized yet. A second submit on the
+emptied form fails with `VALIDATION_INVALID_INPUT` and the message
+`CardEncryptionResult.NO_CARD_DATA_MESSAGE`; a form that fails validation with
+`CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE`. The gateway accepts each JWE **once** and
+its payload expires 10 minutes after creation; to retry a failed charge, have the user confirm the
+card again.
+
+`validation` decides whether the form shows its own localized validation errors beneath the
+fields, from the resolved locale strings: `HIDDEN` (the default, and the only behaviour before
+2.2) shows none and leaves display to you; `LIVE` shows a field's error as soon as it holds
+something invalid, never for an empty field; `ON_SUBMIT` shows them, the "required" message for
+empty fields included, once a submit ran, and hides them again when the form is emptied. The
+modes are the iOS form's `.hidden`, `.live` and `.onSubmit`.
 
 ### Programmatic
 
@@ -430,6 +501,8 @@ only `getChargeState()` can say whether the issuer authorised the payment. Cance
 that awaits the call (a `withTimeout`, a closed screen's scope) is not `PAYMENT_011`: it closes the
 challenge and ends the call with that `CancellationException`. Only one verification runs per
 process at a time; a second one throws `PAYMENT_VERIFICATION_IN_PROGRESS`.
+The call works after `close()` too, on both platforms: the challenge runs in the WebView and sends
+nothing on the session, so only the `getChargeState()` that follows needs a live session.
 
 ```kotlin
 try {
@@ -559,6 +632,11 @@ the SDK keeps nothing on disk. Two things follow:
 
 ### `PaymentCardForm` composable
 
+The form validates input, sets `FLAG_SECURE` unless your app is debuggable, and never exposes
+raw card data to the host. Theming is controlled by `PaymentCardFormTheme`. Submitting goes
+through `GopaySDK.submitCardForm(formId)` as shown under [The card form](#the-card-form); the
+callbacks below are the older, Android-only way of doing the same, and keep working.
+
 ```kotlin
 import cz.gopay.sdk.ui.CardEncryptionResult
 import cz.gopay.sdk.ui.PaymentCardForm
@@ -576,20 +654,19 @@ fun MyCardSheet(onJwe: (String) -> Unit) {
 }
 ```
 
-The form validates input, sets `FLAG_SECURE` unless your app is debuggable, and never exposes
-raw card data to the host. Theming is controlled by `PaymentCardFormTheme`, and
-`onValidationError { … }` reports the fields that failed validation for inline error display.
-
-To submit from a button of your own, take the submit function from `onFormReady`. Its type is
+`onValidationError { … }` reports the fields that failed validation for inline error display
+of your own, when `validation` is left at `HIDDEN`. To submit from a button of your own, take
+the submit function from `onFormReady`. Its type is
 `(suspend () -> CardEncryptionResult) -> Unit`: the form hands you a `suspend` function once,
 and each call validates the fields, encrypts them and returns the result (it also goes to
-`onEncryptionComplete`).
+`onEncryptionComplete`); it is `submitCardForm` for this form, with the exception returned inside
+`CardEncryptionResult.Error` instead of thrown.
 
 ```kotlin
 var submit by remember { mutableStateOf<(suspend () -> CardEncryptionResult)?>(null) }
 val scope = rememberCoroutineScope()
 
-PaymentCardForm(onEncryptionComplete = { }, onFormReady = { submit = it })
+PaymentCardForm(onFormReady = { submit = it })
 Button(onClick = {
     scope.launch {
         when (val result = submit?.invoke()) {
@@ -801,27 +878,36 @@ GopaySDK.initialize(
 PaymentCardForm(onEncryptionComplete = { … }, locale = "en")
 ```
 
-Validation error strings are localized too, but the form keeps error *display* host-driven: read
-them from the resolved locale in your `onValidationError` handler:
+Validation error strings are localized too. With `validation = LIVE` or `ON_SUBMIT` the form
+shows them itself; with the default `HIDDEN` read them from the resolved locale in your
+`onValidationError` handler:
 
 ```kotlin
-val strings = GopaySDK.getInstance().currentLocaleStrings(locale = "cs")
+val strings = GopaySDK.getInstance().currentLocaleStrings(preferred = "cs")
 // strings.panErrorPattern, strings.expErrorPattern, strings.cvvErrorPattern, …
 ```
 
 ## Google Pay flow
 
 ```kotlin
-val info = session.getGooglePayInfo()
-if (GopaySDK.getInstance().isGooglePayAvailable(activity, info)) {
-    session.chargeWithGooglePay(activity)
+val info = session.getWalletInfo()
+if (GopaySDK.getInstance().isWalletAvailable(activity, info)) {
+    session.chargeWithWallet(activity)
     // returnUrl: the callback.return_url your backend created the payment with.
     val finalState = session.awaitChargeState(AwaitChargeOptions(activity = activity, returnUrl = returnUrl))
 }
 ```
 
-`chargeWithGooglePay` launches the Google Pay sheet inside an SDK-managed activity, parses the
-returned token, and posts the charge in one step. The user closing the sheet without paying
+`isWalletAvailable`, `getWalletInfo` and `chargeWithWallet` are the wallet's names shared with
+the iOS SDK, where they ask Apple Pay; `isGooglePayAvailable`, `getGooglePayInfo` and
+`chargeWithGooglePay` are the same calls under their Android names. `isWalletAvailable(activity)`
+without the info, before a payment exists, asks Google Pay for `PAN_ONLY` and `CRYPTOGRAM_3DS`
+with Visa and Mastercard, which is what the gateway allows, in the environment
+`GopayConfig.environment` implies (`PRODUCTION` for the production gateway, `TEST` otherwise).
+
+`chargeWithWallet` launches the Google Pay sheet inside an SDK-managed activity, parses the
+returned token, and posts the charge in one step. It takes an optional `browserData`, derived
+from the activity when left out, and an optional `challengePreference`. The user closing the sheet without paying
 throws `PAYMENT_CANCELLED`. Google Pay unable to show its sheet throws
 `PAYMENT_METHOD_UNAVAILABLE`, any other failure of the sheet or its token
 `PAYMENT_PROCESSING_FAILED`, and `PAYMENT_GOOGLE_PAY_IN_PROGRESS` only means another sheet is
@@ -857,7 +943,7 @@ the gateway's decision, not the app's.
 | --- | --- | --- |
 | `Environment.SANDBOX` | `https://gw.sandbox.gopay.com/gp-gw/api/4.0/` | Testing and integration |
 | `Environment.PRODUCTION` | `https://gate.gopay.com/gp-gw/api/4.0/` | Live transactions |
-| `Environment.DEVELOPMENT.create(url)` | Custom — must start with `http://` or `https://` | A gateway of your own |
+| `Environment.DEVELOPMENT.create(url)` | Custom — must start with `http://` or `https://`, else `CONFIG_INVALID_BASE_URL` | A gateway of your own |
 
 Both built-in hosts come from the Payments 4.0 spec's `servers` block. Use `DEVELOPMENT` only
 when you have been given a gateway that is neither — see
@@ -865,10 +951,13 @@ when you have been given a gateway that is neither — see
 
 ## Error handling
 
-Every API call may throw `GopaySDKException` with a structured error code (`AUTH_*`,
-`NETWORK_*`, `PAYMENT_*`, `CONFIG_*`, …). No transport failure reaches you bare: the original
-exception is the `cause`. A coroutine cancellation stays a `CancellationException` and is never
-mapped. Codes most likely to surface in the per-payment flow:
+Every failure throws `GopaySDKException` with a structured error code (`AUTH_*`, `NETWORK_*`,
+`PAYMENT_*`, `CONFIG_*`, `VALIDATION_*`, `INTERNAL_*`). No transport failure reaches you bare: the
+original exception is the `cause`; nor does an invalid argument, a bad base URL or a card
+encryption that fails, which are `VALIDATION_INVALID_INPUT`, `CONFIG_INVALID_BASE_URL` and
+`INTERNAL_UNEXPECTED_ERROR` since 2.2 rather than platform exceptions. A coroutine cancellation
+stays a `CancellationException` and is never mapped. Codes most likely to surface in the
+per-payment flow:
 
 | Code | When |
 | --- | --- |
@@ -880,7 +969,7 @@ mapped. Codes most likely to surface in the per-payment flow:
 | `AUTH_PAYMENT_CREDENTIALS_INVALID` | `/oauth2/token` turned the `payment_id`/`payment_secret` pair down (HTTP 400, 401 or 403). Any other failure there keeps its `NETWORK_*` code, or `INTERNAL_*` when the answer cannot be read, so an offline device is not told the payment is bad |
 | `AUTH_PAYMENT_TOKEN_EXPIRED` | JWT still rejected after a single re-auth retry — fetch fresh creds from backend |
 | `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` | `startPaymentSession` called for a `paymentId` that already has a live session |
-| `AUTH_PAYMENT_SESSION_CLOSED` | API call on a session after `close()`; a charge is refused this way before the browser data is fetched |
+| `AUTH_PAYMENT_SESSION_CLOSED` | API call on a session after `close()`, except `handle3dsVerification`, which sends nothing on the session; a charge is refused this way before the browser data is fetched |
 | `AUTH_SHAREABLE_KEY_MISSING` | `charge(...)`, `encryptCardData` or `PaymentCardForm` called without `clientId`+`shareableKey` |
 | `PAYMENT_GOOGLE_PAY_IN_PROGRESS` | A second Google Pay sheet attempted while one is visible, and nothing else |
 | `PAYMENT_METHOD_UNAVAILABLE` | Google Pay cannot show its sheet on this device, e.g. Google Play services are missing, disabled or outdated |
@@ -890,7 +979,10 @@ mapped. Codes most likely to surface in the per-payment flow:
 | `PAYMENT_CANCELLED` | The Google Pay sheet or the 3DS screen closed before it finished, or the 3DS page failed after it had drawn; read the charge before paying again |
 | `PAYMENT_DECLINED` | `awaitChargeState` saw the charge end `FAILED`; the charge is on `chargeState`, its `fail_reason` in the message. A retry needs a new payment |
 | `PAYMENT_TIMEOUT` | `awaitChargeState` saw the charge stay undecided (`REQUESTED`/`PROCESSING`/`UNKNOWN`, or `ACTION_REQUIRED` without a new address) for the whole `initialTimeoutMs`; the last state is on `chargeState`. Not a failure and not passed to `errorCallback`: read the state again or wait for the notification |
-| `VALIDATION_INVALID_INPUT` | `awaitChargeState` called with a non-positive interval or timeout, or in `ThreeDSMode.AUTOMATIC` without an `activity` |
+| `VALIDATION_INVALID_INPUT` | Invalid input: an empty `paymentId` / `paymentSecret`, a card that fails the PAN / month / year / CVV rules in `encryptCardData`, a `submitCardForm` with no card or an invalid one, a card helper without `browserData` and without an `activity`, or `awaitChargeState` with a non-positive interval or timeout, or in `ThreeDSMode.AUTOMATIC` without an `activity` |
+| `CONFIG_SDK_NOT_INITIALIZED` | `getInstance()`, and so any call, before `initialize` |
+| `CONFIG_INVALID_BASE_URL` | A `DEVELOPMENT` URL that is empty, not `http(s)`, or one the HTTP client refuses at `initialize` |
+| `INTERNAL_UNEXPECTED_ERROR` | The card encryption failed after the key was fetched; the platform's exception is the `cause` |
 
 ```kotlin
 try {
@@ -934,13 +1026,66 @@ already up stays until the user closes it, but the call ends at once; what the u
 sheet is discarded and nothing is charged. Do not catch `CancellationException` to detect a closed
 sheet; rethrow it.
 
-Plug an analytics callback via `GopayConfig.errorCallback` to receive every exception the SDK
-throws, except `PAYMENT_CANCELLED` and `PAYMENT_TIMEOUT`, which are not errors.
+`GopayConfig.errorCallback` hears every `GopaySDKException` a public call of the SDK or of a
+session throws, once per error, for central logging, on whatever thread the call ended on; the
+two outcomes of a payment window, `PAYMENT_TIMEOUT` and `PAYMENT_CANCELLED`, and a
+`CancellationException` stay out, and nothing that is not a `GopaySDKException` goes in, not an
+exception you construct yourself. The error inside a `CardEncryptionResult.Error` is reported
+the same way. The rule is the same on iOS and spelled out at the top of `ERROR_CODES.md`. It is
+not a substitute for catching the exception at the call.
 
 Every code, with its causes and what to do about it, is in
 [`sdk/docs/ERROR_CODES.md`](sdk/docs/ERROR_CODES.md). The codes are shared with the iOS SDK. Codes
 neither SDK throws stay in `GopayErrorCodes` for 2.0, deprecated, so code written against 1.x that
 names them still compiles; 3.0 removes them. ERROR_CODES marks them.
+
+## Shared API with iOS
+
+Since 2.2 the two SDKs offer the same calls under the same names, so an integration, or the React
+Native SDK built on both, reads the same on either platform. The main path of this README is that
+shared API; the platform names stay as aliases, without deprecation, and what 3.0 removes is
+listed in [`sdk/docs/API_3_0.md`](sdk/docs/API_3_0.md).
+
+| Shared name | Android alias or variant | What it is |
+| --- | --- | --- |
+| `session.chargeWithCardToken(cardToken, browserData?, challengePreference?)` | variant: `chargeWithCardToken(activity, …)` derives `browserData` from the activity | a card token charge in one call; without the activity `browserData` has to be given |
+| `session.chargeWithEncryptedCard(payload, browserData?, challengePreference?)` | variant: `chargeWithEncryptedCard(activity, …)` derives `browserData` from the activity | a JWE charge in one call; without the activity `browserData` has to be given |
+| `GopaySDK.isWalletAvailable(activity, info?)` | alias: `isGooglePayAvailable(activity, info)` | can the device pay with the platform wallet |
+| `session.getWalletInfo()` | alias: `getGooglePayInfo()` | the wallet configuration for the payment |
+| `session.chargeWithWallet(activity, browserData?, challengePreference?)` | alias: `chargeWithGooglePay(...)` | the managed wallet sheet and charge |
+| `PaymentCardForm(formId)` + `submitCardForm(formId)` + `clearCardFormData(formId)` | older path: `onFormReady` / `onEncryptionComplete` / `onValidationError`, the same submit reported as a result | the card form model, now on Android too |
+| `PaymentCardForm(validation)` with `HIDDEN`, `LIVE`, `ON_SUBMIT` | — | the validation display modes, now on Android too |
+
+An alias is one body under a second name: it does exactly what the shared name does, with the
+same arguments and the same codes. A variant takes an `activity` instead of `browserData` and
+derives the latter from it; the older form path runs the same submit and hands the result to a
+callback instead of returning it. The response types stay platform-specific
+(`GooglePayInfoResponse` here, `GopayApplePayAppInfoResponse` on iOS), and so do the UI
+arguments: Android takes an `activity` where the wallet, the 3DS screen and the automatic
+polling need one, iOS finds the presenting view controller itself. The errors are the shared
+code contract above, with one rule for `errorCallback` on both.
+
+## What changed in 2.2
+
+Besides the shared API, 2.2 changes what an integration sees on a few error paths:
+
+- `IllegalArgumentException` is gone from the SDK's contract: an empty `paymentId` /
+  `paymentSecret` in `startPaymentSession`, a card that fails validation in `encryptCardData`,
+  a bad `Environment.DEVELOPMENT` URL and a Google Pay token `GooglePayHelper.parseGooglePayToken`
+  cannot read are `GopaySDKException`s with `VALIDATION_INVALID_INPUT`, `CONFIG_INVALID_BASE_URL`
+  and `PAYMENT_PROCESSING_FAILED`; a card encryption that fails is `INTERNAL_UNEXPECTED_ERROR`
+  instead of an `IllegalStateException`.
+- `CardEncryptionResult.Error.exception` is a `GopaySDKException` for a form that fails
+  validation, and its message for an invalid form is
+  `CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE` (`NO_CARD_DATA_MESSAGE` for an empty one
+  is unchanged); that `VALIDATION_INVALID_INPUT` now reaches `errorCallback`, from every submit
+  of the form.
+- `errorCallback` hears every error a public call throws, once, where it leaves the SDK. It no
+  longer hears an exception at construction: the inner cause of a wrapped error, an exception you
+  build yourself, or `CONFIG_001` before `initialize`. Counts in your analytics change
+  accordingly. It runs on the thread the failing call ended on, not necessarily the main thread.
+- A failed `initialize` (`CONFIG_INVALID_BASE_URL`) leaves the SDK as an earlier `initialize` set
+  it up, callback included.
 
 ## Migrating from 1.x
 

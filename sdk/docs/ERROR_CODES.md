@@ -6,6 +6,37 @@ Codes marked "the SDK does not throw this code" are never thrown by either SDK. 
 `GopayErrorCodes` stay deprecated for 2.0, so code written against 1.x that names them still
 compiles with a warning, and 3.0 removes them.
 
+The codes are a **shared cross-platform contract**: they mirror the iOS SDK's `GopaySDKError.Code`
+so both platforms report the same code for the same condition. Never add, rename, or repurpose a
+code on one platform alone.
+
+## The `errorCallback` rule
+
+`GopayConfig.errorCallback` is for central logging and monitoring, not a substitute for catching
+the exception at the call. The rule is the same on both platforms:
+
+- Every `GopaySDKException` a public call of `GopaySDK` or of a `PaymentSession` throws reaches the
+  callback **once**, `PaymentSession.reauthenticate()` called directly included. A call made of
+  several steps, such as `chargeWithWallet`, which reads the wallet configuration and then
+  charges, or `awaitChargeState`, which reads the charge again and again, reports the one error
+  it ends with, not each step on the way; a re-authentication the session runs in the middle of
+  a call is one of those steps. An error wrapped into another on the way out, the gateway's 401
+  behind `AUTH_010` or the browser-data fetch behind a charge error, is reported as the one you
+  catch; the inner one is its `cause`.
+- An error the SDK returns instead of throwing, the `GopaySDKException` inside
+  `CardEncryptionResult.Error` from the card form's own submit function, is reported the same way.
+- Two codes never reach it, because they are outcomes of a payment window rather than failures:
+  `PAYMENT_007` (the charge is still undecided) and `PAYMENT_011` (the sheet or the 3DS screen
+  closed early).
+- A `CancellationException` from a coroutine the host cancelled never reaches it, and no exception
+  of a type other than `GopaySDKException` does. Constructing a `GopaySDKException` yourself
+  reports nothing.
+- `CONFIG_001` is thrown before `initialize`, when no callback is installed yet, so it does not
+  reach one. Neither does a `GopaySDKException` a constructor throws, `Environment.DEVELOPMENT`
+  with a bad URL: a constructor is not a call of the SDK.
+
+The callback runs on whatever thread the failing call ends on, not necessarily the main thread.
+
 ## Error Code Structure
 
 - **AUTH_XXX**: Authentication and authorization errors
@@ -109,7 +140,7 @@ compiles with a warning, and 3.0 removes them.
   - Session left idle past the token lifetime
   - `payment_secret` no longer valid for the payment
 - **Developer Action**:
-  - The SDK re-authenticates once automatically; a second 401 surfaces this code
+  - The SDK re-authenticates once automatically on a 401 and retries; this code is thrown when the retry gets a second 401 after that re-authentication succeeded, on both platforms. A re-authentication the gateway refuses is `AUTH_010`
   - Start a new `PaymentSession` for the payment
 
 ### AUTH_010: Invalid Payment Credentials
@@ -243,11 +274,12 @@ compiles with a warning, and 3.0 removes them.
 ### CONFIG_001: SDK Not Initialized
 - **Description**: SDK has not been initialized before use
 - **Common Causes**:
-  - Missing `GopaySDK.initialize()` call
+  - `GopaySDK.getInstance()`, and so `startPaymentSession`, `encryptCardData` or `submitCardForm`, called on app start before `GopaySDK.initialize()`
   - Initialization called after SDK usage
 - **Developer Action**:
   - Call `GopaySDK.initialize(config)` before using SDK
   - Ensure initialization happens in Application.onCreate()
+- **Note**: never reported through `errorCallback`, see the rule at the top. The iOS SDK throws the same code from the same three calls since 2.2
 
 ### CONFIG_002: Invalid Configuration Parameter
 - **Description**: Invalid configuration parameter provided
@@ -303,7 +335,7 @@ compiles with a warning, and 3.0 removes them.
   - Verify URL format
   - Ensure protocol is included (https://)
   - Check domain validity
-- **Note**: the Android SDK does not throw this code; the iOS SDK does, so it stays in the shared catalog
+- **Note**: thrown by `Environment.DEVELOPMENT` for an empty URL or one without an `http(s)` scheme, and by `GopaySDK.initialize` for a URL the HTTP client refuses, say one with a space in the host, with that refusal as the `cause`; nothing is sent either way, and a failed `initialize` leaves the SDK as an earlier one set it up. From `Environment.DEVELOPMENT(url)` the code is thrown by the constructor, before `initialize`, and is not reported; from `initialize` it is, to that config's own `errorCallback`. `SANDBOX` and `PRODUCTION` carry their own hosts and cannot hit this. The iOS SDK throws it when the first request is built instead
 
 ## Payment Errors (PAYMENT_XXX)
 
@@ -341,7 +373,7 @@ compiles with a warning, and 3.0 removes them.
   - Check payment details
   - Verify account balance
   - Retry with different payment method
-- **Note**: The SDK raises it when the wallet sheet fails (Google Pay, and Apple Pay on iOS): an error from the wallet, no payment data, a token the SDK cannot read, or the SDK's own Google Pay activity missing from the merged manifest. The wallet's own error is the `cause`. Any error Google Pay returns from the sheet lands here, whatever its cause, a setup problem of the app included, except Google Play services missing, disabled or outdated, which is `PAYMENT_004`. The iOS SDK reports a wallet the app is not set up for as `PAYMENT_004` instead.
+- **Note**: The SDK raises it when the wallet sheet fails (Google Pay, and Apple Pay on iOS): an error from the wallet, no payment data, a token the SDK cannot read (`GooglePayHelper.parseGooglePayToken` throws it, with the parse failure as the `cause`), or the SDK's own Google Pay activity missing from the merged manifest. The wallet's own error is the `cause`. Any error Google Pay returns from the sheet lands here, whatever its cause, a setup problem of the app included, except Google Play services missing, disabled or outdated, which is `PAYMENT_004`. The iOS SDK reports a wallet the app is not set up for as `PAYMENT_004` instead.
 
 ### PAYMENT_004: Payment Method Unavailable
 - **Description**: Selected payment method is not available
@@ -515,12 +547,13 @@ compiles with a warning, and 3.0 removes them.
 ### VALIDATION_007: Invalid Input
 - **Description**: Invalid input data was provided to an SDK call
 - **Common Causes**:
-  - Empty `paymentId` / `paymentSecret`
-  - Card form submitted with fields that fail validation
+  - Empty `paymentId` / `paymentSecret` passed to `startPaymentSession`
+  - `encryptCardData` called with a card that fails validation: the PAN is not 13 to 19 digits, the month is not `01` to `12`, the year is not 2 to 4 digits, or the CVV is not 3 or 4 digits. The same rules apply on iOS
+  - `submitCardForm` called while no `PaymentCardForm` holds a card (after a successful submit, or before one was typed), with `CardEncryptionResult.NO_CARD_DATA_MESSAGE`, or while the held card is invalid, with `CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE`. The form's own submit function returns the same exception inside `CardEncryptionResult.Error`
+  - `chargeWithCardToken` or `chargeWithEncryptedCard` called without `browserData` and without an `activity`: the SDK derives the device's browser data from the latter. On iOS the helpers derive it from the device on their own
+  - `awaitChargeState()` called with an `intervalMs` or `initialTimeoutMs` that is not positive, or in `ThreeDSMode.AUTOMATIC` without an `activity`; nothing is sent
 - **Developer Action**:
-  - Validate inputs before calling, and surface the form's own validation state
-  - `awaitChargeState()` refuses an `intervalMs` or `initialTimeoutMs` that is not positive, and `ThreeDSMode.AUTOMATIC` without an `activity`, before anything is sent
-- **Note**: the Android SDK throws it only from `awaitChargeState()`; the iOS SDK also validates the session credentials with it
+  - Validate before calling, and let the form show its own validation state (`validation = LIVE` or `ON_SUBMIT`) or read it from `onValidationError`
 
 ## Security Errors (SECURITY_XXX)
 
@@ -577,13 +610,12 @@ compiles with a warning, and 3.0 removes them.
 ### INTERNAL_001: Unexpected Error
 - **Description**: An unexpected internal error occurred
 - **Common Causes**:
-  - Programming errors
-  - Unexpected conditions
-  - System issues
+  - The card encryption itself failed in `encryptCardData` or `submitCardForm`: the merchant's public key could not be read, or a step of building the JWE failed. The message names the step and `cause` carries the platform's exception. The key fetch failing keeps its own `NETWORK_*` or `AUTH_011` code; this one is only the encryption. The iOS SDK throws the same code for the same failure
+  - The token request failed with something that is neither an HTTP answer nor a transport failure
+  - The 3DS screen could not be started
 - **Developer Action**:
-  - Report to SDK maintainers
+  - Enable `debug` and report the message
   - Check for SDK updates
-  - Implement fallback handling
 
 ### INTERNAL_002: Not Implemented
 - **Description**: Feature is not yet implemented
@@ -708,6 +740,7 @@ If you encounter errors not covered in this documentation or need additional ass
 3. Enable debug logging to get more details
 4. Contact support with the error code and context
 
-To receive every exception the SDK throws, except `PAYMENT_011` and `PAYMENT_007`, which are not
-errors, register an analytics callback via `GopayConfig.errorCallback`.
+To receive every exception the SDK throws, once each, except `PAYMENT_011` and `PAYMENT_007`,
+which are not errors, register an analytics callback via `GopayConfig.errorCallback`; the rule is
+at the top of this document.
  
