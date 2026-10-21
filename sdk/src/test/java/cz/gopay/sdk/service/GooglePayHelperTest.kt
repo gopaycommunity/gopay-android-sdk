@@ -16,6 +16,7 @@ import cz.gopay.sdk.exception.GopaySDKException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -136,6 +137,12 @@ class GooglePayHelperTest {
     @Test
     fun `parseGooglePayToken throws PAYMENT_003 when the nested token is not JSON`() {
         assertUnreadable(buildPaymentDataJsonWithToken("{not json"))
+    }
+
+    @Test
+    fun `parseGooglePayToken throws PAYMENT_003 when the nested token is JSON null`() {
+        val e = assertUnreadable(buildPaymentDataJsonWithToken("null"))
+        assertNull(e.cause)
     }
 
     // --- buildIsReadyToPayRequestJson ---

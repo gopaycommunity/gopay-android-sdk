@@ -138,8 +138,8 @@ internal object CardFormStore {
      * that synced last. The data is null when the form is not on screen.
      */
     fun resolve(formId: String?): Pair<String?, CardFormData?> = synchronized(lock) {
-        val id = formId ?: data.keys.lastOrNull()
-        id to id?.let { data[it] }
+        val id = formId ?: data.keys.lastOrNull() ?: return@synchronized null to null
+        id to data[id]
     }
 
     /** Tells the form with [formId] that a submit ran, for [CardFormValidationDisplay.ON_SUBMIT]. */
