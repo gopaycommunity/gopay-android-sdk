@@ -515,26 +515,22 @@ class PaymentSession internal constructor(
     /**
      * Charges a previously tokenized card without an activity, the shape the iOS SDK's
      * `chargeWithCardToken` has: [charge] + [ChargePaymentRequest.cardToken] with the
-     * [browserData] you collected. Without one it fails before anything is sent: deriving the
+     * [browserData] you collected. Unlike on iOS, [browserData] is required here: deriving the
      * device's browser data needs a `Context`, so pass [BrowserData.deviceDefault] yourself or
      * use the overload with an activity.
      *
      * @param browserData 3DS browser data, required by the spec on every card charge.
      * @param challengePreference 3DS challenge preference forwarded to the gateway.
-     * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] when [browserData]
-     *         is null.
      */
     suspend fun chargeWithCardToken(
         cardToken: String,
-        browserData: BrowserData? = null,
+        browserData: BrowserData,
         challengePreference: ChallengePreference? = null
-    ): ChargePaymentResponse = reportErrors {
-        chargeCardToken(
-            cardToken = cardToken,
-            browserData = browserData ?: throw browserDataRequired("chargeWithCardToken"),
-            challengePreference = challengePreference
-        )
-    }
+    ): ChargePaymentResponse = chargeCardToken(
+        cardToken = cardToken,
+        browserData = browserData,
+        challengePreference = challengePreference
+    )
 
     private suspend fun chargeCardToken(
         cardToken: String,
@@ -574,7 +570,7 @@ class PaymentSession internal constructor(
     /**
      * Charges a JWE-encrypted card without an activity, the shape the iOS SDK's
      * `chargeWithEncryptedCard` has: [charge] + [ChargePaymentRequest.encryptedCard] with the
-     * [browserData] you collected. Without one it fails before anything is sent: deriving the
+     * [browserData] you collected. Unlike on iOS, [browserData] is required here: deriving the
      * device's browser data needs a `Context`, so pass [BrowserData.deviceDefault] yourself or
      * use the overload with an activity.
      *
@@ -582,20 +578,16 @@ class PaymentSession internal constructor(
      *                [cz.gopay.sdk.GopaySDK.submitCardForm].
      * @param browserData 3DS browser data, required by the spec on every card charge.
      * @param challengePreference 3DS challenge preference forwarded to the gateway.
-     * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] when [browserData]
-     *         is null.
      */
     suspend fun chargeWithEncryptedCard(
         payload: String,
-        browserData: BrowserData? = null,
+        browserData: BrowserData,
         challengePreference: ChallengePreference? = null
-    ): ChargePaymentResponse = reportErrors {
-        chargeEncryptedCard(
-            payload = payload,
-            browserData = browserData ?: throw browserDataRequired("chargeWithEncryptedCard"),
-            challengePreference = challengePreference
-        )
-    }
+    ): ChargePaymentResponse = chargeEncryptedCard(
+        payload = payload,
+        browserData = browserData,
+        challengePreference = challengePreference
+    )
 
     private suspend fun chargeEncryptedCard(
         payload: String,
@@ -607,12 +599,6 @@ class PaymentSession internal constructor(
             browserData = browserData,
             challengePreference = challengePreference
         )
-    )
-
-    private fun browserDataRequired(method: String) = GopaySDKException(
-        errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
-        message = "$method: browserData or activity is required; BrowserData.deviceDefault " +
-            "needs a Context, so pass the browser data or call the overload with an activity"
     )
 
     /**

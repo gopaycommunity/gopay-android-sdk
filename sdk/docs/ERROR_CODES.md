@@ -550,7 +550,6 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
   - Empty `paymentId` / `paymentSecret` passed to `startPaymentSession`
   - `encryptCardData` called with a card that fails validation: the PAN is not 13 to 19 digits, the month is not `01` to `12`, the year is not 2 to 4 digits, or the CVV is not 3 or 4 digits. The same rules apply on iOS
   - `submitCardForm` called while no `PaymentCardForm` holds a card (after a successful submit, or before one was typed), with `CardEncryptionResult.NO_CARD_DATA_MESSAGE`, or while the held card is invalid, with `CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE`. The form's own submit function returns the same exception inside `CardEncryptionResult.Error`
-  - `chargeWithCardToken` or `chargeWithEncryptedCard` called without `browserData` and without an `activity`: the SDK derives the device's browser data from the latter. On iOS the helpers derive it from the device on their own
   - `awaitChargeState()` called with an `intervalMs` or `initialTimeoutMs` that is not positive, or in `ThreeDSMode.AUTOMATIC` without an `activity`; nothing is sent
 - **Developer Action**:
   - Validate before calling, and let the form show its own validation state (`validation = LIVE` or `ON_SUBMIT`) or read it from `onValidationError`

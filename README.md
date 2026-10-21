@@ -295,9 +295,9 @@ wrappers fill it in from the activity (locale, screen metrics, timezone, user ag
 `charge(...)` only when you have collected more accurate browser data yourself. The card helpers
 also come without an `activity`, the shape the iOS SDK has: `chargeWithCardToken(cardToken,
 browserData, challengePreference)` and `chargeWithEncryptedCard(payload, browserData,
-challengePreference)`, for when you pass the browser data yourself; called without `browserData`
-they fail with `VALIDATION_INVALID_INPUT` before anything is sent, because deriving the device's
-browser data needs a `Context`.
+challengePreference)`, for when you pass the browser data yourself. There `browserData` is a
+required parameter: deriving the device's browser data needs a `Context`, which iOS does not
+need, so on iOS it is optional.
 
 ### Browser data / User-Agent
 
@@ -367,9 +367,9 @@ A `PaymentSession` is the per-payment auth context. Construct it via `startPayme
 | `charge(ChargePaymentRequest)` | `POST /payments/{payment_id}/charge` — low level; you supply `BrowserData`, the SDK completes `ip` and `accept_header` from `GET /cards/browser-data` first, and a missing `user_agent` before that |
 | `completeBrowserData(browserData)` | `GET /cards/browser-data` — fills the null ones of `ip` and `accept_header`, and a missing `user_agent` with a synthesized WebView one; `charge(...)` does this itself |
 | `chargeWithCardToken(activity, cardToken, browserData?, challengePreference?)` | `charge(...)` with a card token + device-derived `BrowserData` |
-| `chargeWithCardToken(cardToken, browserData?, challengePreference?)` | The same without an activity, as on iOS; `browserData` has to be given, else `VALIDATION_INVALID_INPUT` |
+| `chargeWithCardToken(cardToken, browserData, challengePreference?)` | The same without an activity, as on iOS; `browserData` is required here, iOS derives it from the device |
 | `chargeWithEncryptedCard(activity, payload, browserData?, challengePreference?)` | `charge(...)` with a JWE + device-derived `BrowserData` |
-| `chargeWithEncryptedCard(payload, browserData?, challengePreference?)` | The same without an activity, as on iOS; `browserData` has to be given, else `VALIDATION_INVALID_INPUT` |
+| `chargeWithEncryptedCard(payload, browserData, challengePreference?)` | The same without an activity, as on iOS; `browserData` is required here, iOS derives it from the device |
 | `getChargeState()` | `GET /payments/{payment_id}/charge` |
 | `awaitChargeState(options?)` | Polls `GET /payments/{payment_id}/charge` once a second until the charge is `SUCCEEDED` (returned) or `FAILED` (`PAYMENT_DECLINED`), running the 3DS challenge itself; see [Reading the result](#reading-the-result) |
 | `getQrPaymentInfo(format?)` | `GET /payments/{payment_id}/qr-payment/info` |
@@ -1004,7 +1004,7 @@ per-payment flow:
 | `PAYMENT_CANCELLED` | The Google Pay sheet or the 3DS screen closed before it finished, or the 3DS page failed after it had drawn; read the charge before paying again |
 | `PAYMENT_DECLINED` | `awaitChargeState` saw the charge end `FAILED`; the charge is on `chargeState`, its `fail_reason` in the message. A retry needs a new payment |
 | `PAYMENT_TIMEOUT` | `awaitChargeState` saw the charge stay undecided (`REQUESTED`/`PROCESSING`/`UNKNOWN`, or `ACTION_REQUIRED` without a new address) for the whole `initialTimeoutMs`; the last state is on `chargeState`. Not a failure and not passed to `errorCallback`: read the state again or wait for the notification |
-| `VALIDATION_INVALID_INPUT` | Invalid input: an empty `paymentId` / `paymentSecret`, a card that fails the PAN / month / year / CVV rules in `encryptCardData`, a `submitCardForm` with no card or an invalid one, a card helper without `browserData` and without an `activity`, or `awaitChargeState` with a non-positive interval or timeout, or in `ThreeDSMode.AUTOMATIC` without an `activity` |
+| `VALIDATION_INVALID_INPUT` | Invalid input: an empty `paymentId` / `paymentSecret`, a card that fails the PAN / month / year / CVV rules in `encryptCardData`, a `submitCardForm` with no card or an invalid one, or `awaitChargeState` with a non-positive interval or timeout, or in `ThreeDSMode.AUTOMATIC` without an `activity` |
 | `CONFIG_SDK_NOT_INITIALIZED` | `getInstance()`, and so any call, before `initialize` |
 | `CONFIG_INVALID_BASE_URL` | A `DEVELOPMENT` URL that is empty, not `http(s)`, or one the HTTP client refuses at `initialize` |
 | `INTERNAL_UNEXPECTED_ERROR` | The card encryption failed after the key was fetched; the platform's exception is the `cause` |
@@ -1073,8 +1073,8 @@ listed in [`sdk/docs/API_3_0.md`](sdk/docs/API_3_0.md).
 
 | Shared name | Android alias or variant | What it is |
 | --- | --- | --- |
-| `session.chargeWithCardToken(cardToken, browserData?, challengePreference?)` | variant: `chargeWithCardToken(activity, …)` derives `browserData` from the activity | a card token charge in one call; without the activity `browserData` has to be given |
-| `session.chargeWithEncryptedCard(payload, browserData?, challengePreference?)` | variant: `chargeWithEncryptedCard(activity, …)` derives `browserData` from the activity | a JWE charge in one call; without the activity `browserData` has to be given |
+| `session.chargeWithCardToken(cardToken, browserData, challengePreference?)` | variant: `chargeWithCardToken(activity, …)` derives `browserData` from the activity | a card token charge in one call; without an `activity` Android requires `browserData`, iOS derives it from the device default |
+| `session.chargeWithEncryptedCard(payload, browserData, challengePreference?)` | variant: `chargeWithEncryptedCard(activity, …)` derives `browserData` from the activity | a JWE charge in one call; without an `activity` Android requires `browserData`, iOS derives it from the device default |
 | `GopaySDK.isWalletAvailable(activity, info?)` | alias: `isGooglePayAvailable(activity, info)` | can the device pay with the platform wallet |
 | `session.getWalletInfo()` | alias: `getGooglePayInfo()` | the wallet configuration for the payment |
 | `session.chargeWithWallet(activity, browserData?, challengePreference?)` | alias: `chargeWithGooglePay(...)` | the managed wallet sheet and charge |

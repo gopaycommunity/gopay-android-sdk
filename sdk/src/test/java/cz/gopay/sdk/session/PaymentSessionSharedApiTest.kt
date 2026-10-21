@@ -1,8 +1,5 @@
 package cz.gopay.sdk.session
 
-import cz.gopay.sdk.exception.ErrorReporter
-import cz.gopay.sdk.exception.GopayErrorCodes
-import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.BrowserData
 import cz.gopay.sdk.model.BrowserDataDetected
 import cz.gopay.sdk.model.CardFormUrl
@@ -26,12 +23,8 @@ import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.modules.network.TokenResponse
 import kotlinx.coroutines.runBlocking
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
-import org.junit.Assert.assertThrows
-import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
 import retrofit2.Response
 
@@ -41,19 +34,11 @@ import retrofit2.Response
  */
 class PaymentSessionSharedApiTest {
 
-    private val reported = mutableListOf<GopaySDKException>()
-
     /** Complete, so the charge asks the gateway for nothing. */
     private val browserData = BrowserData(
         language = "cs-CZ", timezone = -60, screenWidth = 1080, screenHeight = 2400, colorDepth = 24,
         userAgent = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36", ip = "192.0.2.42", acceptHeader = "*/*"
     )
-
-    @Before
-    fun collect() = ErrorReporter.setErrorCallback { reported.add(it) }
-
-    @After
-    fun clear() = ErrorReporter.clear()
 
     @Test
     fun `chargeWithCardToken without an activity sends the token with the browser data given`() = runBlocking {
@@ -81,27 +66,6 @@ class PaymentSessionSharedApiTest {
     }
 
     @Test
-    fun `without an activity and without browser data the helpers refuse with VALIDATION_007 before sending`() {
-        val api = Fakes()
-        val session = session(api)
-
-        val token = assertThrows(GopaySDKException::class.java) {
-            runBlocking { session.chargeWithCardToken("tok-1") }
-        }
-        val jwe = assertThrows(GopaySDKException::class.java) {
-            runBlocking { session.chargeWithEncryptedCard("h.k.i.c.t") }
-        }
-
-        for (e in listOf(token, jwe)) {
-            assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, e.errorCode)
-            assertTrue(e.message!!.contains("browserData or activity is required"))
-        }
-        assertTrue("nothing was sent", api.charges.isEmpty())
-        assertTrue(api.browserDataCalls == 0)
-        assertEquals("each reached errorCallback once", listOf(token, jwe), reported)
-    }
-
-    @Test
     fun `getWalletInfo and getGooglePayInfo are the same call`() = runBlocking {
         val api = Fakes()
         val session = session(api)
@@ -124,7 +88,6 @@ class PaymentSessionSharedApiTest {
 
     private class Fakes : PaymentApi, AuthApi {
         val charges = mutableListOf<ChargePaymentRequest>()
-        var browserDataCalls = 0
         var infoCalls = 0
         val info = GooglePayInfoResponse(
             environment = "TEST",
@@ -146,7 +109,6 @@ class PaymentSessionSharedApiTest {
 
         val publicApi: PublicApi = object : PublicApi {
             override suspend fun getBrowserData(userAgent: String?): Response<BrowserDataDetected> {
-                browserDataCalls++
                 return Response.success(BrowserDataDetected(ip = "198.51.100.7", userAgent = "ua", acceptHeader = "*/*"))
             }
             override suspend fun getPublicKey(): Response<Jwk> = throw UnsupportedOperationException()
