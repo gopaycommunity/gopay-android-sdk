@@ -69,7 +69,7 @@ object GooglePayHelper {
             ?: throw unreadableToken("Missing paymentMethodData.tokenizationData.token in Google Pay PaymentData")
 
         val tokenAdapter = moshi.adapter(GooglePayTokenContent::class.java)
-        val parsedToken = try {
+        val parsedToken: GooglePayTokenContent? = try {
             tokenAdapter.fromJson(tokenJson)
         } catch (e: Exception) {
             throw unreadableToken("Failed to parse Google Pay token JSON: ${e.message}", e)

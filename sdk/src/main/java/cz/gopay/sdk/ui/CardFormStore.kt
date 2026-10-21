@@ -138,7 +138,8 @@ internal object CardFormStore {
      * that synced last. The data is null when the form is not on screen.
      */
     fun resolve(formId: String?): Pair<String?, CardFormData?> = synchronized(lock) {
-        val id = formId ?: data.keys.lastOrNull() ?: return@synchronized null to null
+        val id: String? = formId ?: data.keys.lastOrNull()
+        if (id == null) return@synchronized null to null
         id to data[id]
     }
 
