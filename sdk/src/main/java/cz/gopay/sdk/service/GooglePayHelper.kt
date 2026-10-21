@@ -1,6 +1,8 @@
 package cz.gopay.sdk.service
 
+import com.google.android.gms.wallet.WalletConstants
 import com.squareup.moshi.Json
+import cz.gopay.sdk.config.Environment
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.exception.reportErrors
@@ -93,11 +95,9 @@ object GooglePayHelper {
      * allowed payment methods in the GoPay API response. Gateway-specific parameters are
      * intentionally omitted — `IsReadyToPayRequest` only needs the card type and auth methods.
      */
-    internal fun buildIsReadyToPayRequestJson(allowedMethods: List<GooglePayAllowedMethod>): String {
-        val request = IsReadyToPayRequest(
-            apiVersion = 2,
-            apiVersionMinor = 0,
-            allowedPaymentMethods = allowedMethods.map {
+    internal fun buildIsReadyToPayRequestJson(allowedMethods: List<GooglePayAllowedMethod>): String =
+        isReadyToPayRequestJson(
+            allowedMethods.map {
                 IsReadyToPayMethod(
                     type = it.type,
                     parameters = IsReadyToPayParameters(
@@ -107,8 +107,52 @@ object GooglePayHelper {
                 )
             }
         )
+
+    /**
+     * The `IsReadyToPayRequest` for `GopaySDK.isWalletAvailable`: the methods the gateway
+     * allows for the payment when [info] is given, else the default below, which is what the
+     * gateway allows: `PAN_ONLY` and `CRYPTOGRAM_3DS` with Visa and Mastercard.
+     */
+    internal fun isReadyToPayRequestJson(info: GooglePayInfoResponse?): String =
+        if (info != null) {
+            buildIsReadyToPayRequestJson(info.paymentDataRequest.allowedPaymentMethods)
+        } else {
+            isReadyToPayRequestJson(listOf(DEFAULT_IS_READY_TO_PAY_METHOD))
+        }
+
+    /**
+     * The Google Pay environment a wallet call runs in: the one the gateway names in [info],
+     * else `PRODUCTION` for the production gateway and `TEST` for every other [environment].
+     */
+    internal fun walletEnvironment(info: GooglePayInfoResponse?, environment: Environment): Int {
+        val production = if (info != null) {
+            info.environment == "PRODUCTION"
+        } else {
+            environment is Environment.PRODUCTION
+        }
+        return if (production) WalletConstants.ENVIRONMENT_PRODUCTION else WalletConstants.ENVIRONMENT_TEST
+    }
+
+    /** The Google Pay environment the gateway names in [info]. */
+    internal fun walletEnvironment(info: GooglePayInfoResponse): Int =
+        if (info.environment == "PRODUCTION") WalletConstants.ENVIRONMENT_PRODUCTION else WalletConstants.ENVIRONMENT_TEST
+
+    private fun isReadyToPayRequestJson(methods: List<IsReadyToPayMethod>): String {
+        val request = IsReadyToPayRequest(
+            apiVersion = 2,
+            apiVersionMinor = 0,
+            allowedPaymentMethods = methods
+        )
         return moshi.adapter(IsReadyToPayRequest::class.java).toJson(request)
     }
+
+    private val DEFAULT_IS_READY_TO_PAY_METHOD = IsReadyToPayMethod(
+        type = "CARD",
+        parameters = IsReadyToPayParameters(
+            allowedAuthMethods = listOf("PAN_ONLY", "CRYPTOGRAM_3DS"),
+            allowedCardNetworks = listOf("VISA", "MASTERCARD")
+        )
+    )
 
     private fun unreadableToken(message: String, cause: Throwable? = null) = GopaySDKException(
         errorCode = GopayErrorCodes.PAYMENT_PROCESSING_FAILED,

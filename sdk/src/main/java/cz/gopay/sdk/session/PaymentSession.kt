@@ -3,7 +3,6 @@ package cz.gopay.sdk.session
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import com.google.android.gms.wallet.WalletConstants
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.exception.HttpErrorContext
@@ -384,14 +383,32 @@ class PaymentSession internal constructor(
         apiCall("get QR payment info") { paymentApi.getQrPaymentInfo(paymentId, format?.name?.lowercase()) }
     }
 
-    /** GET /payments/{payment_id}/google-pay/info */
-    suspend fun getGooglePayInfo(): GooglePayInfoResponse = reportErrors {
+    /**
+     * `GET /payments/{payment_id}/google-pay/info`: what the gateway allows for this payment in
+     * the device's wallet, Google Pay. The name shared with the iOS SDK, where it reads the
+     * Apple Pay info; [getGooglePayInfo] is the same call.
+     */
+    suspend fun getWalletInfo(): GooglePayInfoResponse = reportErrors {
         apiCall("get Google Pay info") { paymentApi.getGooglePayInfo(paymentId) }
     }
 
+    /** GET /payments/{payment_id}/google-pay/info. The Android name of [getWalletInfo]. */
+    suspend fun getGooglePayInfo(): GooglePayInfoResponse = getWalletInfo()
+
+    /**
+     * Pays with the device's wallet, Google Pay: the name shared with the iOS SDK, where it runs
+     * Apple Pay. The same call as [chargeWithGooglePay], which documents it.
+     */
+    suspend fun chargeWithWallet(
+        activity: Activity,
+        browserData: BrowserData? = null,
+        challengePreference: ChallengePreference? = null
+    ): ChargePaymentResponse = chargeWithGooglePay(activity, browserData, challengePreference)
+
     /**
      * Managed Google Pay flow: fetches Google Pay config for this payment, launches the Google
-     * Pay sheet, parses the resulting token, and submits the charge in one call.
+     * Pay sheet, parses the resulting token, and submits the charge in one call. The Android
+     * name of [chargeWithWallet].
      *
      * Suspends while the Google Pay sheet is visible. Returns the [ChargePaymentResponse] on
      * success — inspect `action.redirectUrl` and call [handle3dsVerification] if 3DS is
@@ -418,8 +435,7 @@ class PaymentSession internal constructor(
     ): ChargePaymentResponse = reportErrors {
         val info = getGooglePayInfo()
         val paymentRequestJson = GooglePayHelper.buildPaymentDataRequestJson(info)
-        val env = if (info.environment == "PRODUCTION") WalletConstants.ENVIRONMENT_PRODUCTION
-                  else WalletConstants.ENVIRONMENT_TEST
+        val env = GooglePayHelper.walletEnvironment(info)
 
         val deferred = CompletableDeferred<Result<String>>()
         val owner = GooglePayBridge.register(deferred)
@@ -490,10 +506,44 @@ class PaymentSession internal constructor(
         cardToken: String,
         browserData: BrowserData? = null,
         challengePreference: ChallengePreference? = null
+    ): ChargePaymentResponse = chargeCardToken(
+        cardToken = cardToken,
+        browserData = browserData ?: BrowserData.deviceDefault(activity),
+        challengePreference = challengePreference
+    )
+
+    /**
+     * Charges a previously tokenized card without an activity, the shape the iOS SDK's
+     * `chargeWithCardToken` has: [charge] + [ChargePaymentRequest.cardToken] with the
+     * [browserData] you collected. Without one it fails before anything is sent: deriving the
+     * device's browser data needs a `Context`, so pass [BrowserData.deviceDefault] yourself or
+     * use the overload with an activity.
+     *
+     * @param browserData 3DS browser data, required by the spec on every card charge.
+     * @param challengePreference 3DS challenge preference forwarded to the gateway.
+     * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] when [browserData]
+     *         is null.
+     */
+    suspend fun chargeWithCardToken(
+        cardToken: String,
+        browserData: BrowserData? = null,
+        challengePreference: ChallengePreference? = null
+    ): ChargePaymentResponse = reportErrors {
+        chargeCardToken(
+            cardToken = cardToken,
+            browserData = browserData ?: throw browserDataRequired("chargeWithCardToken"),
+            challengePreference = challengePreference
+        )
+    }
+
+    private suspend fun chargeCardToken(
+        cardToken: String,
+        browserData: BrowserData,
+        challengePreference: ChallengePreference?
     ): ChargePaymentResponse = charge(
         ChargePaymentRequest.cardToken(
             cardToken = cardToken,
-            browserData = browserData ?: BrowserData.deviceDefault(activity),
+            browserData = browserData,
             challengePreference = challengePreference
         )
     )
@@ -503,7 +553,8 @@ class PaymentSession internal constructor(
      * round-trip. Convenience wrapper over [charge] + [ChargePaymentRequest.encryptedCard] that
      * fills in real device-derived [BrowserData] when the caller doesn't supply one.
      *
-     * @param payload The JWE compact string from [cz.gopay.sdk.GopaySDK.encryptCardData].
+     * @param payload The JWE compact string from [cz.gopay.sdk.GopaySDK.encryptCardData] or
+     *                [cz.gopay.sdk.GopaySDK.submitCardForm].
      * @param browserData Optional 3DS browser data. Required by the spec on every card charge;
      *                    when null, the SDK derives it from the [activity]'s resources. Override
      *                    if you collected more accurate values elsewhere.
@@ -514,12 +565,54 @@ class PaymentSession internal constructor(
         payload: String,
         browserData: BrowserData? = null,
         challengePreference: ChallengePreference? = null
+    ): ChargePaymentResponse = chargeEncryptedCard(
+        payload = payload,
+        browserData = browserData ?: BrowserData.deviceDefault(activity),
+        challengePreference = challengePreference
+    )
+
+    /**
+     * Charges a JWE-encrypted card without an activity, the shape the iOS SDK's
+     * `chargeWithEncryptedCard` has: [charge] + [ChargePaymentRequest.encryptedCard] with the
+     * [browserData] you collected. Without one it fails before anything is sent: deriving the
+     * device's browser data needs a `Context`, so pass [BrowserData.deviceDefault] yourself or
+     * use the overload with an activity.
+     *
+     * @param payload The JWE compact string from [cz.gopay.sdk.GopaySDK.encryptCardData] or
+     *                [cz.gopay.sdk.GopaySDK.submitCardForm].
+     * @param browserData 3DS browser data, required by the spec on every card charge.
+     * @param challengePreference 3DS challenge preference forwarded to the gateway.
+     * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] when [browserData]
+     *         is null.
+     */
+    suspend fun chargeWithEncryptedCard(
+        payload: String,
+        browserData: BrowserData? = null,
+        challengePreference: ChallengePreference? = null
+    ): ChargePaymentResponse = reportErrors {
+        chargeEncryptedCard(
+            payload = payload,
+            browserData = browserData ?: throw browserDataRequired("chargeWithEncryptedCard"),
+            challengePreference = challengePreference
+        )
+    }
+
+    private suspend fun chargeEncryptedCard(
+        payload: String,
+        browserData: BrowserData,
+        challengePreference: ChallengePreference?
     ): ChargePaymentResponse = charge(
         ChargePaymentRequest.encryptedCard(
             payload = payload,
-            browserData = browserData ?: BrowserData.deviceDefault(activity),
+            browserData = browserData,
             challengePreference = challengePreference
         )
+    )
+
+    private fun browserDataRequired(method: String) = GopaySDKException(
+        errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
+        message = "$method: browserData or activity is required; BrowserData.deviceDefault " +
+            "needs a Context, so pass the browser data or call the overload with an activity"
     )
 
     /**

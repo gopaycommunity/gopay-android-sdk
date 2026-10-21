@@ -3,7 +3,6 @@ package cz.gopay.sdk
 import android.app.Activity
 import com.google.android.gms.wallet.IsReadyToPayRequest
 import com.google.android.gms.wallet.Wallet
-import com.google.android.gms.wallet.WalletConstants
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
@@ -17,6 +16,8 @@ import cz.gopay.sdk.modules.network.NetworkManager
 import cz.gopay.sdk.service.CardEncryption
 import cz.gopay.sdk.service.GooglePayHelper
 import cz.gopay.sdk.session.PaymentSession
+import cz.gopay.sdk.ui.CardEncryptionResult
+import cz.gopay.sdk.ui.CardFormStore
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -36,9 +37,13 @@ import javax.net.ssl.X509TrustManager
  *    run concurrently — sessions are keyed by `payment_id` and never share credentials.
  * 5. `session.close()` when done; the `payment_secret` and JWT are wiped from memory.
  *
- * Card collection: `GopaySDK.encryptCardData(cardData)` (or the `PaymentCardForm` composable)
- * returns a JWE that the host app forwards to its backend; the merchant backend calls
- * `POST /cards/tokens`. The mobile SDK never touches that endpoint.
+ * Card collection: `GopaySDK.encryptCardData(cardData)`, or the `PaymentCardForm` composable
+ * submitted with [submitCardForm], returns a JWE that the host app forwards to its backend; the
+ * merchant backend calls `POST /cards/tokens`. The mobile SDK never touches that endpoint.
+ *
+ * The names shared with the iOS SDK are the main ones: [isWalletAvailable], [submitCardForm],
+ * [clearCardFormData], and on the session `getWalletInfo`, `chargeWithWallet` and the card
+ * helpers without an activity. The Google Pay names stay as aliases of the same bodies.
  */
 class GopaySDK private constructor(
     val config: GopayConfig,
@@ -161,6 +166,52 @@ class GopaySDK private constructor(
     }
 
     /**
+     * Encrypts the card the [cz.gopay.sdk.ui.PaymentCardForm] on screen holds into a JWE for
+     * server-side tokenization, the way the iOS `submitCardForm(formId:)` does. The PAN and CVV
+     * never leave the SDK; only the JWE is returned.
+     *
+     * On success the form returns to its pristine state: the SDK's copy of the card is dropped
+     * **and the visible fields are emptied**, so the user sees an empty card form and your own
+     * UI should move on rather than wait for further input. A failed encryption leaves
+     * everything as the user typed it, since nothing has been authorized yet. A second call
+     * for the same form therefore fails with [CardEncryptionResult.NO_CARD_DATA_MESSAGE] until a
+     * new card is typed.
+     *
+     * Like [encryptCardData], every call fetches the public key afresh and dates the payload by
+     * the gateway's clock. A call cancelled while the key is on its way ends with the
+     * `CancellationException`, not reported through `errorCallback`, and the card stays in the
+     * form. Forward the returned JWE promptly and use it for a single charge: the gateway
+     * accepts each JWE only once and its payload expires 10 minutes after creation.
+     *
+     * In [cz.gopay.sdk.ui.CardFormValidationDisplay.ON_SUBMIT] the form shows its validation
+     * errors from this call on, whether or not it passes. Safe to call from any thread: the
+     * form is updated on the main thread.
+     *
+     * @param formId the form to read, the `formId` it was composed with. When null, the most
+     *        recently active form.
+     * @return JWE compact serialization (RFC 7516) ready to send to the merchant backend.
+     * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] with
+     *         [CardEncryptionResult.NO_CARD_DATA_MESSAGE] when no form is on screen or the form
+     *         is empty, and with [CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE] when what
+     *         it holds fails validation; then whatever [encryptCardData] throws.
+     *         [GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED] comes from [getInstance] before.
+     */
+    suspend fun submitCardForm(formId: String? = null): String = reportErrors {
+        cz.gopay.sdk.ui.submitCardForm(formId) { encryptCardData(it) }
+    }
+
+    /**
+     * Drops the SDK's copy of the card a [cz.gopay.sdk.ui.PaymentCardForm] holds and empties
+     * its visible fields, for when the user abandons the checkout while the form is still on
+     * screen. [submitCardForm] calls this itself after returning a JWE, and the form when it
+     * leaves the screen. Safe to call from any thread: the form is updated on the main thread.
+     * Mirrors the iOS `clearCardFormData`.
+     *
+     * @param formId the form to clear; when null, every form.
+     */
+    fun clearCardFormData(formId: String? = null): Unit = CardFormStore.clear(formId)
+
+    /**
      * Resolves the [GopayLocaleStrings] the payment card form uses for its labels.
      *
      * Resolution order: [preferred] (if given and known) -> the SDK-wide [GopayConfig.locale] ->
@@ -186,22 +237,27 @@ class GopaySDK private constructor(
     )
 
     /**
-     * Checks whether Google Pay is available and ready on this device using the allowed payment
-     * methods from a GoPay API response. Call this before showing a Google Pay button.
+     * Whether the device's wallet, Google Pay, can pay: the name shared with the iOS SDK, where
+     * it asks Apple Pay. Call this before showing a Google Pay button.
+     *
+     * With [info], the readiness check uses the card networks and auth methods the gateway
+     * allows for that payment, in the environment it names. Without one, before a payment
+     * exists, it asks for `PAN_ONLY` and `CRYPTOGRAM_3DS` with Visa and Mastercard, which is
+     * what the gateway allows, in the environment [GopayConfig.environment] implies:
+     * `PRODUCTION` for the production gateway, `TEST` otherwise. A `false` from Google Play
+     * services is returned as such; the check never throws an SDK error.
      *
      * @param activity The current Activity (used to create a PaymentsClient).
-     * @param info The [GooglePayInfoResponse] returned from [PaymentSession.getGooglePayInfo].
+     * @param info The [GooglePayInfoResponse] from [PaymentSession.getWalletInfo], or null.
      */
-    suspend fun isGooglePayAvailable(activity: Activity, info: GooglePayInfoResponse): Boolean {
-        val env = if (info.environment == "PRODUCTION") WalletConstants.ENVIRONMENT_PRODUCTION
-                  else WalletConstants.ENVIRONMENT_TEST
+    suspend fun isWalletAvailable(activity: Activity, info: GooglePayInfoResponse? = null): Boolean {
         val client = Wallet.getPaymentsClient(
             activity,
-            Wallet.WalletOptions.Builder().setEnvironment(env).build()
+            Wallet.WalletOptions.Builder()
+                .setEnvironment(GooglePayHelper.walletEnvironment(info, config.environment))
+                .build()
         )
-        val requestJson = GooglePayHelper.buildIsReadyToPayRequestJson(
-            info.paymentDataRequest.allowedPaymentMethods
-        )
+        val requestJson = GooglePayHelper.isReadyToPayRequestJson(info)
         return suspendCoroutine { cont ->
             client.isReadyToPay(IsReadyToPayRequest.fromJson(requestJson))
                 .addOnCompleteListener { task ->
@@ -209,6 +265,16 @@ class GopaySDK private constructor(
                 }
         }
     }
+
+    /**
+     * Checks whether Google Pay is available and ready on this device using the allowed payment
+     * methods from a GoPay API response. The Android name of [isWalletAvailable], the same call.
+     *
+     * @param activity The current Activity (used to create a PaymentsClient).
+     * @param info The [GooglePayInfoResponse] returned from [PaymentSession.getGooglePayInfo].
+     */
+    suspend fun isGooglePayAvailable(activity: Activity, info: GooglePayInfoResponse): Boolean =
+        isWalletAvailable(activity, info)
 
     companion object {
         @Volatile

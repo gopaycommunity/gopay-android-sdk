@@ -8,6 +8,8 @@ import cz.gopay.sdk.model.GooglePayMerchantInfo
 import cz.gopay.sdk.model.GooglePayMethodParameters
 import cz.gopay.sdk.model.GooglePayTokenizationSpec
 import cz.gopay.sdk.model.GooglePayTransactionInfo
+import com.google.android.gms.wallet.WalletConstants
+import cz.gopay.sdk.config.Environment
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
@@ -163,6 +165,44 @@ class GooglePayHelperTest {
         assertFalse("Should not include gateway", json.contains("gateway"))
         assertFalse("Should not include gatewayMerchantId", json.contains("gatewayMerchantId"))
         assertFalse("Should not include tokenizationSpecification", json.contains("tokenizationSpecification"))
+    }
+
+    // --- isWalletAvailable without info ---
+
+    @Test
+    fun `without info the readiness request asks for PAN_ONLY and CRYPTOGRAM_3DS with Visa and Mastercard`() {
+        val json = GooglePayHelper.isReadyToPayRequestJson(null)
+
+        assertEquals(
+            """{"apiVersion":2,"apiVersionMinor":0,"allowedPaymentMethods":[{"type":"CARD","parameters":""" +
+                """{"allowedAuthMethods":["PAN_ONLY","CRYPTOGRAM_3DS"],"allowedCardNetworks":["VISA","MASTERCARD"]}}]}""",
+            json
+        )
+    }
+
+    @Test
+    fun `with info the readiness request uses the gateway's methods`() {
+        val info = buildTestInfo()
+
+        assertEquals(
+            GooglePayHelper.buildIsReadyToPayRequestJson(info.paymentDataRequest.allowedPaymentMethods),
+            GooglePayHelper.isReadyToPayRequestJson(info)
+        )
+    }
+
+    @Test
+    fun `the wallet environment follows the info, else the SDK's environment`() {
+        val test = buildTestInfo()
+        val production = test.copy(environment = "PRODUCTION")
+
+        assertEquals(WalletConstants.ENVIRONMENT_TEST, GooglePayHelper.walletEnvironment(test, Environment.PRODUCTION))
+        assertEquals(WalletConstants.ENVIRONMENT_PRODUCTION, GooglePayHelper.walletEnvironment(production, Environment.SANDBOX))
+        assertEquals(WalletConstants.ENVIRONMENT_PRODUCTION, GooglePayHelper.walletEnvironment(null, Environment.PRODUCTION))
+        assertEquals(WalletConstants.ENVIRONMENT_TEST, GooglePayHelper.walletEnvironment(null, Environment.SANDBOX))
+        assertEquals(
+            WalletConstants.ENVIRONMENT_TEST,
+            GooglePayHelper.walletEnvironment(null, Environment.DEVELOPMENT.create("https://gw.example/"))
+        )
     }
 
     // Helpers

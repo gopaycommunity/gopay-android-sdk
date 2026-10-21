@@ -7,8 +7,17 @@ import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.ui.CardEncryptionResult
+import cz.gopay.sdk.ui.CardFormData
+import cz.gopay.sdk.ui.CardFormHandlers
+import cz.gopay.sdk.ui.CardFormStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -18,7 +27,16 @@ import org.junit.Test
 /**
  * Unit tests for the GopaySDK singleton lifecycle and configuration.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class GopaySDKTest {
+
+    private val formOwner = Any()
+
+    @Before
+    fun mainThread() {
+        // The card form's handlers run on the main thread; on the JVM that is this one.
+        Dispatchers.setMain(Dispatchers.Unconfined)
+    }
 
     @After
     fun tearDown() {
@@ -32,6 +50,9 @@ class GopaySDKTest {
         GopayLocales.clearCustom()
         GopayLocales.setDefaultLocale(null)
         ErrorReporter.clear()
+        CardFormStore.unregister("form-1", formOwner)
+        CardFormStore.unregister("form-2", formOwner)
+        Dispatchers.resetMain()
     }
 
     /** Every error the SDK reported to the callback a config here registered. */
@@ -199,6 +220,77 @@ class GopaySDKTest {
         }
         assertEquals(listOf(later), earlier)
         assertEquals(listOf(e), reported)
+    }
+
+    @Test
+    fun `submitCardForm without a form on screen is VALIDATION_007 with the no-data message, once`() {
+        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX, errorCallback = { reported.add(it) }))
+
+        val e = assertThrows(GopaySDKException::class.java) {
+            runBlocking { GopaySDK.getInstance().submitCardForm() }
+        }
+
+        assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, e.errorCode)
+        assertEquals(CardEncryptionResult.NO_CARD_DATA_MESSAGE, e.message)
+        assertEquals(listOf(e), reported)
+    }
+
+    @Test
+    fun `submitCardForm on an empty or invalid form is VALIDATION_007 and tells the form a submit ran`() {
+        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX, errorCallback = { reported.add(it) }))
+        var attempts = 0
+        CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = {}, submitAttempted = { attempts++ }))
+        val sdk = GopaySDK.getInstance()
+
+        CardFormStore.update("form-1", CardFormData())
+        val empty = assertThrows(GopaySDKException::class.java) { runBlocking { sdk.submitCardForm("form-1") } }
+        assertEquals(CardEncryptionResult.NO_CARD_DATA_MESSAGE, empty.message)
+
+        CardFormStore.update("form-1", CardFormData("4532015112830366", "1230", "12"))
+        val invalid = assertThrows(GopaySDKException::class.java) { runBlocking { sdk.submitCardForm("form-1") } }
+        assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, invalid.errorCode)
+        assertEquals(CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE, invalid.message)
+
+        assertEquals("ON_SUBMIT shows its errors whether or not the submit passes", 2, attempts)
+        assertEquals(listOf(empty, invalid), reported)
+        assertEquals("a failed submit keeps the data", setOf("form-1"), CardFormStore.storedFormIds())
+    }
+
+    @Test
+    fun `submitCardForm hands a valid form to encryptCardData and keeps it when that fails`() {
+        // No clientId/shareableKey: the key fetch fails with AUTH_011 before any request, which
+        // proves the form passed validation and reached encryptCardData.
+        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX, errorCallback = { reported.add(it) }))
+        var resets = 0
+        CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = { resets++ }, submitAttempted = {}))
+        CardFormStore.update("form-1", CardFormData("4532015112830366", "1230", "123"))
+
+        val e = assertThrows(GopaySDKException::class.java) {
+            runBlocking { GopaySDK.getInstance().submitCardForm() }
+        }
+
+        assertEquals(GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING, e.errorCode)
+        assertEquals("reported once, by encryptCardData, not again by submitCardForm", listOf(e), reported)
+        assertEquals("the card stays in the form after a failed encryption", 0, resets)
+        assertEquals(setOf("form-1"), CardFormStore.storedFormIds())
+    }
+
+    @Test
+    fun `clearCardFormData empties one form or every form`() {
+        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX))
+        val resets = mutableListOf<String>()
+        CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = { resets += "form-1" }, submitAttempted = {}))
+        CardFormStore.register("form-2", formOwner, CardFormHandlers(reset = { resets += "form-2" }, submitAttempted = {}))
+        CardFormStore.update("form-1", CardFormData("4532015112830366", "1230", "123"))
+        CardFormStore.update("form-2", CardFormData("4444444444444448", "1228", "321"))
+
+        GopaySDK.getInstance().clearCardFormData("form-2")
+        assertEquals(listOf("form-2"), resets)
+        assertEquals(setOf("form-1"), CardFormStore.storedFormIds())
+
+        GopaySDK.getInstance().clearCardFormData()
+        assertEquals(listOf("form-2", "form-1", "form-2"), resets)
+        assertTrue(CardFormStore.storedFormIds().isEmpty())
     }
 
     @Test

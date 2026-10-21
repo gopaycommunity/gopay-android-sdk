@@ -12,6 +12,29 @@ import org.junit.Test
 class PaymentCardFormTest {
 
     @Test
+    fun `the 2_1_0 PaymentCardForm signature is still in the bytecode for hosts compiled against it`() {
+        // A Composable's JVM signature carries the Composer and two Int bitmasks (changed,
+        // defaults) after its own parameters; adding validation and formId changed it, so the
+        // 2.1.0 shape is kept as a hidden overload. getMethod throws if it is gone.
+        val compat = Class.forName("cz.gopay.sdk.ui.PaymentCardFormKt").getMethod(
+            "PaymentCardForm",
+            Function1::class.java,                                  // onEncryptionComplete
+            androidx.compose.ui.Modifier::class.java,               // modifier
+            Function1::class.java,                                  // onFormReady
+            Function1::class.java,                                  // onValidationError
+            String::class.java,                                     // locale
+            cz.gopay.sdk.locales.GopayLocaleStrings::class.java,    // localeStrings
+            PaymentFormInputs::class.java,                          // inputFields
+            PaymentCardFormTheme::class.java,                       // theme
+            androidx.compose.runtime.Composer::class.java,
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType
+        )
+
+        assertTrue(compat.isAnnotationPresent(Deprecated::class.java))
+    }
+
+    @Test
     fun cardEncryptionResult_success_carriesJwe() {
         val jwe = "header.encryptedKey.iv.ciphertext.tag"
 
