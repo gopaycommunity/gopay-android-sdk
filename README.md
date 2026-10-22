@@ -477,8 +477,12 @@ modes are the iOS form's `.hidden`, `.live` and `.onSubmit`.
 ### Programmatic
 
 ```kotlin
+import cz.gopay.sdk.GopaySDK
+import cz.gopay.sdk.model.CardData
+
+// The sandbox test card, see Testing on the sandbox.
 val jwe: String = GopaySDK.getInstance().encryptCardData(
-    CardData(cardPan = "4444…", expMonth = "06", expYear = "27", cvv = "123")
+    CardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
 )
 // POST `jwe` to your backend; backend returns a card_token.
 ```
@@ -497,7 +501,7 @@ the charge's `payload`; nothing else changes about the charge or 3DS flow.
 
 ```kotlin
 val jwe = GopaySDK.getInstance().encryptCardData(
-    CardData(cardPan = "4444…", expMonth = "06", expYear = "27", cvv = "123")
+    CardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
 )
 val charge = session.chargeWithEncryptedCard(
     activity = activity,
@@ -990,6 +994,20 @@ the gateway's decision, not the app's.
 Both built-in hosts come from the Payments 4.0 spec's `servers` block. Use `DEVELOPMENT` only
 when you have been given a gateway that is neither — see
 [`ENVIRONMENT_USAGE.md`](ENVIRONMENT_USAGE.md).
+
+## Testing on the sandbox
+
+The sandbox is `Environment.SANDBOX`, with its host in the table above; it moves no money. GoPay
+publishes no list of test cards. These two were tested there with SDK 2.2.0:
+
+| Card | Result on the sandbox |
+| --- | --- |
+| `4444 4444 4444 4448`, expiry `12/28`, CVV `123` | The charge ends `SUCCEEDED` |
+| `4000 0000 0000 0002`, expiry `12/28`, CVV `123` | The charge ends `FAILED`: `awaitChargeState` throws `PAYMENT_DECLINED` (`PAYMENT_006`). The sandbox sends no `fail_reason` with it, so the message is only `Charge failed` |
+
+The sandbox does not ask for a 3DS challenge, and `ChallengePreference` does not change that, so
+the challenge cannot be tried there. In production the challenge comes when the card's bank asks
+for it.
 
 ## Error handling
 
