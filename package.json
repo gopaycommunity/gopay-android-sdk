@@ -57,6 +57,7 @@
                     "assets": [
                         "CHANGELOG.md",
                         "package.json",
+                        "README.md",
                         "sdk/gradle.properties"
                     ]
                 }

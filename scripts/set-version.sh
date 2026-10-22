@@ -7,6 +7,7 @@
 # here, and listed in the `assets` of @semantic-release/git so the release commit includes it:
 #
 #   * sdk/gradle.properties: sdk.version, what Maven Central publishes and BuildConfig reports
+#   * README.md: the cz.gopay:sdk dependency in Installation, so a copied install gets this release
 #
 # Invoked automatically by @semantic-release/exec's prepareCmd. Safe to run by hand too:
 #
@@ -40,5 +41,19 @@ replace() {
     echo "  $file"
 }
 
+# Rewrites the version in every `cz.gopay:sdk:<version>` coordinate of `file`, failing the same
+# way when there is none.
+replace_coordinate() {
+    local file="$1"
+    local path="$root/$file"
+
+    VERSION="$version" perl -0777 -pi -e \
+        "die qq(no cz.gopay:sdk coordinate in \$ARGV\\n) unless s/(cz\\.gopay:sdk:)[0-9][^\"'\\s]*/\$1\$ENV{VERSION}/g" \
+        "$path"
+
+    echo "  $file"
+}
+
 echo "Setting version $version in:"
 replace "sdk/gradle.properties" 'sdk\.version'
+replace_coordinate "README.md"
