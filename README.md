@@ -85,13 +85,12 @@ repositories {
 }
 
 dependencies {
-    implementation("cz.gopay:sdk:<version>")
+    implementation("cz.gopay:sdk:2.2.0")
 }
 ```
 
-Use the latest version listed on
-[Maven Central](https://central.sonatype.com/artifact/cz.gopay/sdk). Of the 1.x line only 1.0.0
-was ever published there; later 1.x versions exist only as tags in this repository.
+The badge at the top of this README shows the latest version on
+[Maven Central](https://central.sonatype.com/artifact/cz.gopay/sdk).
 
 To publish a build of your own to a local Maven repository, see
 [`sdk/docs/PUBLISHING.md`](sdk/docs/PUBLISHING.md#publishing-locally).
