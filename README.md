@@ -215,24 +215,56 @@ under the shareable key (see below). They are also what `encryptCardData()` and
 `PaymentCardForm` use. Without them a charge fails with
 `AUTH_SHAREABLE_KEY_MISSING` before anything is sent.
 
-### 3. Start a session and charge
+### 3. Show the card form and charge
+
+The first card payment needs the keys above and a payment your backend has created;
+[Your backend](#your-backend) says what it does and what it hands the app. Cards to try are in
+[Testing on the sandbox](#testing-on-the-sandbox). `PaymentCardForm` collects the card,
+`submitCardForm` encrypts it into a JWE, `chargeWithEncryptedCard` sends the charge and
+`awaitChargeState` waits for the result, running the 3DS challenge when the bank asks for one.
 
 Every session call is a `suspend` function. Run them in a scope that outlives a rotation, such as a
 ViewModel's `viewModelScope`; [Rotation and process death](#rotation-and-process-death) says why.
 
 ```kotlin
 import android.app.Activity
+import android.util.Log
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.session.AwaitChargeOptions
-import kotlinx.coroutines.CancellationException
+import cz.gopay.sdk.ui.CardFormValidationDisplay
+import cz.gopay.sdk.ui.PaymentCardForm
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+const val CARD_FORM_ID = "checkout-card"
+
+@Composable
+fun CheckoutScreen(viewModel: CheckoutViewModel, onPay: () -> Unit) {
+    val status by viewModel.status.collectAsState()
+    // imePadding keeps the fields and the Pay button above the keyboard; see The card form.
+    Column(Modifier.imePadding()) {
+        PaymentCardForm(
+            formId = CARD_FORM_ID,
+            validation = CardFormValidationDisplay.LIVE   // localized errors as the user types
+        )
+        Button(onClick = onPay) { Text("Pay") }
+        Text(status)
+    }
+}
 
 class CheckoutViewModel : ViewModel() {
     // The activity showing the checkout: set it in onStart and back to null in onStop. Each SDK
@@ -240,71 +272,74 @@ class CheckoutViewModel : ViewModel() {
     val screen = MutableStateFlow<Activity?>(null)
     private suspend fun currentScreen(): Activity = screen.filterNotNull().first()
 
+    // What the checkout tells the user.
+    val status = MutableStateFlow("")
+
     // paymentId, paymentSecret and returnUrl (its callback.return_url) come from YOUR backend
     // after it creates the payment.
-    fun pay(paymentId: String, paymentSecret: String, returnUrl: String, cardToken: String) {
+    fun pay(paymentId: String, paymentSecret: String, returnUrl: String) {
         viewModelScope.launch {
+            // The session first: when it cannot start, the card is still in the form.
             val session = try {
-                GopaySDK.getInstance().startPaymentSession(
-                    paymentId = paymentId,
-                    paymentSecret = paymentSecret
-                    // scope defaults to PaymentSession.DEFAULT_SCOPE ("payment:charge payment:read")
-                )
-            } catch (e: CancellationException) {
-                throw e                // the ViewModel is going away; nothing to show it on
-            } catch (e: Exception) {
-                showError(e)
+                GopaySDK.getInstance().startPaymentSession(paymentId, paymentSecret)
+            } catch (e: GopaySDKException) {
+                Log.w("Checkout", "The payment session did not start", e)   // the code is for you
+                status.value = "The payment could not start, try again"
                 return@launch
             }
+            var charged = false
             try {
-                try {
-                    // chargeWithCardToken derives the spec-required BrowserData from the activity.
-                    session.chargeWithCardToken(currentScreen(), cardToken)
-                    // Polls the charge once a second and runs the 3DS challenge itself, from the
-                    // activity given here, until the charge is SUCCEEDED.
-                    val charge = session.awaitChargeState(
-                        AwaitChargeOptions(activity = currentScreen(), returnUrl = returnUrl)
-                    )
-                    showResult(charge)
+                // The card the form holds, encrypted into a JWE; the form empties itself.
+                val jwe = try {
+                    GopaySDK.getInstance().submitCardForm(CARD_FORM_ID)
                 } catch (e: GopaySDKException) {
-                    when (e.errorCode) {
-                        // The charge ended FAILED; e.chargeState carries it, with fail_reason.
-                        GopayErrorCodes.PAYMENT_DECLINED -> showDeclined(e.chargeState)
-                        // Still REQUESTED, PROCESSING or UNKNOWN after 30 s (e.chargeState): not
-                        // a failure, ask again or wait for the notification on your backend, and
-                        // do not offer a new payment yet.
-                        GopayErrorCodes.PAYMENT_TIMEOUT -> askBackendForState()
-                        // The 3DS screen closed before it returned, but the charge was sent:
-                        // only its state may say what to offer next (see Reading the result).
-                        GopayErrorCodes.PAYMENT_CANCELLED -> showStateAfterClosedChallenge(session)
-                        else -> showError(e)   // the charge or a read failed
+                    // An empty or invalid form is VALIDATION_INVALID_INPUT. Anything else, such
+                    // as the key not being fetched, leaves the card in the form for another tap.
+                    Log.w("Checkout", "The card was not encrypted", e)
+                    status.value = if (e.errorCode == GopayErrorCodes.VALIDATION_INVALID_INPUT) {
+                        "Check the card details"
+                    } else {
+                        "Could not reach GoPay, try again"
                     }
+                    return@launch
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                showError(e)           // anything else, so the sample never takes the app down
+                session.chargeWithEncryptedCard(currentScreen(), jwe)
+                charged = true
+                // Polls the charge once a second and runs the 3DS challenge itself, from the
+                // activity given here, until the charge is SUCCEEDED.
+                session.awaitChargeState(
+                    AwaitChargeOptions(activity = currentScreen(), returnUrl = returnUrl)
+                )
+                status.value = "Paid"
+            } catch (e: GopaySDKException) {
+                Log.w("Checkout", "The payment did not complete", e)   // the code is for you
+                status.value = when {
+                    // The charge ended FAILED. e.chargeState carries it, with failReason when the
+                    // gateway sends one. Paying again needs a new payment.
+                    e.errorCode == GopayErrorCodes.PAYMENT_DECLINED -> "Payment declined"
+                    // Still undecided after 30 s, or the user closed the 3DS screen: the charge
+                    // was sent, so read its state again or ask your backend before offering a
+                    // new payment (see Reading the result).
+                    e.errorCode == GopayErrorCodes.PAYMENT_TIMEOUT ||
+                        e.errorCode == GopayErrorCodes.PAYMENT_CANCELLED ->
+                        "The payment is being processed"
+                    // A NETWORK_* after the charge went out, or one without a 4xx answer, leaves
+                    // the result unknown: see After a network error before offering to pay again.
+                    e.errorCode.startsWith("NETWORK_") &&
+                        (charged || (e.getHttpStatusCode() ?: 500) >= 500) ->
+                        "The payment result is not known yet"
+                    else -> "The payment failed"
+                }
             } finally {
-                session.close()  // wipes the secret + JWT from memory
+                session.close()   // wipes the secret + JWT from memory
             }
-        }
-    }
-
-    // The user closed the challenge, so the SDK will not open the same one again: read the
-    // state by hand (settle is in Reading the result) and offer a new payment only when the
-    // gateway has no charge at all.
-    private suspend fun showStateAfterClosedChallenge(session: PaymentSession) {
-        try {
-            showResult(settle(session))
-        } catch (e: GopaySDKException) {
-            if (e.getHttpStatusCode() == 404) offerPaymentAgain()   // no charge went out
-            else askBackendForState()   // could not be read: the charge may be through
-        } catch (e: PaymentStillPending) {
-            askBackendForState()        // not decided yet
         }
     }
 }
 ```
+
+That is the whole of a card payment in the app. Your backend creates the payment and settles it;
+what the app reports is not proof of payment (see [Your backend](#your-backend)).
 
 Prefer `chargeWithCardToken` / `chargeWithEncryptedCard` / `chargeWithWallet` over the raw
 `charge(ChargePaymentRequest)`: the spec requires `browser_data` on every card charge, and the
@@ -316,6 +351,19 @@ challengePreference)`, for when you pass the browser data yourself. There `brows
 required parameter: deriving the device's browser data needs a `Context`, which iOS does not
 need, so on iOS it is optional.
 
+#### Charging a saved card token instead
+
+When your backend has saved the card as a token (`POST /cards/tokens`, step 6 under
+[Your backend](#your-backend)), the same session charges the token in place of the JWE, and
+everything after the charge stays as above:
+
+```kotlin
+session.chargeWithCardToken(currentScreen(), cardToken)
+```
+
+Card tokenization is off until GoPay enables it for you through `integration@gopay.com`. The card
+form path above needs no such step.
+
 ### Browser data / User-Agent
 
 `BrowserData.deviceDefault(activity)` is the public extension those wrappers call. Call it
@@ -323,6 +371,7 @@ yourself when you want to see or adjust what goes out:
 
 ```kotlin
 import cz.gopay.sdk.model.BrowserData
+import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.deviceDefault
 
 val browserData = BrowserData.deviceDefault(activity)
@@ -430,27 +479,37 @@ JWE to `POST /cards/tokens` and receives a card token, which the app can pass to
 since 2.2. The form has no pay button of its own; yours calls `submitCardForm`.
 
 ```kotlin
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.ui.CardFormValidationDisplay
 import cz.gopay.sdk.ui.PaymentCardForm
+import kotlinx.coroutines.launch
 
 @Composable
-fun MyCardSheet(onJwe: (String) -> Unit) {
+fun MyCardSheet(onJwe: (String) -> Unit, onError: (GopaySDKException) -> Unit) {
     val scope = rememberCoroutineScope()
-    PaymentCardForm(
-        formId = "checkout-card",                       // generated when left out
-        validation = CardFormValidationDisplay.LIVE     // inline errors as the user types
-    )
-    Button(onClick = {
-        scope.launch {
-            try {
-                onJwe(GopaySDK.getInstance().submitCardForm("checkout-card"))
-            } catch (e: GopaySDKException) {
-                showError(e.message)   // VALIDATION_INVALID_INPUT for an empty or invalid form
+    Column(Modifier.imePadding()) {
+        PaymentCardForm(
+            formId = "checkout-card",                       // generated when left out
+            validation = CardFormValidationDisplay.LIVE     // inline errors as the user types
+        )
+        Button(onClick = {
+            scope.launch {
+                try {
+                    onJwe(GopaySDK.getInstance().submitCardForm("checkout-card"))
+                } catch (e: GopaySDKException) {
+                    onError(e)   // VALIDATION_INVALID_INPUT for an empty or invalid form
+                }
             }
-        }
-    }) { Text("Pay") }
+        }) { Text("Pay") }
+    }
 }
 ```
 
@@ -503,6 +562,11 @@ input — this skips the server-side `POST /cards/tokens` round-trip entirely. T
 the charge's `payload`; nothing else changes about the charge or 3DS flow.
 
 ```kotlin
+import cz.gopay.sdk.GopaySDK
+import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.ChallengePreference
+import cz.gopay.sdk.session.AwaitChargeOptions
+
 val jwe = GopaySDK.getInstance().encryptCardData(
     CardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
 )
@@ -650,8 +714,10 @@ suspend fun settle(session: PaymentSession): ChargePaymentResponse {
             ChargeState.REQUESTED, ChargeState.PROCESSING, ChargeState.UNKNOWN -> delay(1_000)
         }
     }
-    throw PaymentStillPending()   // your own exception: ask your backend later
+    throw PaymentStillPending()
 }
+
+class PaymentStillPending : Exception()   // your own exception: ask your backend later
 ```
 
 A charge that comes back in `ACTION_REQUIRED` with `action?.redirectUrl` needs
@@ -675,7 +741,7 @@ the SDK keeps nothing on disk. Two things follow:
   and `awaitChargeState` keeps the one in its options until the charge is decided, because it
   starts the challenge from it whenever the gateway asks.
   So pass the one on screen at that moment and do not keep one captured in the coroutine, as the
-  [quick start](#3-start-a-session-and-charge) shows. The SDK's own screens keep their state
+  [quick start](#3-show-the-card-form-and-charge) shows. The SDK's own screens keep their state
   across a rotation.
 - **Process death ends the call.** It happens above all while the user is away in a banking app
   during 3DS and Android reclaims your app. When the user comes back, the restored 3DS screen
@@ -692,16 +758,17 @@ through `GopaySDK.submitCardForm(formId)` as shown under [The card form](#the-ca
 callbacks below are the older, Android-only way of doing the same, and keep working.
 
 ```kotlin
+import androidx.compose.runtime.Composable
 import cz.gopay.sdk.ui.CardEncryptionResult
 import cz.gopay.sdk.ui.PaymentCardForm
 
 @Composable
-fun MyCardSheet(onJwe: (String) -> Unit) {
+fun MyCardSheet(onJwe: (String) -> Unit, onError: (CardEncryptionResult.Error) -> Unit) {
     PaymentCardForm(
         onEncryptionComplete = { result ->
             when (result) {
                 is CardEncryptionResult.Success -> onJwe(result.jwe)
-                is CardEncryptionResult.Error -> showError(result.message)
+                is CardEncryptionResult.Error -> onError(result)   // result.message is for logs
             }
         }
     )
@@ -725,7 +792,7 @@ Button(onClick = {
     scope.launch {
         when (val result = submit?.invoke()) {
             is CardEncryptionResult.Success -> viewModel.payWithJwe(result.jwe)
-            is CardEncryptionResult.Error -> showError(result.message)
+            is CardEncryptionResult.Error -> onError(result)
             null -> Unit
         }
     }
@@ -920,8 +987,10 @@ PaymentCardForm(onEncryptionComplete = { … }, locale = "cs")
 Add your own translation with the same structure and select it by code:
 
 ```kotlin
+import cz.gopay.sdk.GopaySDK
+import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.locales.GopayLocales
-import cz.gopay.sdk.locales.GopayLocaleStrings
+import cz.gopay.sdk.ui.PaymentCardForm
 
 val brandEnglish = GopayLocales.EN.copy(panLabel = "Your card number")
 
