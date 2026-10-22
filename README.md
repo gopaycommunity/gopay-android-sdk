@@ -123,35 +123,48 @@ that version to both commands:
 
 ## Your backend
 
-The SDK charges a payment your server has created and settles nothing on its own. What your server
-does, as the GoPay guide describes it
+The SDK charges a payment your server has created and settles nothing on its own. Your server
+does the steps below, as the GoPay guide describes them
 ([Security and credentials](https://api-docs.gopay.com/en/docs/01-security.md),
 [Payment states and lifecycle](https://api-docs.gopay.com/en/docs/02-payment-lifecycle.md),
-[Saved cards](https://api-docs.gopay.com/en/docs/05-saved-cards.md)):
+[Saved cards](https://api-docs.gopay.com/en/docs/05-saved-cards.md)). It talks to the same
+gateway as the app: the sandbox at `https://gw.sandbox.gopay.com/gp-gw/api/4.0/`, production at
+`https://gate.gopay.com/gp-gw/api/4.0/` (see [Environments](#environments)). A payment exists only
+on the gateway it was created on.
 
-1. **Create the payment** with `POST /eshops/{goid}/payments`, under a merchant access token with
-   the `payment:write` scope. The body needs `amount`, `currency`, `order_number`, `customer` and
+1. **Get a merchant access token** with `POST /oauth2/token`, `grant_type=client_credentials`, your
+   merchant `client_id` and `client_secret` as basic auth and the scopes you need: `payment:write`
+   and `payment:read`, plus `card:write` to save cards. The token is currently valid for 15
+   minutes; read `expires_in` rather than counting on it. The client secret stays on your server;
+   the app never sees it.
+2. **Create the payment** with `POST /eshops/{goid}/payments`, under that token with the
+   `payment:write` scope. The body needs `amount`, `currency`, `order_number`, `customer` and
    `callback`. `amount` is an integer in the currency's minor unit: 100.00 CZK is `10000`.
-2. **Set both callback URLs.** `callback.return_url` and `callback.notification_url` are required.
+3. **Set both callback URLs.** `callback.return_url` and `callback.notification_url` are required.
    According to the GoPay guide both must be absolute HTTPS URLs; in production a `return_url`
    that is not HTTPS gets a 403 when the payment is created, the sandbox is more tolerant. The
    3DS screen closes when the challenge comes back to `return_url` (see
    [3DS verification](#3ds-verification)), so the URL does not have to serve anything to the app.
    `notification_url` must be reachable from GoPay's servers.
-3. **Give the app `id`, `payment_secret` and `return_url`**, nothing else; the app passes the
-   first two to `startPaymentSession` and `return_url` to `awaitChargeState` or
-   `handle3dsVerification`. GoPay is removing `return_url` from the charge response, so the app
-   should get it only from you.
+4. **Give the app `id`, `payment_secret` and `return_url`**, nothing else; `id` is the payment
+   id the SDK calls `paymentId`. The app passes the first two to `startPaymentSession` and
+   `return_url` to `awaitChargeState` or `handle3dsVerification`. GoPay is removing `return_url`
+   from the charge response, so the app should get it only from you.
    According to the GoPay guide, `payment_secret` must not be stored, logged or put in a URL, and
    it is valid for seven days, after which the gateway refuses it with a 403.
-4. **Settle the payment on the server.** What the app reports is not proof of payment. GoPay
+5. **Settle the payment on the server.** What the app reports is not proof of payment. GoPay
    sends a `GET` to `notification_url` with the payment `id` on every state change; answer `204`
    and read the payment with `GET /payments/{id}`. The GoPay guide treats this webhook as the
    authoritative signal. A payment nobody charges times out, after one hour by default.
-5. **Save a card, if you need to,** by exchanging the JWE from the card form for a permanent token
-   with `POST /cards/tokens` (merchant scope `card:write`). Tokenisation is off until GoPay enables
+6. **Save a card, if you need to,** by exchanging the JWE from the card form for a permanent token
+   with `POST /cards/tokens` (merchant scope `card:write`). Tokenization is off until GoPay enables
    it for you through `integration@gopay.com`. A JWE is single-use: it pays one charge or makes one
-   token, not both. A Google Pay payload cannot be tokenised.
+   token, not both. A Google Pay payload cannot be tokenized.
+
+The demo app does steps 1 to 4 and 6 in the app itself, in
+[`MerchantBackendSimulator.kt`](app/src/main/java/com/gopay/example/MerchantBackendSimulator.kt),
+so it runs without a server; it is a working example of the requests, and in a real integration
+they belong on your server.
 
 ## Quick start
 
