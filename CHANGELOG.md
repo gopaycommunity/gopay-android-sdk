@@ -1,3 +1,12 @@
+## [2.2.1](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/2.2.0...2.2.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* keep the demo console clear of the system bars GPMOB-143 ([ac38e6f](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/ac38e6f01f39491308268c4d23ded747c141600b))
+* keep the demo's pay buttons above the keyboard GPMOB-143 ([9a56e15](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/9a56e159f96028a25e8865de3d81f575b199d0bc))
+* name the released version in the README install GPMOB-143 ([543c694](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/commits/543c694f5bd663499575b856da3a8b4805c66b17))
+
 # [2.2.0](https://bitbucket.org/gp-gopay/gp-gw-android-sdk/compare/2.1.0...2.2.0) (2026-10-21)
 
 
