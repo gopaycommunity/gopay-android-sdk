@@ -123,7 +123,7 @@ class ChargePollerTest {
 
     @Test
     fun `FAILED without a fail reason throws PAYMENT_006 with the bare message`() = runTest {
-        // What the sandbox sends for a declined card: no fail_reason at all.
+        // A declined card on the sandbox may come this way, without a fail_reason.
         val failed = state(ChargeState.FAILED)
         val gateway = Gateway(this, failed)
 

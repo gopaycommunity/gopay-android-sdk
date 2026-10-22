@@ -687,12 +687,12 @@ It reads the charge at once and then one `intervalMs` after each answer, hands e
 `onStateChange`, and ends with the first result: `SUCCEEDED` is returned, `FAILED` throws
 `PAYMENT_DECLINED` (`PAYMENT_006`) with the charge on `GopaySDKException.chargeState`. Its
 `fail_reason`, when the gateway sends one, is on `chargeState.failReason` and appended to the
-message as `Charge failed: <fail_reason>`; without one the message is only `Charge failed`, which
-is what the sandbox gives for a declined card. `REQUESTED`, `PROCESSING`, `UNKNOWN` and an
-`ACTION_REQUIRED` without a new address (none, empty, or one already reported) are waited out as
-undecided; when they last past `initialTimeoutMs`, counted from the call, the read on the deadline
-decides, and a charge still undecided there throws `PAYMENT_TIMEOUT` (`PAYMENT_007`) with that
-state on `chargeState`.
+message as `Charge failed: <fail_reason>`; without one the message is only `Charge failed`. On
+the sandbox a declined card may come with or without a `fail_reason`, so the app has to handle both
+forms of the message. `REQUESTED`, `PROCESSING`, `UNKNOWN` and an `ACTION_REQUIRED` without a
+new address (none, empty, or one already reported) are waited out as undecided; when they last
+past `initialTimeoutMs`, counted from the call, the read on the deadline decides, and a charge
+still undecided there throws `PAYMENT_TIMEOUT` (`PAYMENT_007`) with that state on `chargeState`.
 The gateway may still decide it, so read the state again or wait for your backend's notification
 rather than offering a new payment; the SDK does not pass this code to `errorCallback`, as nothing
 failed. A 3DS challenge takes as long as the user takes, so it is not timed: for each new, non-empty
@@ -1107,7 +1107,7 @@ publishes no list of test cards. These two were tested there with SDK 2.2.0:
 | Card | Result on the sandbox |
 | --- | --- |
 | `4444 4444 4444 4448`, expiry `12/28`, CVV `123` | The charge ends `SUCCEEDED` |
-| `4000 0000 0000 0002`, expiry `12/28`, CVV `123` | The charge ends `FAILED`: `awaitChargeState` throws `PAYMENT_DECLINED` (`PAYMENT_006`). The sandbox sends no `fail_reason` with it, so the message is only `Charge failed` |
+| `4000 0000 0000 0002`, expiry `12/28`, CVV `123` | The charge ends `FAILED`: `awaitChargeState` throws `PAYMENT_DECLINED` (`PAYMENT_006`). The sandbox may or may not send a `fail_reason` with it, so the message is either `Charge failed: PAYMENT_FAILED` or only `Charge failed`; the app has to handle both |
 
 The sandbox does not ask for a 3DS challenge, and `ChallengePreference` does not change that, so
 the challenge cannot be tried there. In production the challenge comes when the card's bank asks
