@@ -15,8 +15,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -253,8 +253,9 @@ fun SDKTestScreen() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            // Edge to edge: the keyboard would cover the pay bar.
-            .imePadding()
+            // Edge to edge: keeps the console clear of the status bar, the navigation bar and the
+            // keyboard, which would otherwise cover the title and the buttons.
+            .safeDrawingPadding()
             .padding(16.dp)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
