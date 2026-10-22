@@ -122,6 +122,19 @@ class ChargePollerTest {
     }
 
     @Test
+    fun `FAILED without a fail reason throws PAYMENT_006 with the bare message`() = runTest {
+        // What the sandbox sends for a declined card: no fail_reason at all.
+        val failed = state(ChargeState.FAILED)
+        val gateway = Gateway(this, failed)
+
+        val e = assertThrowsSdk { manual(gateway).run() }
+
+        assertEquals(GopayErrorCodes.PAYMENT_DECLINED, e.errorCode)
+        assertSame(failed, e.chargeState)
+        assertEquals("Charge failed", e.message)
+    }
+
+    @Test
     fun `a charge that never leaves PROCESSING throws PAYMENT_007 at the initial timeout`() = runTest {
         val gateway = Gateway(this, *Array(100) { state(ChargeState.PROCESSING) })
 

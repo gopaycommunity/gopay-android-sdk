@@ -593,7 +593,7 @@ try {
     showPaid(charge)                                       // SUCCEEDED
 } catch (e: GopaySDKException) {
     when (e.errorCode) {
-        GopayErrorCodes.PAYMENT_DECLINED -> showDeclined(e.chargeState)  // FAILED, fail_reason in the message
+        GopayErrorCodes.PAYMENT_DECLINED -> showDeclined(e.chargeState)  // FAILED; chargeState?.failReason when the gateway sends one
         GopayErrorCodes.PAYMENT_TIMEOUT -> askBackendForState()         // still undecided after 30 s; e.chargeState is the last state
         GopayErrorCodes.PAYMENT_CANCELLED -> showStateAfterClosedChallenge(session) // the charge was sent; see the quick start
         else -> showError(e)                                            // a read or the challenge failed
@@ -603,11 +603,14 @@ try {
 
 It reads the charge at once and then one `intervalMs` after each answer, hands every state to
 `onStateChange`, and ends with the first result: `SUCCEEDED` is returned, `FAILED` throws
-`PAYMENT_DECLINED` (`PAYMENT_006`) with the charge on `GopaySDKException.chargeState` and its
-`fail_reason` in the message. `REQUESTED`, `PROCESSING`, `UNKNOWN` and an `ACTION_REQUIRED` without
-a new address (none, empty, or one already reported) are waited out as undecided; when they
-last past `initialTimeoutMs`, counted from the call, the read on the deadline decides, and a charge
-still undecided there throws `PAYMENT_TIMEOUT` (`PAYMENT_007`) with that state on `chargeState`.
+`PAYMENT_DECLINED` (`PAYMENT_006`) with the charge on `GopaySDKException.chargeState`. Its
+`fail_reason`, when the gateway sends one, is on `chargeState.failReason` and appended to the
+message as `Charge failed: <fail_reason>`; without one the message is only `Charge failed`, which
+is what the sandbox gives for a declined card. `REQUESTED`, `PROCESSING`, `UNKNOWN` and an
+`ACTION_REQUIRED` without a new address (none, empty, or one already reported) are waited out as
+undecided; when they last past `initialTimeoutMs`, counted from the call, the read on the deadline
+decides, and a charge still undecided there throws `PAYMENT_TIMEOUT` (`PAYMENT_007`) with that
+state on `chargeState`.
 The gateway may still decide it, so read the state again or wait for your backend's notification
 rather than offering a new payment; the SDK does not pass this code to `errorCallback`, as nothing
 failed. A 3DS challenge takes as long as the user takes, so it is not timed: for each new, non-empty
@@ -1037,7 +1040,7 @@ per-payment flow:
 | `PAYMENT_VERIFICATION_IN_PROGRESS` | A second 3DS WebView attempted while one is open |
 | `PAYMENT_VERIFICATION_UNREACHABLE` | The 3DS challenge never reached the user: the page would not load, e.g. the redirect URL is dead or is not a web address, or no app took the hand-off |
 | `PAYMENT_CANCELLED` | The Google Pay sheet or the 3DS screen closed before it finished, or the 3DS page failed after it had drawn; read the charge before paying again |
-| `PAYMENT_DECLINED` | `awaitChargeState` saw the charge end `FAILED`; the charge is on `chargeState`, its `fail_reason` in the message. A retry needs a new payment |
+| `PAYMENT_DECLINED` | `awaitChargeState` saw the charge end `FAILED`; the charge is on `chargeState`, with `failReason` when the gateway sends one, which the message then repeats. A retry needs a new payment |
 | `PAYMENT_TIMEOUT` | `awaitChargeState` saw the charge stay undecided (`REQUESTED`/`PROCESSING`/`UNKNOWN`, or `ACTION_REQUIRED` without a new address) for the whole `initialTimeoutMs`; the last state is on `chargeState`. Not a failure and not passed to `errorCallback`: read the state again or wait for the notification |
 | `VALIDATION_INVALID_INPUT` | Invalid input: an empty `paymentId` / `paymentSecret`, a card that fails the PAN / month / year / CVV rules in `encryptCardData`, a `submitCardForm` with no card or an invalid one, or `awaitChargeState` with a non-positive interval or timeout, or in `ThreeDSMode.AUTOMATIC` without an `activity` |
 | `CONFIG_SDK_NOT_INITIALIZED` | `getInstance()`, and so any call, before `initialize` |

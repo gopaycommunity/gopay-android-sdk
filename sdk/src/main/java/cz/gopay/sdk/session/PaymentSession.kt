@@ -308,7 +308,8 @@ class PaymentSession internal constructor(
      * the last one before the call returns or throws. Then:
      * - `SUCCEEDED` returns the state;
      * - `FAILED` throws [GopayErrorCodes.PAYMENT_DECLINED], with the state on
-     *   [GopaySDKException.chargeState] and the gateway's `fail_reason` in the message;
+     *   [GopaySDKException.chargeState] and the gateway's `fail_reason`, when there is one, in
+     *   the message;
      * - `REQUESTED`, `PROCESSING`, `UNKNOWN` and an `ACTION_REQUIRED` without a new address are
      *   waited out as undecided. When they last past
      *   [AwaitChargeOptions.initialTimeoutMs], counted from the call, the read on the deadline
