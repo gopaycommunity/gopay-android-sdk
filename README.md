@@ -513,6 +513,14 @@ fun MyCardSheet(onJwe: (String) -> Unit, onError: (GopaySDKException) -> Unit) {
 }
 ```
 
+**Keep the form above the keyboard.** Put the form and your pay button in content that is padded
+for the keyboard, as `Modifier.imePadding()` does above. An app that targets SDK 35 or later runs
+edge to edge on Android 15 and later, and so does one that calls `enableEdgeToEdge()`: the window
+no longer shrinks when the keyboard opens, so without that padding the keyboard covers the lower
+fields or the pay button. In a scrolling screen, put `imePadding()` on the scrolling container.
+On Android 10 and older the padding reads the keyboard's height only when the activity declares
+`android:windowSoftInputMode="adjustResize"` in the manifest.
+
 A `submitCardForm()` without an id reads the most recently active form. The SDK drops its copy of
 the card after a successful `submitCardForm()`, when the form leaves the composition, and on
 demand through `GopaySDK.getInstance().clearCardFormData(formId)`; so call `submitCardForm()`
@@ -535,6 +543,13 @@ fields, from the resolved locale strings: `HIDDEN` (the default, and the only be
 something invalid, never for an empty field; `ON_SUBMIT` shows them, the "required" message for
 empty fields included, once a submit ran, and hides them again when the form is emptied. The
 modes are the iOS form's `.hidden`, `.live` and `.onSubmit`.
+
+**Messages for the user come from the form.** The `message` of the `VALIDATION_INVALID_INPUT` that
+`submitCardForm` throws, and the messages `onValidationError` reports, are in English and meant
+for you as a developer, for logs; do not show them to the user. To tell the user what is wrong
+with the card, use `LIVE` or `ON_SUBMIT`, where the form shows its own errors in the user's
+language. With `HIDDEN`, take the texts from the locale strings, as
+[Localizing the form](#localizing-the-form) shows.
 
 ### Programmatic
 
@@ -729,7 +744,7 @@ with HTTP 404. Your backend, not the app, decides whether the order is paid (see
 ### Rotation and process death
 
 The 3DS challenge and the Google Pay sheet are activities of their own, shown on top of yours, and
-the SDK keeps nothing on disk. Two things follow:
+the SDK keeps nothing on disk. Three things follow:
 
 - **Call the SDK from a scope that survives a configuration change**, such as a ViewModel's
   `viewModelScope`, not your activity's `lifecycleScope`. A rotation, a switch to dark mode or a
@@ -749,6 +764,17 @@ the SDK keeps nothing on disk. Two things follow:
   (`SavedStateHandle`, `onSaveInstanceState`), never `payment_secret`, and when your screen comes
   back with an `id` but no result, ask your backend for the payment's state before offering to pay
   again. Your backend learns it from the notification and `GET /payments/{id}`.
+- **A configuration change empties the card form.** `PaymentCardForm` holds the card in memory
+  only, never in saved state: the PAN and CVV must not go into a `Bundle`, which the system may
+  write out. When a rotation, a switch to dark mode or another configuration change recreates your
+  activity, the form leaves the composition, the SDK drops its copy of the card, and the form that
+  comes back is empty. A JWE already made from the card is not affected. To keep a half-typed card
+  across a rotation, have the checkout activity handle those changes itself, so it is not
+  recreated, for example with
+  `android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"`
+  in the manifest; Android recommends that only where recreating the activity is a problem, so
+  keep it to that activity, and anything you leave out of the list still recreates it. Otherwise
+  the user types the card again. After process death the form is empty in any case.
 
 ### `PaymentCardForm` composable
 
@@ -776,8 +802,9 @@ fun MyCardSheet(onJwe: (String) -> Unit, onError: (CardEncryptionResult.Error) -
 ```
 
 `onValidationError { … }` reports the fields that failed validation for inline error display
-of your own, when `validation` is left at `HIDDEN`. To submit from a button of your own, take
-the submit function from `onFormReady`. Its type is
+of your own, when `validation` is left at `HIDDEN`; its messages are English, so take the texts the
+user sees from the locale strings (see [The card form](#the-card-form)). To submit from a button
+of your own, take the submit function from `onFormReady`. Its type is
 `(suspend () -> CardEncryptionResult) -> Unit`: the form hands you a `suspend` function once,
 and each call validates the fields, encrypts them and returns the result (it also goes to
 `onEncryptionComplete`); it is `submitCardForm` for this form, with the exception returned inside
