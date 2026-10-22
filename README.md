@@ -464,8 +464,11 @@ everything as the user typed it, since nothing has been authorized yet. A second
 emptied form fails with `VALIDATION_INVALID_INPUT` and the message
 `CardEncryptionResult.NO_CARD_DATA_MESSAGE`; a form that fails validation with
 `CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE`. The gateway accepts each JWE **once** and
-its payload expires 10 minutes after creation; to retry a failed charge, have the user confirm the
-card again.
+its payload expires 10 minutes after creation. A charge that never reached the gateway leaves the
+JWE unused, so keep it until the charge is through: it can be charged again until it expires, and
+[After a network error](#after-a-network-error) says how to tell. Otherwise, to retry, have the
+user confirm the card again. A rotation empties the form as well, see
+[Rotation and process death](#rotation-and-process-death).
 
 `validation` decides whether the form shows its own localized validation errors beneath the
 fields, from the resolved locale strings: `HIDDEN` (the default, and the only behaviour before
@@ -595,8 +598,8 @@ try {
     when (e.errorCode) {
         GopayErrorCodes.PAYMENT_DECLINED -> showDeclined(e.chargeState)  // FAILED; chargeState?.failReason when the gateway sends one
         GopayErrorCodes.PAYMENT_TIMEOUT -> askBackendForState()         // still undecided after 30 s; e.chargeState is the last state
-        GopayErrorCodes.PAYMENT_CANCELLED -> showStateAfterClosedChallenge(session) // the charge was sent; see the quick start
-        else -> showError(e)                                            // a read or the challenge failed
+        GopayErrorCodes.PAYMENT_CANCELLED -> askBackendForState()       // the 3DS screen closed, but the charge was sent
+        else -> showError(e)                                            // a read or the challenge failed; see After a network error
     }
 }
 ```
@@ -620,7 +623,9 @@ with the timeout started over from the challenge's return; in `ThreeDSMode.MANUA
 reported address cancels the timeout for good and you run the challenge. The same address is never
 run or reported twice. The challenge's own errors end the call unchanged: `PAYMENT_CANCELLED` when
 the user closed it, `PAYMENT_VERIFICATION_UNREACHABLE`, `PAYMENT_VERIFICATION_IN_PROGRESS`. So does
-a failed read, with its `NETWORK_*` code, and an exception thrown by one of the callbacks.
+a failed read, with its `NETWORK_*` code, and an exception thrown by one of the callbacks. The
+charge was sent by then, so a `NETWORK_*` here means the result is not known yet, not that the
+payment failed; see [After a network error](#after-a-network-error).
 Cancelling the coroutine stops the polling at once, closes a challenge that is up, and stays a
 `CancellationException`. `AUTOMATIC` without an `activity`, or an interval or timeout that is not
 positive, is refused with `VALIDATION_INVALID_INPUT` before anything is sent. Two calls on the same
@@ -1020,7 +1025,8 @@ original exception is the `cause`; nor does an invalid argument, a bad base URL 
 encryption that fails, which are `VALIDATION_INVALID_INPUT`, `CONFIG_INVALID_BASE_URL` and
 `INTERNAL_UNEXPECTED_ERROR` since 2.2 rather than platform exceptions. A coroutine cancellation
 stays a `CancellationException` and is never mapped. Codes most likely to surface in the
-per-payment flow:
+per-payment flow; what a `NETWORK_*` code means for the payment is under
+[After a network error](#after-a-network-error):
 
 | Code | When |
 | --- | --- |
@@ -1101,6 +1107,52 @@ Every code, with its causes and what to do about it, is in
 [`sdk/docs/ERROR_CODES.md`](sdk/docs/ERROR_CODES.md). The codes are shared with the iOS SDK. Codes
 neither SDK throws stay in `GopayErrorCodes` for 2.0, deprecated, so code written against 1.x that
 names them still compiles; 3.0 removes them. ERROR_CODES marks them.
+
+### After a network error
+
+A `NETWORK_*` code means the request got no usable answer from the gateway, not that the payment
+failed. What to do depends on the call that threw it.
+
+- **`awaitChargeState` or `getChargeState`, after the charge call returned.** The charge reached
+  the gateway and its result is not known yet. Read the state again with `getChargeState()` or
+  `awaitChargeState` once the connection is back, and do not offer a new payment: the customer may
+  already have paid. If the app cannot get through, your backend learns the result from the
+  notification on `notification_url`.
+- **The charge call itself** (`chargeWithEncryptedCard`, `chargeWithCardToken`,
+  `chargeWithWallet`, `charge`). Before it sends the charge, the SDK fetches the browser data and,
+  when the payment token has expired, a new token, so the error may come from before the charge
+  went out.
+  - **With an HTTP status** (`NETWORK_002` for a 4xx, `NETWORK_003` for a 5xx), the gateway
+    answered, and its message says why. After a 5xx, read `getChargeState()` as well before
+    anything else: the charge may exist.
+  - **Without an HTTP status** (`NETWORK_001`, `NETWORK_004`, `NETWORK_005`, `NETWORK_007`), the
+    charge may not have gone out, or it reached the gateway and the answer was lost. Read
+    `getChargeState()`: a charge state means the charge exists, so follow it as above;
+    `NETWORK_002` with HTTP status 404 means no charge exists.
+
+```kotlin
+import cz.gopay.sdk.exception.GopayErrorCodes
+import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.session.PaymentSession
+
+/** Whether the payment has a charge, after the charge call ended with a NETWORK_* code. */
+suspend fun chargeExists(session: PaymentSession): Boolean = try {
+    session.getChargeState()
+    true
+} catch (e: GopaySDKException) {
+    // No charge is NETWORK_002 with HTTP 404; anything else, such as still being offline, does
+    // not tell.
+    if (e.errorCode == GopayErrorCodes.NETWORK_CLIENT_ERROR && e.getHttpStatusCode() == 404) false
+    else throw e
+}
+```
+
+When no charge exists after a code without an HTTP status, charge again with the same JWE while it
+is within its 10 minutes: no charge used it. `submitCardForm` empties the form once it has returned
+the JWE, so this spares the user typing the card again. Charge on the same session if you have not
+closed it, or on a new one started from the same payment id and payment secret. Keep the JWE until
+a charge exists, and drop it then or once it has expired. Once the 10 minutes are over, or when the
+gateway answered the charge with an error, have the user enter the card again.
 
 ## Shared API with iOS
 
