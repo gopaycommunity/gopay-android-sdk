@@ -1,8 +1,13 @@
 # GoPay Android SDK
 
-Android SDK for charging GoPay payments from a mobile app. Maps to the GoPay Payments 4.0 API: the
-[OpenAPI specification](https://api-docs.gopay.com/spec/en/payments.yaml) and the
-[API documentation](https://api-docs.gopay.com/en/api).
+[![Maven Central](https://img.shields.io/maven-central/v/cz.gopay/sdk)](https://central.sonatype.com/artifact/cz.gopay/sdk)
+[![semantic-release: angular](https://img.shields.io/badge/semantic--release-angular-e10079)](https://github.com/semantic-release/semantic-release)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Android SDK for charging GoPay payments from a mobile app, for the GoPay Payments 4.0 API:
+[API documentation](https://api-docs.gopay.com/en/api),
+[OpenAPI specification](https://api-docs.gopay.com/spec/en/payments.yaml),
+[`cz.gopay:sdk` on Maven Central](https://central.sonatype.com/artifact/cz.gopay/sdk).
 
 ## Overview
 
