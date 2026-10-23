@@ -118,9 +118,12 @@ fun SDKTestScreen() {
     }
 
     fun run(label: String, block: suspend () -> Unit) {
+        // Taken on the tap itself, not in the coroutine: a second tap can land before the buttons
+        // have redrawn disabled, and finds the label held.
+        if (busyLabel != null) return
+        busyLabel = label
         coroutineScope.launch {
             responseText = ""
-            busyLabel = label
             try {
                 block()
             } catch (e: GopaySDKException) {
@@ -676,8 +679,11 @@ fun CardFormSection(isBusy: Boolean, onError: (String) -> Unit, onJwe: (String) 
 
         Button(
             onClick = {
+                // Taken on the tap, like the console's run(): a second tap before the button
+                // redraws disabled would encrypt again.
+                if (isProcessing || isBusy) return@Button
+                isProcessing = true
                 coroutineScope.launch {
-                    isProcessing = true
                     errorMessage = null
                     try {
                         // Validates the form, fetches the public key, encrypts, and empties the

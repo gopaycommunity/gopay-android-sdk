@@ -130,6 +130,11 @@ class CheckoutController {
     // region Actions
 
     suspend fun pay(activity: Activity) {
+        // The label is the lock. A second tap can land before the pay button has redrawn
+        // disabled, so it is taken here, before the first suspension, and a second pay() that
+        // finds it held sends nothing.
+        if (isBusy) return
+        busyLabel = "Preparing your order…"
         banner = null
         cardFormError = null
         chargeSent = false
@@ -174,6 +179,8 @@ class CheckoutController {
     /** Waits for the charge again — used by the pending result screen. */
     suspend fun refreshChargeState(activity: Activity) {
         val current = session ?: return
+        // Same lock as pay(): a second tap before Refresh redraws disabled waits for nothing new.
+        if (isBusy) return
         busyLabel = "Refreshing…"
         try {
             outcome = settle(activity, current)
