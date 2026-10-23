@@ -1,3 +1,62 @@
+// The commit transform of conventional-changelog-angular 8.3.1 (src/writer.js), minus the links it
+// puts in the subject for "#123" (issues) and "@name" (users).
+const transformCommit = (commit) => {
+    let discard = true;
+    const notes = commit.notes.map((note) => {
+        discard = false;
+
+        return {
+            ...note,
+            title: "BREAKING CHANGES"
+        };
+    });
+    let { type } = commit;
+
+    if (commit.type === "feat") {
+        type = "Features";
+    } else if (commit.type === "fix") {
+        type = "Bug Fixes";
+    } else if (commit.type === "perf") {
+        type = "Performance Improvements";
+    } else if (commit.type === "revert" || commit.revert) {
+        type = "Reverts";
+    } else if (discard) {
+        return undefined;
+    } else if (commit.type === "docs") {
+        type = "Documentation";
+    } else if (commit.type === "style") {
+        type = "Styles";
+    } else if (commit.type === "refactor") {
+        type = "Code Refactoring";
+    } else if (commit.type === "test") {
+        type = "Tests";
+    } else if (commit.type === "build") {
+        type = "Build System";
+    } else if (commit.type === "ci") {
+        type = "Continuous Integration";
+    }
+
+    const scope = commit.scope === "*" ? "" : commit.scope;
+    const shortHash = typeof commit.hash === "string"
+        ? commit.hash.substring(0, 7)
+        : commit.shortHash;
+    const { subject } = commit;
+    // The issues the subject names, so the references below do not list them twice.
+    const issues = typeof subject === "string"
+        ? [...subject.matchAll(/#([0-9]+)/g)].map((match) => match[1])
+        : [];
+    const references = commit.references.filter((reference) => !issues.includes(reference.issue));
+
+    return {
+        notes,
+        type,
+        scope,
+        shortHash,
+        subject,
+        references
+    };
+};
+
 module.exports = {
     branches: [
         "master"
@@ -13,9 +72,10 @@ module.exports = {
         [
             "@semantic-release/release-notes-generator",
             {
-                // Plain version headers and commit hashes: no links to the repository host in the
-                // release notes or CHANGELOG.md.
+                // Plain version headers, commit hashes, issues and names: no links to the repository
+                // host in the release notes or CHANGELOG.md.
                 writerOpts: {
+                    transform: transformCommit,
                     finalizeContext: (context) => ({ ...context, linkReferences: false, linkCompare: false })
                 }
             }
