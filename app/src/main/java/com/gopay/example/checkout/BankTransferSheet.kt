@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,10 +37,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -132,8 +135,13 @@ fun BankTransferSheet(
             if (bitmap != null) {
                 Box(
                     modifier = Modifier
+                        .clip(RoundedCornerShape(CheckoutTheme.cardRadius))
                         .background(Color.White, RoundedCornerShape(CheckoutTheme.cardRadius))
                         .border(1.dp, CheckoutTheme.hairline, RoundedCornerShape(CheckoutTheme.cardRadius))
+                        // A tap on the code shares the same items as the Share button in the header.
+                        .clickable(onClickLabel = "Share QR code", role = Role.Button) {
+                            shareBankTransfer(context, bitmap, shareText)
+                        }
                         .padding(14.dp)
                 ) {
                     Image(
