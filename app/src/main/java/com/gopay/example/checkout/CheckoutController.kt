@@ -1,6 +1,7 @@
 package com.gopay.example.checkout
 
 import android.app.Activity
+import androidx.annotation.VisibleForTesting
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -125,6 +126,12 @@ class CheckoutController {
 
     fun dismissQr() {
         qrDetails = null
+    }
+
+    /** Lets a unit test give Refresh a session; the demo opens one only against the gateway. */
+    @VisibleForTesting
+    internal fun setSessionForTest(session: PaymentSession) {
+        this.session = session
     }
 
     // region Actions

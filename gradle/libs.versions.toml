@@ -11,6 +11,12 @@ composeBom = "2024.04.01"
 foundationAndroid = "1.8.2"
 materialIconsVersion = "1.5.4"
 zxingCore = "3.5.3"
+# The SDK module pins the same line in its build file.
+kotlinxCoroutines = "1.7.3"
+# Mockito 5: its default mock maker is inline (the demo mocks the final PaymentSession) and its
+# Byte Buddy supports the JDK 21 the CI image runs. No mockito-kotlin: 5.x needs JVM target 11,
+# the demo compiles for 1.8. The SDK module still tests with Mockito 4.
+mockito = "5.14.2"
 nmcp = "1.6.2"
 
 [libraries]
@@ -32,6 +38,8 @@ androidx-material3 = { group = "androidx.compose.material3", name = "material3" 
 androidx-foundation-android = { group = "androidx.compose.foundation", name = "foundation-android", version.ref = "foundationAndroid" }
 # Demo app only — renders the bank-transfer QR payload the gateway returns as a scannable bitmap.
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxingCore" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+mockito-core = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
