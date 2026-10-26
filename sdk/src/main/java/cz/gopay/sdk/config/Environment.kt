@@ -8,18 +8,29 @@ import cz.gopay.sdk.exception.GopaySDKException
  */
 sealed class Environment(val apiBaseUrl: String) {
     /**
+     * Where the SDK's operational data goes in this environment (see the README, "Operational
+     * data"). Its own host beside the gateway, never derived from [apiBaseUrl]; null for
+     * [DEVELOPMENT], which has nowhere to send it.
+     */
+    internal open val telemetryUrl: String? = null
+
+    /**
      * Production environment - use for live transactions.
      *
      * The Payments 4.0 production gateway, same constant as the iOS SDK's `.production`.
      */
-    object PRODUCTION : Environment("https://gate.gopay.com/gp-gw/api/4.0/")
+    object PRODUCTION : Environment("https://gate.gopay.com/gp-gw/api/4.0/") {
+        override val telemetryUrl: String = "https://lx.gopay.com/events"
+    }
 
     /**
      * Sandbox environment - use for testing and integration.
      *
      * The Payments 4.0 sandbox gateway, same constant as the iOS SDK's `.sandbox`.
      */
-    object SANDBOX : Environment("https://gw.sandbox.gopay.com/gp-gw/api/4.0/")
+    object SANDBOX : Environment("https://gw.sandbox.gopay.com/gp-gw/api/4.0/") {
+        override val telemetryUrl: String = "https://lx.sandbox.gopay.com/events"
+    }
 
     /**
      * Development environment - use for local development with custom endpoint.

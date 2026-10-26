@@ -7,6 +7,7 @@ import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.telemetry.TelemetryCapture
 import cz.gopay.sdk.ui.CardEncryptionResult
 import cz.gopay.sdk.ui.CardFormData
 import cz.gopay.sdk.ui.CardFormHandlers
@@ -36,6 +37,8 @@ class GopaySDKTest {
     fun mainThread() {
         // The card form's handlers run on the main thread; on the JVM that is this one.
         Dispatchers.setMain(Dispatchers.Unconfined)
+        // Operational data stays on this machine.
+        TelemetryCapture().install()
     }
 
     @After
@@ -50,6 +53,7 @@ class GopaySDKTest {
         GopayLocales.clearCustom()
         GopayLocales.setDefaultLocale(null)
         ErrorReporter.clear()
+        TelemetryCapture.reset()
         CardFormStore.unregister("form-1", formOwner)
         CardFormStore.unregister("form-2", formOwner)
         Dispatchers.resetMain()

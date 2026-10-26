@@ -55,6 +55,22 @@ internal object NetworkModule {
     }
 
     /**
+     * The client the SDK's operational data goes out through, built on its own rather than from
+     * the API clients: no auth, no debug log of bodies, no certificate configuration meant for
+     * the gateway, and a 10-second limit on each event. Only the SDK's `User-Agent`.
+     */
+    internal fun createTelemetryClient(): OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(TELEMETRY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(TELEMETRY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .writeTimeout(TELEMETRY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .callTimeout(TELEMETRY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(false)
+        .addInterceptor(UserAgentInterceptor())
+        .build()
+
+    private const val TELEMETRY_TIMEOUT_SECONDS = 10L
+
+    /**
      * The debug log of every request and response, bodies included, with the credentials taken
      * out: the `Authorization` header, which carries `payment_id:payment_secret` on the token
      * request, and the body values [RedactingHttpLogger] masks.

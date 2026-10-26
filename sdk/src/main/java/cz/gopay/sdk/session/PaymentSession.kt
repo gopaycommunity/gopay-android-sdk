@@ -26,6 +26,8 @@ import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.modules.network.SessionTokenProvider
 import cz.gopay.sdk.modules.network.apiCall
 import cz.gopay.sdk.service.GooglePayHelper
+import cz.gopay.sdk.telemetry.GwLoggerTelemetry
+import cz.gopay.sdk.telemetry.Telemetry
 import cz.gopay.sdk.ui.GooglePayBridge
 import cz.gopay.sdk.ui.GooglePayLauncherActivity
 import cz.gopay.sdk.ui.PaymentVerificationActivity
@@ -73,7 +75,9 @@ class PaymentSession internal constructor(
      * are not configured, and that belongs to the charge it stops, not to opening the session.
      */
     private val publicApi: () -> PublicApi,
-    private val onClose: (PaymentSession) -> Unit
+    private val onClose: (PaymentSession) -> Unit,
+    /** The operational data of the SDK instance that started this session; null without any. */
+    private val telemetry: GwLoggerTelemetry? = null
 ) : SessionTokenProvider {
 
     /** In-memory only; nulled by [close], which is the canonical "closed" signal. */
@@ -125,7 +129,7 @@ class PaymentSession internal constructor(
      * it. Called directly it is a public call like any other: its error reaches
      * `errorCallback` once.
      */
-    override suspend fun reauthenticate(): String = reportErrors { authenticate() }
+    override suspend fun reauthenticate(): String = reportErrors(paymentId) { authenticate() }
 
     /** The re-authentication itself, reporting nothing: the call it serves does. */
     internal suspend fun authenticate(): String {
@@ -175,7 +179,7 @@ class PaymentSession internal constructor(
     }
 
     /** GET /payments/{payment_id} */
-    suspend fun getStatus(): PaymentCreateResponse = reportErrors {
+    suspend fun getStatus(): PaymentCreateResponse = reportErrors(paymentId) {
         apiCall("get payment status") { paymentApi.getPaymentStatus(paymentId) }
     }
 
@@ -193,7 +197,7 @@ class PaymentSession internal constructor(
      * the charge could not be sent anyway, and asking for the data before saying so would
      * report the wrong thing, [GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING] without the key.
      */
-    suspend fun charge(request: ChargePaymentRequest): ChargePaymentResponse = reportErrors {
+    suspend fun charge(request: ChargePaymentRequest): ChargePaymentResponse = reportErrors(paymentId) {
         if (paymentSecret == null) throw sessionClosed()
         val instrument = request.paymentInstrument
         val completed = request.copy(
@@ -201,7 +205,13 @@ class PaymentSession internal constructor(
                 browserData = completeBrowserData(instrument.browserData)
             )
         )
-        apiCall("charge payment") { paymentApi.chargePayment(paymentId, completed) }
+        // Counted for the card form's unmount, which reports whether it cut a charge short.
+        Telemetry.runningCharges.incrementAndGet()
+        try {
+            apiCall("charge payment") { paymentApi.chargePayment(paymentId, completed) }
+        } finally {
+            Telemetry.runningCharges.decrementAndGet()
+        }
     }
 
     /**
@@ -231,7 +241,7 @@ class PaymentSession internal constructor(
      *         [GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING] without the key) and the original
      *         exception as its cause.
      */
-    suspend fun completeBrowserData(browserData: BrowserData): BrowserData = reportErrors {
+    suspend fun completeBrowserData(browserData: BrowserData): BrowserData = reportErrors(paymentId) {
         val userAgent = browserData.userAgent ?: syntheticUserAgent().also {
             SdkLog.w(
                 "browser_data has no user_agent, filling in a synthesized WebView User-Agent, " +
@@ -292,7 +302,7 @@ class PaymentSession internal constructor(
     )
 
     /** GET /payments/{payment_id}/charge */
-    suspend fun getChargeState(): ChargePaymentResponse = reportErrors {
+    suspend fun getChargeState(): ChargePaymentResponse = reportErrors(paymentId) {
         apiCall("get charge state") { paymentApi.getChargeState(paymentId) }
     }
 
@@ -353,7 +363,7 @@ class PaymentSession internal constructor(
      */
     suspend fun awaitChargeState(
         options: AwaitChargeOptions = AwaitChargeOptions()
-    ): ChargePaymentResponse = reportErrors {
+    ): ChargePaymentResponse = reportErrors(paymentId) {
         if (options.intervalMs <= 0 || options.initialTimeoutMs <= 0) {
             throw GopaySDKException(
                 errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
@@ -380,7 +390,7 @@ class PaymentSession internal constructor(
     }
 
     /** GET /payments/{payment_id}/qr-payment/info */
-    suspend fun getQrPaymentInfo(format: QrCodeFormat? = null): QrPaymentDetails = reportErrors {
+    suspend fun getQrPaymentInfo(format: QrCodeFormat? = null): QrPaymentDetails = reportErrors(paymentId) {
         apiCall("get QR payment info") { paymentApi.getQrPaymentInfo(paymentId, format?.name?.lowercase()) }
     }
 
@@ -389,7 +399,7 @@ class PaymentSession internal constructor(
      * the device's wallet, Google Pay. The name shared with the iOS SDK, where it reads the
      * Apple Pay info; [getGooglePayInfo] is the same call.
      */
-    suspend fun getWalletInfo(): GooglePayInfoResponse = reportErrors {
+    suspend fun getWalletInfo(): GooglePayInfoResponse = reportErrors(paymentId) {
         apiCall("get Google Pay info") { paymentApi.getGooglePayInfo(paymentId) }
     }
 
@@ -433,7 +443,8 @@ class PaymentSession internal constructor(
         activity: Activity,
         browserData: BrowserData? = null,
         challengePreference: ChallengePreference? = null
-    ): ChargePaymentResponse = reportErrors {
+    ): ChargePaymentResponse = reportErrors(paymentId) {
+        Telemetry.noteOrigin(activity)
         val info = getGooglePayInfo()
         val paymentRequestJson = GooglePayHelper.buildPaymentDataRequestJson(info)
         val env = GooglePayHelper.walletEnvironment(info)
@@ -444,7 +455,10 @@ class PaymentSession internal constructor(
                 errorCode = GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS,
                 message = "A Google Pay payment is already in progress"
             )
+        // The steps of the sheet, `GPAY.<step>`; see GwLoggerTelemetry.GooglePayFunnel.
+        val funnel = telemetry?.googlePay(paymentId)
         try {
+            funnel?.begin()
             withContext(Dispatchers.Main) {
                 try {
                     activity.startActivity(
@@ -465,27 +479,39 @@ class PaymentSession internal constructor(
                         message = "Google Pay failed: the SDK's Google Pay activity could not " +
                             "be started",
                         cause = e
-                    )
+                    ).also { funnel?.launchFailed(it) }
                 }
             }
-            val tokenJson = deferred.await().getOrElse { throw GooglePayBridge.failureFor(it) }
+            val tokenJson = deferred.await().getOrElse { cause ->
+                throw GooglePayBridge.failureFor(cause).also { funnel?.sheetFailed(it) }
+            }
             val input = try {
                 GooglePayHelper.parseGooglePayToken(tokenJson)
             } catch (e: GopaySDKException) {
                 // Already PAYMENT_003 with the parse failure as its cause.
+                funnel?.sheetFailed(e)
                 throw e
             } catch (e: Exception) {
-                throw GooglePayBridge.failureFor(e)
+                throw GooglePayBridge.failureFor(e).also { funnel?.sheetFailed(it) }
             }
-            charge(
-                ChargePaymentRequest(
-                    paymentInstrument = PaymentChargeInstrument(
-                        input = input,
-                        browserData = browserData ?: BrowserData.deviceDefault(activity),
-                        challengePreference = challengePreference
+            funnel?.authorized()
+            funnel?.checkoutStarted()
+            val charged = try {
+                charge(
+                    ChargePaymentRequest(
+                        paymentInstrument = PaymentChargeInstrument(
+                            input = input,
+                            browserData = browserData ?: BrowserData.deviceDefault(activity),
+                            challengePreference = challengePreference
+                        )
                     )
                 )
-            )
+            } catch (e: GopaySDKException) {
+                funnel?.checkoutEnded(e)
+                throw e
+            }
+            funnel?.checkoutEnded(null)
+            charged
         } finally {
             // Scoped to this request: a later one may already hold the bridge.
             GooglePayBridge.clear(owner)
@@ -640,7 +666,7 @@ class PaymentSession internal constructor(
         activity: Activity,
         redirectUrl: String,
         returnUrl: String? = null
-    ): Unit = reportErrors {
+    ): Unit = reportErrors(paymentId) {
         // Checked here rather than in the activity: the WebView is never asked to decide about
         // the URL it is handed, so a scheme it cannot load would surface only as an error with
         // nothing to attribute it to, and the caller would wait for a challenge that never
@@ -658,6 +684,9 @@ class PaymentSession internal constructor(
                 errorCode = GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS,
                 message = "A payment verification is already in progress"
             )
+        // The one departure that is part of a payment, told apart from the session's close.
+        Telemetry.noteOrigin(activity)
+        telemetry?.redirect(paymentId, redirectUrl)
         try {
             withContext(Dispatchers.Main) {
                 activity.startActivity(
@@ -692,7 +721,8 @@ class PaymentSession internal constructor(
     internal class Factory(
         private val authApi: AuthApi,
         private val paymentApiBuilder: (SessionTokenProvider) -> PaymentApi,
-        private val publicApi: () -> PublicApi
+        private val publicApi: () -> PublicApi,
+        private val telemetry: GwLoggerTelemetry? = null
     ) {
         suspend fun create(
             paymentId: String,
@@ -706,7 +736,8 @@ class PaymentSession internal constructor(
                 authApi = authApi,
                 paymentApiBuilder = paymentApiBuilder,
                 publicApi = publicApi,
-                onClose = onClose
+                onClose = onClose,
+                telemetry = telemetry
             )
             session.paymentSecret = paymentSecret
             // Eager auth — surface bad credentials immediately; startPaymentSession reports.

@@ -29,6 +29,8 @@ import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocaleStrings
 import cz.gopay.sdk.locales.GopayLocales
+import cz.gopay.sdk.telemetry.GwLoggerTelemetry
+import cz.gopay.sdk.telemetry.Telemetry
 import cz.gopay.sdk.ui.utils.CardNumberInputValidator
 import cz.gopay.sdk.ui.utils.CardNumberMaskedVisualTransformation
 import cz.gopay.sdk.ui.utils.CardNumberVisualTransformation
@@ -282,8 +284,17 @@ fun PaymentCardForm(
     // the plain `remember` state above doesn't survive leaving the composition either.
     // Deliberately NOT cleared on a failed encryption: authorization hasn't happened yet,
     // and the user shouldn't have to retype the card after a network drop.
+    // The same span is what the operational data reports as the form's ready and its unmount.
     DisposableEffect(Unit) {
-        onDispose { resetForm() }
+        Telemetry.noteOrigin(view.context)
+        Telemetry.current?.ready(GwLoggerTelemetry.Method.CARD, GwLoggerTelemetry.CARD_FORM_FLOW)
+        onDispose {
+            Telemetry.current?.unmount(
+                GwLoggerTelemetry.Method.CARD,
+                chargeInFlight = Telemetry.runningCharges.get() > 0
+            )
+            resetForm()
+        }
     }
 
     val errors = CardFormErrors.of(

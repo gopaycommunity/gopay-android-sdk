@@ -1,6 +1,7 @@
 package cz.gopay.sdk
 
 import android.app.Activity
+import androidx.annotation.VisibleForTesting
 import com.google.android.gms.wallet.IsReadyToPayRequest
 import com.google.android.gms.wallet.Wallet
 import cz.gopay.sdk.config.GopayConfig
@@ -16,6 +17,8 @@ import cz.gopay.sdk.modules.network.NetworkManager
 import cz.gopay.sdk.service.CardEncryption
 import cz.gopay.sdk.service.GooglePayHelper
 import cz.gopay.sdk.session.PaymentSession
+import cz.gopay.sdk.telemetry.GwLoggerTelemetry
+import cz.gopay.sdk.telemetry.Telemetry
 import cz.gopay.sdk.ui.CardEncryptionResult
 import cz.gopay.sdk.ui.CardFormStore
 import java.util.concurrent.ConcurrentHashMap
@@ -52,20 +55,30 @@ class GopaySDK private constructor(
     val certificatePinner: CertificatePinner? = null
 ) {
 
+    /** This instance's operational data; null where it has nowhere to go. See [Telemetry]. */
+    internal val telemetry: GwLoggerTelemetry? = Telemetry.create(config)
+
     private val networkManager =
-        NetworkManager(config, sslSocketFactory, trustManager, certificatePinner)
+        NetworkManager(config, sslSocketFactory, trustManager, certificatePinner, telemetry)
 
     private val cardEncryption = CardEncryption(publicApi = { networkManager.publicApi })
 
     /** Registry of live payment sessions keyed by `payment_id`. Supports concurrent payments. */
     private val sessions: ConcurrentHashMap<String, PaymentSession> = ConcurrentHashMap()
 
-    private val paymentSessionFactory: PaymentSession.Factory =
+    private var paymentSessionFactory: PaymentSession.Factory =
         PaymentSession.Factory(
             authApi = networkManager.authApi,
             paymentApiBuilder = { provider -> networkManager.buildPaymentApi(provider) },
-            publicApi = { networkManager.publicApi }
+            publicApi = { networkManager.publicApi },
+            telemetry = telemetry
         )
+
+    /** Sessions authenticated by [factory] instead of the gateway. Tests only. */
+    @VisibleForTesting
+    internal fun setPaymentSessionFactoryForTest(factory: PaymentSession.Factory) {
+        paymentSessionFactory = factory
+    }
 
     /** Whether the SDK was initialized in debug mode. */
     fun isDebugEnabled(): Boolean = config.debug
@@ -108,22 +121,42 @@ class GopaySDK private constructor(
             )
         }
 
-        val session = paymentSessionFactory.create(
-            paymentId = paymentId,
-            paymentSecret = paymentSecret,
-            scope = scope,
-            onClose = { sessions.remove(it.paymentId, it) }
-        )
+        // Attached before the token exchange, as in the browser SDK: the token call and the error
+        // of a failed start then belong to the payment they were for. Detached again on failure.
+        telemetry?.attach(paymentId)
+        val session = try {
+            // Reports a failed start under its payment. The exception then remembers it was
+            // reported (a compare-and-set on it), so the outer reportErrors adds nothing.
+            reportErrors(paymentId) {
+                paymentSessionFactory.create(
+                    paymentId = paymentId,
+                    paymentSecret = paymentSecret,
+                    scope = scope,
+                    onClose = {
+                        // Only the registered session: a duplicate closed below never started.
+                        if (sessions.remove(it.paymentId, it)) {
+                            telemetry?.leave(it.paymentId)
+                            telemetry?.detach(it.paymentId)
+                        }
+                    }
+                )
+            }
+        } catch (e: Throwable) {
+            telemetry?.detach(paymentId)
+            throw e
+        }
         // putIfAbsent is the only check needed — concurrent callers either land here or in close()
         // below if they raced and lost.
         val existing = sessions.putIfAbsent(paymentId, session)
         if (existing != null) {
             session.close()
+            telemetry?.detach(paymentId)
             throw GopaySDKException(
                 errorCode = GopayErrorCodes.AUTH_PAYMENT_SESSION_ALREADY_EXISTS,
                 message = "A PaymentSession for $paymentId already exists; close it before starting a new one."
             )
         }
+        telemetry?.navigate(paymentId)
         session
     }
 
@@ -251,6 +284,8 @@ class GopaySDK private constructor(
      * @param info The [GooglePayInfoResponse] from [PaymentSession.getWalletInfo], or null.
      */
     suspend fun isWalletAvailable(activity: Activity, info: GooglePayInfoResponse? = null): Boolean {
+        Telemetry.noteOrigin(activity)
+        val startedAt = telemetry?.now()
         val client = Wallet.getPaymentsClient(
             activity,
             Wallet.WalletOptions.Builder()
@@ -261,7 +296,16 @@ class GopaySDK private constructor(
         return suspendCoroutine { cont ->
             client.isReadyToPay(IsReadyToPayRequest.fromJson(requestJson))
                 .addOnCompleteListener { task ->
-                    cont.resume(task.isSuccessful && task.result == true)
+                    val available = task.isSuccessful && task.result == true
+                    telemetry?.walletAvailability(
+                        GwLoggerTelemetry.Method.GOOGLE_PAY,
+                        caller = "isWalletAvailable",
+                        checkSucceeded = task.isSuccessful,
+                        // Read only after a successful check: a failed task throws on result.
+                        ready = available,
+                        startedAt = startedAt
+                    )
+                    cont.resume(available)
                 }
         }
     }
@@ -325,6 +369,8 @@ class GopaySDK private constructor(
             GopayLocales.registerAll(config.customLocales)
             GopayLocales.setDefaultLocale(config.locale)
             instance = sdk
+            Telemetry.current = sdk.telemetry
+            sdk.telemetry?.init()
         }
 
         /**

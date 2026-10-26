@@ -4,16 +4,24 @@ import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.config.Environment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.locales.GopayLocales
+import cz.gopay.sdk.telemetry.TelemetryCapture
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 /**
  * Integration tests covering GopaySDK initialization and config propagation.
  */
 class ConfigurationIntegrationTest {
+
+    @Before
+    fun setUp() {
+        // Operational data stays on this machine.
+        TelemetryCapture().install()
+    }
 
     @After
     fun tearDown() {
@@ -25,6 +33,7 @@ class ConfigurationIntegrationTest {
         // that too, or a non-default locale/customLocales config here would leak into other tests.
         GopayLocales.clearCustom()
         GopayLocales.setDefaultLocale(null)
+        TelemetryCapture.reset()
     }
 
     @Test

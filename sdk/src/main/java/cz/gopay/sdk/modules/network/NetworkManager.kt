@@ -4,7 +4,11 @@ import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.config.NetworkConfig
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.telemetry.ApiCallTelemetryInterceptor
+import cz.gopay.sdk.telemetry.GwLoggerTelemetry
 import okhttp3.CertificatePinner
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509TrustManager
@@ -17,12 +21,16 @@ import javax.net.ssl.X509TrustManager
  * - [authApi] — no auth (used to obtain payment_credentials tokens)
  * - [buildPaymentApi] — per-session Bearer via [SessionAuthInterceptor]
  * - [publicApi] — Basic `client_id:shareable_key` via [ShareableKeyInterceptor]
+ *
+ * Each client reports its requests to [telemetry] through an [ApiCallTelemetryInterceptor] added
+ * after its auth interceptor, so what is reported is the request that went out.
  */
 internal class NetworkManager(
     private val gopayConfig: GopayConfig,
     private val sslSocketFactory: SSLSocketFactory? = null,
     private val trustManager: X509TrustManager? = null,
-    private val certificatePinner: CertificatePinner? = null
+    private val certificatePinner: CertificatePinner? = null,
+    private val telemetry: GwLoggerTelemetry? = null
 ) {
 
     private val baseUrl: String = gopayConfig.apiBaseUrl.let { if (it.endsWith("/")) it else "$it/" }
@@ -40,11 +48,24 @@ internal class NetworkManager(
         )
     )
 
+    private val telemetryInterceptor: ApiCallTelemetryInterceptor? = telemetry?.let {
+        ApiCallTelemetryInterceptor(it, basePath = baseUrl.toHttpUrlOrNull()?.encodedPath ?: "/")
+    }
+
+    /** [baseClient] with [auth], if any, then the telemetry interceptor last. */
+    private fun apiClient(auth: Interceptor? = null): OkHttpClient {
+        if (auth == null && telemetryInterceptor == null) return baseClient
+        return baseClient.newBuilder()
+            .apply { auth?.let { addInterceptor(it) } }
+            .apply { telemetryInterceptor?.let { addInterceptor(it) } }
+            .build()
+    }
+
     /**
      * Unauthenticated [AuthApi] used by PaymentSession to exchange `payment_id`/`payment_secret`
      * for a payment-scoped JWT.
      */
-    val authApi: AuthApi = NetworkModule.createRetrofit(baseClient, baseUrl)
+    val authApi: AuthApi = NetworkModule.createRetrofit(apiClient(), baseUrl)
         .create(AuthApi::class.java)
 
     /**
@@ -52,9 +73,7 @@ internal class NetworkManager(
      * One instance per PaymentSession.
      */
     fun buildPaymentApi(provider: SessionTokenProvider): PaymentApi {
-        val client = baseClient.newBuilder()
-            .addInterceptor(SessionAuthInterceptor(provider))
-            .build()
+        val client = apiClient(SessionAuthInterceptor(provider))
         return NetworkModule.createRetrofit(client, baseUrl)
             .create(PaymentApi::class.java)
     }
@@ -73,9 +92,7 @@ internal class NetworkManager(
                 message = "clientId and shareableKey must be set on GopayConfig to use public endpoints"
             )
         }
-        val client = baseClient.newBuilder()
-            .addInterceptor(ShareableKeyInterceptor(clientId, shareableKey))
-            .build()
+        val client = apiClient(ShareableKeyInterceptor(clientId, shareableKey))
         NetworkModule.createRetrofit(client, baseUrl)
             .create(PublicApi::class.java)
     }

@@ -5,6 +5,8 @@ import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.telemetry.GwLoggerTelemetry
+import cz.gopay.sdk.telemetry.Telemetry
 import cz.gopay.sdk.ui.utils.CardValidator
 import kotlinx.coroutines.CancellationException
 
@@ -27,6 +29,11 @@ internal suspend fun submitCardForm(formId: String?, encrypt: suspend (CardData)
     val cardData = data?.takeUnless { it.isEmpty }?.takeIf { it.isValid }?.toCardData()
         ?: throw invalidCardForm(data)
     val jwe = encrypt(cardData)
+    // That the user submitted and the payload exists, timed from the form's ready: nothing about
+    // the card, the JWE or its length.
+    Telemetry.current?.submit(
+        "card-form", GwLoggerTelemetry.Method.CARD, "card", flow = GwLoggerTelemetry.CARD_FORM_FLOW
+    )
     // Only clear after encryption succeeded: on failure (e.g. key fetch offline) the user
     // shouldn't have to retype the card; authorization hasn't happened yet. Clearing also
     // empties the fields the form still shows, so the card does not outlive the JWE made

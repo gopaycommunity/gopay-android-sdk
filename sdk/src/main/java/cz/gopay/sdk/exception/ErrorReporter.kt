@@ -1,5 +1,7 @@
 package cz.gopay.sdk.exception
 
+import cz.gopay.sdk.telemetry.Telemetry
+
 /**
  * Callback interface for error reporting.
  * Implement this interface to receive error notifications and integrate with your analytics system.
@@ -50,14 +52,19 @@ internal object ErrorReporter {
      * same instance, from an outer entry point the error passes through, reaches nothing.
      * 
      * @param exception The exception to report
+     * @param paymentId the payment the error belongs to, when it comes from a payment session
      */
-    fun report(exception: GopaySDKException) = reportTo(errorCallback, exception)
+    fun report(exception: GopaySDKException, paymentId: String? = null) =
+        reportTo(errorCallback, exception, paymentId)
 
     /**
      * [report] to [callback] rather than the installed one: `GopaySDK.initialize` uses it for a
      * config it could not install, whose own callback still hears why.
+     *
+     * The same once goes to the operational data, as a `js_event` with the error's code, under
+     * [paymentId] when the error has one; see `GwLoggerTelemetry.error`.
      */
-    fun reportTo(callback: ErrorCallback?, exception: GopaySDKException) {
+    fun reportTo(callback: ErrorCallback?, exception: GopaySDKException, paymentId: String? = null) {
         // A payment window that closed before it finished is not an error; see PAYMENT_CANCELLED.
         // Neither is a charge the gateway has not decided yet; see PAYMENT_TIMEOUT.
         if (exception.errorCode == GopayErrorCodes.PAYMENT_CANCELLED ||
@@ -66,6 +73,7 @@ internal object ErrorReporter {
             return
         }
         if (!exception.reported.compareAndSet(false, true)) return
+        Telemetry.current?.error(exception, paymentId)
         try {
             callback?.onError(exception)
         } catch (e: Exception) {
@@ -91,12 +99,13 @@ internal object ErrorReporter {
 
 /**
  * Runs [block], the body of a public SDK entry point, and reports the [GopaySDKException] it
- * throws through [ErrorReporter.report] on the way out, unchanged. Anything else, a coroutine
- * cancellation above all, passes through untouched. Inline, so a `suspend` body can be wrapped.
+ * throws through [ErrorReporter.report] on the way out, unchanged, under [paymentId] when the
+ * entry point belongs to a payment session. Anything else, a coroutine cancellation above all,
+ * passes through untouched. Inline, so a `suspend` body can be wrapped.
  */
-internal inline fun <T> reportErrors(block: () -> T): T = try {
+internal inline fun <T> reportErrors(paymentId: String? = null, block: () -> T): T = try {
     block()
 } catch (e: GopaySDKException) {
-    ErrorReporter.report(e)
+    ErrorReporter.report(e, paymentId)
     throw e
 }

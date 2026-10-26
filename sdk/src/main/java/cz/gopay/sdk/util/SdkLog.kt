@@ -31,10 +31,23 @@ internal object SdkLog {
         runCatching { Log.w(TAG, message) }
     }
 
-    fun w(message: String) {
-        // Before initialize(), and in plain JVM unit tests, there is no config to consult; the
-        // sink is replaced in tests, so a silent no-op here would cost the suite its assertions.
-        val debug = runCatching { GopaySDK.getInstance().isDebugEnabled() }.getOrDefault(true)
-        if (debug) warnSink(message)
+    /** Where debug lines go; replaced in unit tests like [warnSink]. */
+    @VisibleForTesting
+    internal var debugSink: (String) -> Unit = { message ->
+        runCatching { Log.d(TAG, message) }
     }
+
+    fun w(message: String) {
+        if (debugEnabled()) warnSink(message)
+    }
+
+    /** A debug line, under the same condition as [w]: the operational data names each event here. */
+    fun d(message: String) {
+        if (debugEnabled()) debugSink(message)
+    }
+
+    // Before initialize(), and in plain JVM unit tests, there is no config to consult; the sinks
+    // are replaced in tests, so a silent no-op there would cost the suite its assertions.
+    private fun debugEnabled(): Boolean =
+        runCatching { GopaySDK.getInstance().isDebugEnabled() }.getOrDefault(true)
 }
