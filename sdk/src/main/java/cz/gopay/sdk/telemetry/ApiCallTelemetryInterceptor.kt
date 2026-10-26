@@ -73,7 +73,9 @@ internal class ApiCallTelemetryInterceptor(
 
     /**
      * The body as it went out: a form as its fields, which is how the browser SDK hands its token
-     * request over and what lets the key rules reach them, anything else as text.
+     * request over and what lets the key rules reach them, anything else as text. None when it is
+     * longer than [MAX_BODY_BYTES]: cut there, JSON no longer parses, and its keys would go out
+     * unredacted as plain text.
      */
     private fun requestBody(request: Request): Any? {
         val body = request.body ?: return null
@@ -85,12 +87,17 @@ internal class ApiCallTelemetryInterceptor(
         if (body.isOneShot() || body.isDuplex()) return null
         val buffer = Buffer()
         body.writeTo(buffer)
-        return buffer.readUtf8(minOf(buffer.size, MAX_BODY_BYTES))
+        return if (buffer.size > MAX_BODY_BYTES) null else buffer.readUtf8()
     }
 
-    /** Peeked, not read: the converter still gets the whole body. */
-    private fun responseBody(response: Response): String =
-        response.peekBody(MAX_BODY_BYTES).string()
+    /**
+     * Peeked, not read: the converter still gets the whole body. None when it is longer than
+     * [MAX_BODY_BYTES], for the same reason as a request's.
+     */
+    private fun responseBody(response: Response): String? {
+        val peeked = response.peekBody(MAX_BODY_BYTES + 1)
+        return if (peeked.contentLength() > MAX_BODY_BYTES) null else peeked.string()
+    }
 
     /**
      * `/payments/{id}/charge`: every all-digit or UUID segment as `{id}`, no query. Only those
@@ -101,8 +108,9 @@ internal class ApiCallTelemetryInterceptor(
 
     private companion object {
         /**
-         * As much of a body as is read for the report: what the 16 KB event can carry, and enough
-         * that the 2000-character cut is made after redaction rather than before it.
+         * The longest body reported: what the 16 KB event can carry, and enough that the
+         * 2000-character cut is made after redaction rather than before it. A longer one is not
+         * reported at all.
          */
         const val MAX_BODY_BYTES = 16L * 1024
 

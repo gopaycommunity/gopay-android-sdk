@@ -553,6 +553,52 @@ class GwLoggerTelemetryTest {
     }
 
     @Test
+    fun `reports no body longer than 16 KB, not even cut short`() {
+        val telemetry = telemetry()
+        // Over 16 KB of JSON: cut at the limit it would no longer parse, and go out as text.
+        val long = "{\"items\":[" + List(4000) { "\"marker\"" }.joinToString(",") + "]}"
+        val short = "{\"items\":[" + List(10) { "\"marker\"" }.joinToString(",") + "]}"
+        apiClient(telemetry) { answer(it, 200, long) }
+            .newCall(
+                Request.Builder()
+                    .url("https://gw.sandbox.gopay.com/gp-gw/api/4.0/payments/3000000001/charge")
+                    .post(long.toRequestBody("application/json".toMediaType()))
+                    .build()
+            ).execute().use { assertEquals("the caller still reads the whole body", long, it.body!!.string()) }
+        apiClient(telemetry) { answer(it, 200, short) }
+            .newCall(
+                Request.Builder()
+                    .url("https://gw.sandbox.gopay.com/gp-gw/api/4.0/payments/3000000001/charge")
+                    .post(short.toRequestBody("application/json".toMediaType()))
+                    .build()
+            ).execute().close()
+
+        val (over, under) = events
+        assertFalse(over.containsKey("req_body"))
+        assertFalse(over.containsKey("res_body"))
+        assertFalse(capture.bodies[0].contains("marker"))
+        assertEquals(short, under["req_body"])
+        assertEquals(short, under["res_body"])
+    }
+
+    @Test
+    fun `submits a Google Pay payment under its own session while another is open`() {
+        val telemetry = telemetry()
+        telemetry.attach("A")
+        telemetry.attach("B")
+
+        telemetry.googlePay("A").authorized()
+        telemetry.submit("card-form", GwLoggerTelemetry.Method.CARD, "card", GwLoggerTelemetry.CARD_FORM_FLOW)
+
+        val (submit, authorized, card) = events
+        assertEquals("googlepay-button", submit["element_id"])
+        assertEquals("A", submit["payment_session_id"])
+        assertEquals("A", authorized["payment_session_id"])
+        // Without a payment of its own, the latest attached one.
+        assertEquals("B", card["payment_session_id"])
+    }
+
+    @Test
     fun `takes nothing from the caller when reporting fails`() {
         val telemetry = telemetry(client = Call.Factory { throw IllegalStateException("no client") })
         val response = apiClient(telemetry) { answer(it, 200, "{\"ok\":true}") }

@@ -151,10 +151,11 @@ internal class GwLoggerTelemetry(
     /**
      * `interaction` / `submit`: the user submitted. Nothing about what they entered. Timed from
      * the method's ready, which only the card form has; a wallet's submit has no duration.
+     * [paymentId] when the submit belongs to a known payment, otherwise the latest attached one.
      */
-    fun submit(elementId: String, method: Method, paymentMethod: String, flow: String?) {
+    fun submit(elementId: String, method: Method, paymentMethod: String, flow: String?, paymentId: String? = null) {
         val since = synchronized(lock) { readyAt[method] }
-        post(Budget.LIFECYCLE, paymentId = null) {
+        post(Budget.LIFECYCLE, paymentId) {
             put("event_type", "interaction")
             put("interaction_type", "submit")
             put("element_id", elementId)
@@ -274,7 +275,7 @@ internal class GwLoggerTelemetry(
 
         /** The token arrived and reads: the user authorised. */
         fun authorized() {
-            submit("googlepay-button", Method.GOOGLE_PAY, "googlepay", flow = null)
+            submit("googlepay-button", Method.GOOGLE_PAY, "googlepay", flow = null, paymentId = paymentId)
             step("paymentAuthorized", StepStatus.SUCCESS)
         }
 
