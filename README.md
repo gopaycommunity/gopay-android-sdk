@@ -85,7 +85,7 @@ repositories {
 }
 
 dependencies {
-    implementation("cz.gopay:sdk:2.3.0")
+    implementation("cz.gopay:sdk:2.4.0")
 }
 ```
 

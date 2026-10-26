@@ -1,3 +1,15 @@
+# 2.4.0 (2026-10-26)
+
+
+### Bug Fixes
+
+* report no oversized body and submit under its own payment GPMOB-185 55852c5
+
+
+### Features
+
+* send the SDK's operational data to GoPay GPMOB-185 fd96355
+
 # 2.3.0 (2026-10-26)
 
 
