@@ -1,3 +1,15 @@
+# 2.3.0 (2026-10-26)
+
+
+### Bug Fixes
+
+* send one payment per tap burst in the demo GPMOB-184 08ee2f9
+
+
+### Features
+
+* share the bank transfer QR with a tap on the code GPMOB-184 0ecb058
+
 ## 2.2.1 (2026-10-22)
 
 
