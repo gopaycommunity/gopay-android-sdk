@@ -61,6 +61,10 @@ Both built-in hosts come from the Payments 4.0 spec's `servers` block, so `SANDB
 `Environment.DEVELOPMENT.create(<gateway-url>)` only when you have been given a gateway that is
 neither — that is what the bundled demo app does.
 
+The SDK's operational data goes to `https://lx.sandbox.gopay.com` from `SANDBOX` and to
+`https://lx.gopay.com` from `PRODUCTION`; a `DEVELOPMENT` gateway sends none. See "Operational
+data" in the README.
+
 ## Development Environment Requirements
 
 When using `Environment.DEVELOPMENT.create(customUrl)`:
