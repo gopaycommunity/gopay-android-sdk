@@ -25,9 +25,7 @@ internal object JsonText {
     fun parse(text: String): Any? {
         val reader = JsonReader.of(Buffer().writeUtf8(text))
         val value = read(reader)
-        if (reader.peek() != JsonReader.Token.END_DOCUMENT) {
-            throw IllegalArgumentException("Trailing content after JSON value")
-        }
+        require(reader.peek() == JsonReader.Token.END_DOCUMENT) { "Trailing content after JSON value" }
         return value
     }
 
