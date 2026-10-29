@@ -37,7 +37,6 @@ import cz.gopay.sdk.ui.utils.CardNumberVisualTransformation
 import cz.gopay.sdk.ui.utils.CardValidator
 import cz.gopay.sdk.ui.utils.CvvMaskedVisualTransformation
 import cz.gopay.sdk.ui.utils.CvvValidator
-import cz.gopay.sdk.ui.utils.ExpirationDateInputValidator
 import cz.gopay.sdk.ui.utils.ExpirationDateVisualTransformation
 import java.util.UUID
 import kotlinx.coroutines.launch
@@ -143,6 +142,10 @@ data class PaymentFormInputs(
  *   is the gateway's, read from that response's `Date` header, not the device clock. Without a
  *   usable header the device clock is used, with a warning in the debug log, as in
  *   [GopaySDK.encryptCardData].
+ * - Unless [allowsAutofill] is on, the fields are declared unfillable to autofill services, with
+ *   no hints. The keyboard is asked not to learn from any of them, whatever [allowsAutofill] says.
+ *   The CVV is announced as a password field; the card number stays readable to the user and to
+ *   screen readers.
  *
  * Localization: field labels and placeholders default to the locale resolved from [locale] /
  * [localeStrings] (falling back to the SDK-wide default, then the device language, then Czech).
@@ -170,6 +173,8 @@ data class PaymentFormInputs(
  * @param formId Identifies this form to [GopaySDK.submitCardForm] and
  *               [GopaySDK.clearCardFormData] when several are on screen; generated when null.
  *               A submit without an id reads the most recently active form.
+ * @param allowsAutofill Whether autofill services may fill and save the card number and expiry
+ *                       date. Off by default. The CVV is never offered to autofill.
  */
 // The parameter order is the 2.1 one, with onEncryptionComplete first for the hosts that pass it
 // by position; giving it a default puts modifier second among the optional ones.
@@ -185,7 +190,8 @@ fun PaymentCardForm(
     inputFields: PaymentFormInputs? = null,
     theme: PaymentCardFormTheme = PaymentCardFormTheme(),
     validation: CardFormValidationDisplay = CardFormValidationDisplay.HIDDEN,
-    formId: String? = null
+    formId: String? = null,
+    allowsAutofill: Boolean = false
 ) {
     theme.WarnWhenTheHostThemeFightsDarkMode()
 
@@ -336,6 +342,7 @@ fun PaymentCardForm(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 visualTransformation = if (!isCardNumberFocused && isCardNumberValid) CardNumberMaskedVisualTransformation() else CardNumberVisualTransformation(),
                 textFieldModifier = Modifier
+                    .cardFieldSemantics(CardField.CARD_NUMBER, allowsAutofill)
                     .focusRequester(cardNumberFocusRequester)
                     .onFocusChanged { isCardNumberFocused = it.isFocused }
             ),
@@ -357,7 +364,7 @@ fun PaymentCardForm(
                 LabeledInputField(
                     value = expirationDateDigits,
                     onValueChange = { newValue ->
-                        val validated = ExpirationDateInputValidator.validateInput(newValue)
+                        val validated = ExpiryEntry.digits(newValue)
                         expirationDateDigits = validated
                         expirationEdited = true
                         CardFormStore.update(resolvedFormId, snapshot())
@@ -375,6 +382,7 @@ fun PaymentCardForm(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         visualTransformation = ExpirationDateVisualTransformation(),
                         textFieldModifier = Modifier
+                            .cardFieldSemantics(CardField.EXPIRATION, allowsAutofill)
                             .focusRequester(expirationFocusRequester)
                     ),
                     modifier = Modifier.weight(1f),
@@ -400,6 +408,7 @@ fun PaymentCardForm(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                         visualTransformation = if (isCvvFocused) VisualTransformation.None else CvvMaskedVisualTransformation(),
                         textFieldModifier = Modifier
+                            .cardFieldSemantics(CardField.CVV, allowsAutofill)
                             .focusRequester(cvvFocusRequester)
                             .onFocusChanged { isCvvFocused = it.isFocused }
                     ),
@@ -413,8 +422,42 @@ fun PaymentCardForm(
 }
 
 /**
+ * The signature 2.4 shipped, kept in the bytecode so a host compiled against it keeps running
+ * without a `NoSuchMethodError`; new code sees only the primary `PaymentCardForm`.
+ */
+@Deprecated("Binary compatibility with 2.4.0", level = DeprecationLevel.HIDDEN)
+@Suppress("ModifierParameter")
+@Composable
+fun PaymentCardForm(
+    onEncryptionComplete: (CardEncryptionResult) -> Unit = {},
+    modifier: Modifier = Modifier,
+    onFormReady: ((suspend () -> CardEncryptionResult) -> Unit)? = null,
+    onValidationError: ((CardValidator.CardValidationResult) -> Unit)? = null,
+    locale: String? = null,
+    localeStrings: GopayLocaleStrings? = null,
+    inputFields: PaymentFormInputs? = null,
+    theme: PaymentCardFormTheme = PaymentCardFormTheme(),
+    validation: CardFormValidationDisplay = CardFormValidationDisplay.HIDDEN,
+    formId: String? = null
+) {
+    PaymentCardForm(
+        onEncryptionComplete = onEncryptionComplete,
+        modifier = modifier,
+        onFormReady = onFormReady,
+        onValidationError = onValidationError,
+        locale = locale,
+        localeStrings = localeStrings,
+        inputFields = inputFields,
+        theme = theme,
+        validation = validation,
+        formId = formId,
+        allowsAutofill = false
+    )
+}
+
+/**
  * The signature 2.1 shipped, kept in the bytecode so a host compiled against it keeps running on
- * 2.2 without a `NoSuchMethodError`; new code sees only the one above.
+ * 2.2 without a `NoSuchMethodError`; new code sees only the primary `PaymentCardForm`.
  */
 @Deprecated("Binary compatibility with 2.1.0", level = DeprecationLevel.HIDDEN)
 @Composable
@@ -438,6 +481,7 @@ fun PaymentCardForm(
         inputFields = inputFields,
         theme = theme,
         validation = CardFormValidationDisplay.HIDDEN,
-        formId = null
+        formId = null,
+        allowsAutofill = false
     )
 }

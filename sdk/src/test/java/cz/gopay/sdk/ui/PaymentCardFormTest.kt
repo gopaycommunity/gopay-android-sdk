@@ -35,6 +35,30 @@ class PaymentCardFormTest {
     }
 
     @Test
+    fun `the 2_4_0 PaymentCardForm signature is still in the bytecode for hosts compiled against it`() {
+        // Adding allowsAutofill changed the JVM signature again, so the 2.4.0 shape is kept as a
+        // hidden overload too. The parameter list is the one javap shows for the 2.4.0 release.
+        val compat = Class.forName("cz.gopay.sdk.ui.PaymentCardFormKt").getMethod(
+            "PaymentCardForm",
+            Function1::class.java,                                  // onEncryptionComplete
+            androidx.compose.ui.Modifier::class.java,               // modifier
+            Function1::class.java,                                  // onFormReady
+            Function1::class.java,                                  // onValidationError
+            String::class.java,                                     // locale
+            cz.gopay.sdk.locales.GopayLocaleStrings::class.java,    // localeStrings
+            PaymentFormInputs::class.java,                          // inputFields
+            PaymentCardFormTheme::class.java,                       // theme
+            CardFormValidationDisplay::class.java,                  // validation
+            String::class.java,                                     // formId
+            androidx.compose.runtime.Composer::class.java,
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType
+        )
+
+        assertTrue(compat.isAnnotationPresent(Deprecated::class.java))
+    }
+
+    @Test
     fun cardEncryptionResult_success_carriesJwe() {
         val jwe = "header.encryptedKey.iv.ciphertext.tag"
 

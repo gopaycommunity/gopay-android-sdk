@@ -544,6 +544,16 @@ something invalid, never for an empty field; `ON_SUBMIT` shows them, the "requir
 empty fields included, once a submit ran, and hides them again when the form is emptied. The
 modes are the iOS form's `.hidden`, `.live` and `.onSubmit`.
 
+**Autofill is off unless you turn it on.** The form declares its fields unfillable to autofill
+services and gives them no card hints. That is a declaration, not a barrier: focusing a field
+still starts an autofill request, and a service that ignores the declared type can still see the
+field. The form also asks the keyboard not to learn from anything typed in it (Android 8 and
+later), whether autofill is on or off. Pass `allowsAutofill = true` to let autofill fill and save
+the card number and the expiry date; the CVV is never offered. The iOS form has the same
+`allowsAutofill`, off by default. Either way every field stays in the accessibility tree with its
+label: the card number stays readable, so the user can check it, and the CVV is announced as a
+password field.
+
 **Messages for the user come from the form.** The `message` of the `VALIDATION_INVALID_INPUT` that
 `submitCardForm` throws, and the messages `onValidationError` reports, are in English and meant
 for you as a developer, for logs; do not show them to the user. To tell the user what is wrong
@@ -1267,6 +1277,7 @@ listed in [`sdk/docs/API_3_0.md`](sdk/docs/API_3_0.md).
 | `session.chargeWithWallet(activity, browserData?, challengePreference?)` | alias: `chargeWithGooglePay(...)` | the managed wallet sheet and charge |
 | `PaymentCardForm(formId)` + `submitCardForm(formId)` + `clearCardFormData(formId)` | older path: `onFormReady` / `onEncryptionComplete` / `onValidationError`, the same submit reported as a result | the card form model, now on Android too |
 | `PaymentCardForm(validation)` with `HIDDEN`, `LIVE`, `ON_SUBMIT` | — | the validation display modes, now on Android too |
+| `PaymentCardForm(allowsAutofill)`, off by default | — | whether autofill may fill and save the card number and expiry; never the CVV |
 
 An alias is one body under a second name: it does exactly what the shared name does, with the
 same arguments and the same codes. A variant takes an `activity` instead of `browserData` and

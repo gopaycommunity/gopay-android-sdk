@@ -65,27 +65,30 @@ internal fun LabeledInputField(
 
     Column(modifier = modifier) {
         FieldLabel(theme = theme, label = config.label, minHeight = labelMinHeight)
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            keyboardOptions = config.keyboardOptions,
-            visualTransformation = config.visualTransformation,
-            modifier = config.textFieldModifier
-                .fillMaxWidth()
-                .semanticsLabel(theme, config.label),
-            singleLine = singleLine,
-            textStyle = theme.inputTextStyle().copy(color = textColor),
-            cursorBrush = SolidColor(textColor),
-            decorationBox = { innerTextField ->
-                FieldBox(
-                    theme = theme,
-                    hasError = hasError,
-                    isEmpty = value.isEmpty(),
-                    placeholder = config.placeholder,
-                    innerTextField = innerTextField
-                )
-            }
-        )
+        // The keyboard keeps nothing it learns from a card field, see NoPersonalizedLearning.
+        NoPersonalizedLearning {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                keyboardOptions = config.keyboardOptions,
+                visualTransformation = config.visualTransformation,
+                modifier = config.textFieldModifier
+                    .fillMaxWidth()
+                    .semanticsLabel(theme, config.label),
+                singleLine = singleLine,
+                textStyle = theme.inputTextStyle().copy(color = textColor),
+                cursorBrush = SolidColor(textColor),
+                decorationBox = { innerTextField ->
+                    FieldBox(
+                        theme = theme,
+                        hasError = hasError,
+                        isEmpty = value.isEmpty(),
+                        placeholder = config.placeholder,
+                        innerTextField = innerTextField
+                    )
+                }
+            )
+        }
         HelperText(error = config.error, helperText = config.helperText, theme = theme)
     }
 }
