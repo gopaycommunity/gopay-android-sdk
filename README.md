@@ -1412,7 +1412,8 @@ repo root, then run the app from Android Studio or with `./gradlew :app:installD
   tokens, the card JWE and the Google Pay payment data are masked. Keep `debug` off in release
   builds.
 - `PaymentCardForm` sets `FLAG_SECURE` on the window it is drawn in, a dialog or a Material3
-  `ModalBottomSheet` included, to block screenshots and screen recording of card data. It does so
+  `ModalBottomSheet` included, to block screenshots and screen recording of card data; the same
+  flag leaves the app's preview in Recents blank while the form is shown. It does so
   unless your app is debuggable (`android:debuggable`, as in a debug build), independent of
   `GopayConfig.debug`, and takes the flag off when the form leaves. A window that already had the
   flag keeps it. One nesting is not covered: a sheet or dialog with the form opened from another
@@ -1430,6 +1431,25 @@ repo root, then run the app from Android Studio or with `./gradlew :app:installD
   **not reachable from the public API today**: the `CertificatePinner` is a parameter of
   `GopaySDK`'s private constructor and `GopaySDK.initialize(config)` never passes one.
   `GopayConfig` has no pinning field. Exposing it needs a small API change.
+
+### What your app must do
+
+A checklist for a secure release. The same list, in the same order, is in the iOS SDK's README.
+
+- **Ship release builds with debug off.** Set `debug = BuildConfig.DEBUG`, as
+  [2. Initialize](#2-initialize) does, so no release build logs its gateway traffic to Logcat.
+- **Use the SDK as released.** Do not fork or patch it. Security fixes reach your app only
+  through released versions, so keep the dependency current.
+- **Know what third-party keyboards and accessibility services see.** Keyboards and
+  accessibility services from other developers see what is typed into any app, the card form
+  included, and on Android neither the SDK nor your app can turn them off. The form asks keyboards
+  not to learn from the card fields and marks the CVV as a password field (see
+  [The card form](#the-card-form)); take that as a request that well-behaved keyboards and
+  services honour, not as a guarantee. What is in your hands: do not read the card fields through
+  accessibility APIs or an input method of your own.
+- **Tell your customers about the operational data.** The SDK sends GoPay diagnostic data
+  that you reflect in your privacy notice and in the Play Console's Data safety form, see
+  [Operational data](#operational-data).
 
 ### Google Play and PCI DSS
 
