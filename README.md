@@ -1482,15 +1482,37 @@ a Google Pay payment is reported as it happens (the sheet opening, the authoriza
 being sent and its outcome, or the sheet being closed without paying), and so is the answer to
 whether the device can pay with Google Pay. Every event carries the SDK version, the platform, which
 payment method and flow it belongs to, the id of the payment being paid, your `clientId`, a random
-id for the SDK instance and one for the app process, the event's position among those the SDK
-instance sent, and your app's package name. The package name is known from the first time the SDK
-is handed a `Context` (the card form, its own activities or an activity you pass in), so the
+id for the app process, the event's position among those the app process sent, and your app's
+package name. The position runs across every `initialize` in the process, where the browser SDK
+numbers the events of a browser tab. The package name is known from the first time the SDK is
+handed a `Context` (the card form, its own activities or an activity you pass in), so the
 initialization event, which has none, carries it empty.
 
-One event describes something your customer did rather than something the SDK did: that they
-submitted the card form, or authorised in the Google Pay sheet, and how long the form had been on
-screen before they did. That is the whole of it: no field contents, no keystrokes, no timing of
-individual fields, nothing derived from the card data, not even the length of the encrypted payload.
+Every event also carries the time on the device's own clock (`client_time`), so a report that
+arrives late can be told from one that happened late. And when a report fails to leave the
+device, offline or answered with an error, the SDK counts it and sends the running total with the
+next event that does arrive (`unsent`), so a gap in the numbering of the events can be told to
+have been lost before reaching GoPay or after.
+
+Some events describe something your customer did rather than something the SDK did. One is that
+they submitted the card form, or authorised in the Google Pay sheet, and how long the form had been
+on screen before they did. The others say how far they got with the card form: that they started
+(and whether a field arrived whole, as a paste, rather than being typed), that the card became
+valid and how long after the start, which errors the form found and what raised them (a submit,
+typing, or leaving a field, whether or not your form shows them), that `submitCardForm` was called
+and whether the card was complete then, and one summary per visit with the counts and timings of
+all of it and how the visit ended: `submit` when the encrypted payload was made, sent before the
+SDK empties the form; `encrypt-error` when the last submit failed to encrypt and nothing was typed
+after; `unmount` when the form left the screen otherwise. A customer who types into the emptied
+form again, a second card after a declined one, starts a new visit with its own summary; its times
+still count from when the form became ready, not from the start of that visit.
+
+What those carry is the state of each field (empty, partial or complete), the error codes
+(`required`, `pattern`), counts and times. Never a field's contents, a keystroke, the length of an
+entry or a digit count, nothing derived from the card data, not even the length of the encrypted
+payload. They exist because they are the only points between "the form appeared" and "a charge
+was attempted", so without them a customer who gave up at the form and a charge that failed to
+fire are the same silence.
 
 **What it never contains.** Card numbers, CVV, the encrypted card payload, card tokens, wallet
 payment data, `payment_secret`, access tokens, credentials, 3DS or ACS redirect parameters, and
@@ -1519,9 +1541,10 @@ user's identity. The reports go to `https://lx.gopay.com` (production) or
 for the gateway, a custom trust manager or certificate pinning, do not apply to these reports.
 
 Delivery is fire-and-forget: each report gives up after 10 seconds, nothing is retried, nothing is
-stored on the device, and every failure is discarded silently. Nothing here can delay or fail a
-payment. Four separate caps limit how much one payment session can produce (API reports, lifecycle
-markers, Google Pay steps and errors), so a flood of any single kind cannot crowd out the others.
+stored on the device, and a failed one is counted but never shown or thrown. Nothing here can delay
+or fail a payment. Six separate caps limit how much one payment session can produce (API reports,
+lifecycle markers, Google Pay steps and card form summaries, errors, card form steps, and card form
+field errors), so a flood of any single kind cannot crowd out the others.
 The caps start over with every payment session, because the SDK lives as long as your app, not as
 long as one checkout. Unit or integration tests of your own that initialize the SDK against the
 sandbox send real reports to the sandbox ingest, like any other run of the SDK.
