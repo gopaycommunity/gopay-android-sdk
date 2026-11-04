@@ -2,6 +2,8 @@ package cz.gopay.sdk.ui
 
 import androidx.annotation.VisibleForTesting
 import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.telemetry.CardFormProgress
+import cz.gopay.sdk.telemetry.CardFormSteps
 import cz.gopay.sdk.ui.utils.CardValidator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +32,24 @@ internal data class CardFormData(
     )
 
     val isValid: Boolean get() = validate().isAllValid
+
+    /**
+     * Each field as the operational data describes it: empty, complete when [validate] accepts
+     * it, partial for anything between. A state, never the digits or how many there are.
+     */
+    fun progress(): CardFormProgress.Progress {
+        val validation = validate()
+        fun state(digits: String, valid: Boolean) = when {
+            digits.isEmpty() -> CardFormProgress.State.EMPTY
+            valid -> CardFormProgress.State.COMPLETE
+            else -> CardFormProgress.State.PARTIAL
+        }
+        return CardFormProgress.Progress(
+            pan = state(cardNumberDigits, validation.cardNumber.isValid),
+            expiry = state(expirationDigits, validation.expirationDate.isValid),
+            cvv = state(cvv, validation.cvv.isValid)
+        )
+    }
 
     /** `MMYY` as `MM/YY`, the shape [CardValidator] reads. */
     fun formattedExpiration(): String = when {
@@ -61,10 +81,13 @@ internal data class CardFormData(
  * @param reset empties the visible fields, the edited flags and the submit-attempted flag.
  * @param submitAttempted tells the form a submit ran, so [CardFormValidationDisplay.ON_SUBMIT]
  *        shows its errors.
+ * @param steps the form's card form steps, which a submit reports to; kept here beside the
+ *        form's data and dropped with it when the form leaves.
  */
 internal class CardFormHandlers(
     val reset: () -> Unit,
-    val submitAttempted: () -> Unit
+    val submitAttempted: () -> Unit,
+    val steps: CardFormSteps? = null
 )
 
 /**
@@ -142,6 +165,10 @@ internal object CardFormStore {
         if (id == null) return@synchronized null to null
         id to data[id]
     }
+
+    /** The card form steps of the form registered under [formId], null when none is. */
+    fun steps(formId: String?): CardFormSteps? =
+        synchronized(lock) { formId?.let { registrations[it]?.handlers?.steps } }
 
     /** Tells the form with [formId] that a submit ran, for [CardFormValidationDisplay.ON_SUBMIT]. */
     fun submitAttempted(formId: String?) {

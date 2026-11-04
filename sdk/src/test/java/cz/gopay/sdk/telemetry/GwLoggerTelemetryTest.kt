@@ -345,6 +345,108 @@ class GwLoggerTelemetryTest {
     }
 
     @Test
+    fun `reports a card form step as a js_event with its message and its params, nothing else`() {
+        val telemetry = telemetry()
+        telemetry.cardFormStep(
+            CardFormProgress.Report(
+                CardFormProgress.Step.FIELD_ERRORS,
+                mapOf("errors" to "pan:required,cvv:pattern", "raised" to "cvv:pattern", "count" to 2, "trigger" to "blur"),
+                "new field errors",
+                CardFormProgress.Trigger.BLUR
+            ),
+            1200
+        )
+        telemetry.cardFormStep(
+            CardFormProgress.Report(CardFormProgress.Step.COMPLETED, mapOf("since_started_ms" to null), "card complete"),
+            null
+        )
+
+        val (errors, completed) = events
+        assertEquals(
+            setOf(
+                "client_id", "sdk_version", "integration", "trace_id", "transaction_id", "origin", "duration",
+                "client_time", "event_type", "function_name", "flow", "return_value", "params", "seq"
+            ),
+            errors.keys
+        )
+        assertEquals("js_event", errors["event_type"])
+        assertEquals("PAYMENT_CARD.field-errors", errors["function_name"])
+        assertEquals("return-payload", errors["flow"])
+        assertEquals(1200L, number(errors["duration"]))
+        assertEquals("new field errors", errors["return_value"])
+        assertEquals(
+            "{\"errors\":\"pan:required,cvv:pattern\",\"raised\":\"cvv:pattern\",\"count\":2,\"trigger\":\"blur\"}",
+            errors["params"]
+        )
+        assertEquals("PAYMENT_CARD.completed", completed["function_name"])
+        assertNull(completed["duration"])
+        // A null param is left out, and params with nothing left are not sent at all.
+        assertFalse(completed.containsKey("params"))
+    }
+
+    @Test
+    fun `drops a card form step that carries anything but states, codes, counts, times and its own messages`() {
+        val telemetry = telemetry()
+        fun started(params: Map<String, Any?>, message: String) =
+            telemetry.cardFormStep(CardFormProgress.Report(CardFormProgress.Step.STARTED, params, message), 10)
+        started(
+            mapOf("pan" to "4444444444444448", "expiry" to "empty", "cvv" to "empty", "filled_at_once" to true),
+            "started with autofill or paste"
+        )
+        started(mapOf("pan_length" to 16), "started typing")
+        started(mapOf("pan" to "partial"), "started typing 4444")
+        telemetry.init()
+
+        // None was sent, and none took a number.
+        assertEquals(listOf("navigation"), events.map { it["event_type"] })
+        assertEquals(1L, number(events.single()["seq"]))
+        assertFalse(capture.bodies.any { it.contains("4444") })
+    }
+
+    @Test
+    fun `spends the card form budgets apart from each other and from the rest`() {
+        val telemetry = telemetry()
+        fun step(step: CardFormProgress.Step, trigger: CardFormProgress.Trigger? = null) {
+            val report = when {
+                trigger != null -> CardFormProgress.Report(
+                    step, mapOf("count" to 0, "trigger" to trigger.value),
+                    if (trigger == CardFormProgress.Trigger.SUBMIT) "submit ok" else "new field errors", trigger
+                )
+                step == CardFormProgress.Step.INTERACTION ->
+                    CardFormProgress.Report(step, mapOf("ended" to "unmount"), "unmount: never started")
+                else -> CardFormProgress.Report(step, mapOf("valid" to true), "pay pressed")
+            }
+            telemetry.cardFormStep(report, 1)
+        }
+        repeat(35) { step(CardFormProgress.Step.FIELD_ERRORS, CardFormProgress.Trigger.INPUT) }
+        repeat(55) { step(CardFormProgress.Step.SUBMIT_REQUEST) }
+        // A submit's errors count with the steps above, never with the typing.
+        repeat(10) { step(CardFormProgress.Step.FIELD_ERRORS, CardFormProgress.Trigger.SUBMIT) }
+        repeat(152) { telemetry.walletStep(GwLoggerTelemetry.Method.GOOGLE_PAY, "begin", GwLoggerTelemetry.StepStatus.START, null) }
+        // The summary counts with the wallet steps.
+        step(CardFormProgress.Step.INTERACTION)
+        telemetry.ready(GwLoggerTelemetry.Method.CARD, null)
+
+        val names = events.map { it["function_name"] to (it["params"] as String?)?.contains("submit") }
+        assertEquals(30, names.count { it == ("PAYMENT_CARD.field-errors" to false) })
+        assertEquals(55, names.count { it.first == "PAYMENT_CARD.submit-request" })
+        assertEquals(5, names.count { it == ("PAYMENT_CARD.field-errors" to true) })
+        assertEquals(150, names.count { it.first == "GPAY.begin" })
+        assertEquals(0, names.count { it.first == "PAYMENT_CARD.interaction" })
+        assertEquals(1, names.count { it.first == "PAYMENT_CARD.ready" })
+
+        // A new payment session gives them back.
+        telemetry.navigate("2")
+        step(CardFormProgress.Step.FIELD_ERRORS, CardFormProgress.Trigger.INPUT)
+        step(CardFormProgress.Step.SUBMIT_REQUEST)
+        step(CardFormProgress.Step.INTERACTION)
+        assertEquals(
+            listOf("PAYMENT_CARD.field-errors", "PAYMENT_CARD.submit-request", "PAYMENT_CARD.interaction"),
+            events.takeLast(3).map { it["function_name"] }
+        )
+    }
+
+    @Test
     fun `times ready from init and unmount from ready`() {
         clock = 0
         val telemetry = telemetry()

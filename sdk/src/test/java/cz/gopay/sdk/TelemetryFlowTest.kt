@@ -11,6 +11,8 @@ import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.TokenResponse
 import cz.gopay.sdk.session.AwaitChargeOptions
 import cz.gopay.sdk.session.PaymentSession
+import cz.gopay.sdk.telemetry.CardFormProgress
+import cz.gopay.sdk.telemetry.CardFormSteps
 import cz.gopay.sdk.telemetry.GwLoggerSchema
 import cz.gopay.sdk.telemetry.TelemetryCapture
 import cz.gopay.sdk.ui.CardFormData
@@ -18,6 +20,7 @@ import cz.gopay.sdk.ui.CardFormHandlers
 import cz.gopay.sdk.ui.CardFormStore
 import cz.gopay.sdk.ui.submitCardForm
 import cz.gopay.sdk.util.SdkLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -32,6 +35,7 @@ import org.junit.Before
 import org.junit.Test
 import org.mockito.kotlin.mock
 import retrofit2.Response
+import java.io.IOException
 
 /**
  * The operational data an SDK instance sends over a payment, through the public calls: init,
@@ -185,6 +189,66 @@ class TelemetryFlowTest {
 
         assertEquals(emptyList<String>(), quiet)
         assertEquals(listOf("telemetry: navigation init", "telemetry: navigation navigate"), lines)
+    }
+
+    @Test
+    fun `the card form's steps go out with the submit, and none of them carries the card`() {
+        sdk { issued() }
+        val steps = CardFormSteps()
+        CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = steps::emptied, submitAttempted = {}, steps = steps))
+        steps.ready()
+        CardFormStore.update("form-1", CardFormData())
+        runCatching { runBlocking { submitCardForm("form-1") { error("not reached") } } }
+        for (data in listOf(
+            CardFormData("4444444444444448"),
+            CardFormData("4444444444444448", "1228"),
+            CardFormData("4444444444444448", "1228", "123")
+        )) {
+            CardFormStore.update("form-1", data)
+            steps.input(CardFormProgress.Field.PAN) { data.progress() }
+        }
+
+        runBlocking { submitCardForm("form-1") { "eyJhbGciOiJSU0EtT0FFUCJ9.abcdefghij.klmnopqrst.uvwxyzabcd.efghijklmn" } }
+
+        val card = events.filter { (it["function_name"] as String?)?.startsWith("PAYMENT_CARD.") == true || it["event_type"] == "interaction" }
+        assertEquals(
+            listOf(
+                "PAYMENT_CARD.submit-request", "PAYMENT_CARD.field-errors", "PAYMENT_CARD.started",
+                "PAYMENT_CARD.completed", "PAYMENT_CARD.submit-request", "PAYMENT_CARD.field-errors",
+                "submit", "PAYMENT_CARD.interaction"
+            ),
+            card.map { it["function_name"] ?: it["interaction_type"] }
+        )
+        assertEquals("submit: completed", card.last()["return_value"])
+        for (event in card) {
+            val values = event.filterKeys { it !in setOf("trace_id", "transaction_id") }.values
+            for (leak in listOf("4444", "1228", "123", "eyJ")) {
+                assertFalse("$leak in $values", values.any { it is String && it.contains(leak) })
+            }
+        }
+    }
+
+    @Test
+    fun `a submit whose encryption fails ends the visit with encrypt-error, a cancelled one does not`() {
+        sdk { issued() }
+        val card = CardFormData("4444444444444448", "1228", "123")
+        for ((failure, summary) in listOf(
+            IOException("public key unreachable") to "encrypt-error: completed",
+            CancellationException("the host left") to "unmount: completed"
+        )) {
+            val steps = CardFormSteps()
+            CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = steps::emptied, submitAttempted = {}, steps = steps))
+            steps.ready()
+            CardFormStore.update("form-1", card)
+            steps.input(CardFormProgress.Field.PAN) { card.progress() }
+
+            val thrown = runCatching { runBlocking { submitCardForm("form-1") { throw failure } } }.exceptionOrNull()
+            steps.unmounted()
+            CardFormStore.unregister("form-1", formOwner)
+
+            assertEquals(failure.javaClass, thrown?.javaClass)
+            assertEquals(summary, events.last { it["function_name"] == "PAYMENT_CARD.interaction" }["return_value"])
+        }
     }
 
     @Test

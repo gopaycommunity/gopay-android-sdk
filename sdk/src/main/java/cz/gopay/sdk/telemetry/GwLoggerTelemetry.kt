@@ -203,6 +203,29 @@ internal class GwLoggerTelemetry(
     }
 
     /**
+     * `PAYMENT_CARD.<step>`: how far the customer got with the card form, from [CardFormProgress].
+     * [durationMs] counts from the form's ready, null before it. The report's params are states,
+     * codes, counts and times only and its message one of the steps' own, both checked while the
+     * event is built: anything else drops the event rather than sending it.
+     */
+    fun cardFormStep(report: CardFormProgress.Report, durationMs: Long?) {
+        val budget = when (report.step) {
+            CardFormProgress.Step.FIELD_ERRORS ->
+                if (report.trigger == CardFormProgress.Trigger.SUBMIT) Budget.CARD_FORM else Budget.FIELD_ERRORS
+            CardFormProgress.Step.INTERACTION -> Budget.STEP
+            else -> Budget.CARD_FORM
+        }
+        post(budget, paymentId = null) {
+            put("event_type", "js_event")
+            put("function_name", "${Method.CARD.prefix}.${report.step.value}")
+            put("duration", durationMs)
+            put("flow", CARD_FORM_FLOW)
+            put("return_value", CardFormProgress.checkMessage(report.message))
+            putIfPresent("params", Redaction.describeParams(CardFormProgress.checkParams(report.params)))
+        }
+    }
+
+    /**
      * `<METHOD>.<step>` of a wallet payment, its outcome in `params.status` and the detail, or
      * the status itself, in `return_value`.
      */

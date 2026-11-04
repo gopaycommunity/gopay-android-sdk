@@ -29,6 +29,8 @@ import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocaleStrings
 import cz.gopay.sdk.locales.GopayLocales
+import cz.gopay.sdk.telemetry.CardFormProgress
+import cz.gopay.sdk.telemetry.CardFormSteps
 import cz.gopay.sdk.telemetry.GwLoggerTelemetry
 import cz.gopay.sdk.telemetry.Telemetry
 import cz.gopay.sdk.ui.utils.CardNumberInputValidator
@@ -221,6 +223,21 @@ fun PaymentCardForm(
     val snapshot = { CardFormData(cardNumberDigits, expirationDateDigits, cvv) }
     val formData = snapshot()
 
+    // The view the form is drawn in, for FLAG_SECURE on its window and for the card form steps.
+    val view = LocalView.current
+
+    // How far the customer got, for the operational data: told each field's state on every edit
+    // and focus change, never what the field holds. Kept for the whole time the form is on screen.
+    // A field left is reported a frame late, through the view, and dropped if the form left with it
+    // or its window has lost the focus by then.
+    val steps = remember {
+        CardFormSteps(defer = { block -> view.post { block() } }, hasWindowFocus = { view.hasWindowFocus() })
+    }
+    val reportInput = { field: CardFormProgress.Field -> steps.input(field) { snapshot().progress() } }
+    val reportFocus = { field: CardFormProgress.Field, focused: Boolean ->
+        if (focused) steps.focused(field) else steps.blurred(field) { snapshot().progress() }
+    }
+
     // Reset function to clear all form fields. The edited and attempted flags go with the
     // digits, so the emptied fields come back pristine instead of lit up with "required".
     val resetForm = {
@@ -233,6 +250,7 @@ fun PaymentCardForm(
         expirationEdited = false
         cvvEdited = false
         submitAttempted = false
+        steps.emptied()
     }
 
     // FocusRequesters for each field
@@ -240,9 +258,6 @@ fun PaymentCardForm(
     val expirationFocusRequester = remember { FocusRequester() }
     val cvvFocusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope()
-
-    // The view the form is drawn in, for FLAG_SECURE on its window
-    val view = LocalView.current
 
     // The older submit path: the shared submit of this form, reported through the callbacks.
     val submitCardData: suspend () -> CardEncryptionResult = {
@@ -265,7 +280,7 @@ fun PaymentCardForm(
         CardFormStore.register(
             resolvedFormId,
             owner,
-            CardFormHandlers(reset = resetForm, submitAttempted = { submitAttempted = true })
+            CardFormHandlers(reset = resetForm, submitAttempted = { submitAttempted = true }, steps = steps)
         )
         CardFormStore.update(resolvedFormId, snapshot())
         onDispose { CardFormStore.unregister(resolvedFormId, owner) }
@@ -290,15 +305,18 @@ fun PaymentCardForm(
     // the plain `remember` state above doesn't survive leaving the composition either.
     // Deliberately NOT cleared on a failed encryption: authorization hasn't happened yet,
     // and the user shouldn't have to retype the card after a network drop.
-    // The same span is what the operational data reports as the form's ready and its unmount.
+    // The same span is what the operational data reports as the form's ready and its unmount,
+    // and what the card form steps are timed from and summarised over.
     DisposableEffect(Unit) {
         Telemetry.noteOrigin(view.context)
+        steps.ready()
         Telemetry.current?.ready(GwLoggerTelemetry.Method.CARD, GwLoggerTelemetry.CARD_FORM_FLOW)
         onDispose {
             Telemetry.current?.unmount(
                 GwLoggerTelemetry.Method.CARD,
                 chargeInFlight = Telemetry.runningCharges.get() > 0
             )
+            steps.unmounted()
             resetForm()
         }
     }
@@ -328,6 +346,7 @@ fun PaymentCardForm(
                 cardNumberDigits = validated
                 cardNumberEdited = true
                 CardFormStore.update(resolvedFormId, snapshot())
+                reportInput(CardFormProgress.Field.PAN)
                 if (CardNumberInputValidator.isValidLength(validated) && CardNumberInputValidator.isValidLuhn(validated)) {
                     coroutineScope.launch {
                         expirationFocusRequester.requestFocus()
@@ -344,7 +363,10 @@ fun PaymentCardForm(
                 textFieldModifier = Modifier
                     .cardFieldSemantics(CardField.CARD_NUMBER, allowsAutofill)
                     .focusRequester(cardNumberFocusRequester)
-                    .onFocusChanged { isCardNumberFocused = it.isFocused }
+                    .onFocusChanged {
+                        isCardNumberFocused = it.isFocused
+                        reportFocus(CardFormProgress.Field.PAN, it.isFocused)
+                    }
             ),
             theme = theme
         )
@@ -368,6 +390,7 @@ fun PaymentCardForm(
                         expirationDateDigits = validated
                         expirationEdited = true
                         CardFormStore.update(resolvedFormId, snapshot())
+                        reportInput(CardFormProgress.Field.EXPIRY)
                         if (validated.length == 4) {
                             coroutineScope.launch {
                                 cvvFocusRequester.requestFocus()
@@ -384,6 +407,7 @@ fun PaymentCardForm(
                         textFieldModifier = Modifier
                             .cardFieldSemantics(CardField.EXPIRATION, allowsAutofill)
                             .focusRequester(expirationFocusRequester)
+                            .onFocusChanged { reportFocus(CardFormProgress.Field.EXPIRY, it.isFocused) }
                     ),
                     modifier = Modifier.weight(1f),
                     theme = theme,
@@ -397,6 +421,7 @@ fun PaymentCardForm(
                         cvv = validated
                         cvvEdited = true
                         CardFormStore.update(resolvedFormId, snapshot())
+                        reportInput(CardFormProgress.Field.CVV)
                     },
                     config = LabeledInputFieldConfig(
                         label = fields.cvv.label,
@@ -410,7 +435,10 @@ fun PaymentCardForm(
                         textFieldModifier = Modifier
                             .cardFieldSemantics(CardField.CVV, allowsAutofill)
                             .focusRequester(cvvFocusRequester)
-                            .onFocusChanged { isCvvFocused = it.isFocused }
+                            .onFocusChanged {
+                                isCvvFocused = it.isFocused
+                                reportFocus(CardFormProgress.Field.CVV, it.isFocused)
+                            }
                     ),
                     modifier = Modifier.weight(1f),
                     theme = theme,

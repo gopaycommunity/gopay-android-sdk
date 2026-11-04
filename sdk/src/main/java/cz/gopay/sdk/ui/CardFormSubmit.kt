@@ -14,7 +14,10 @@ import kotlinx.coroutines.CancellationException
  * The submit of a [PaymentCardForm], the one body behind [GopaySDK.submitCardForm] and the
  * older submit function the form hands to `onFormReady`: reads the SDK's copy of the form,
  * tells the form a submit ran, validates, encrypts with [encrypt], and empties the form once
- * the JWE exists. Reports nothing: the public call it runs inside does.
+ * the JWE exists. Reports no error: the public call it runs inside does. Reports the card form
+ * steps of the submit: the press and the errors it found, before anything is checked, then how
+ * the encryption ended, the visit's summary when the JWE was made or a failure the summary will
+ * carry if nothing is typed after it. A cancellation is neither.
  *
  * @param formId the form to read, or the most recently active one when null.
  * @param encrypt `GopaySDK.encryptCardData` in production; a stub in tests.
@@ -25,15 +28,29 @@ import kotlinx.coroutines.CancellationException
  */
 internal suspend fun submitCardForm(formId: String?, encrypt: suspend (CardData) -> String): String {
     val (id, data) = CardFormStore.resolve(formId)
+    val steps = CardFormStore.steps(id)
+    // With the validity the pay button was pressed on, then the errors the press found, whether
+    // or not the form shows them.
+    steps?.submitRequested()
     CardFormStore.submitAttempted(id)
+    steps?.submitted { (data ?: CardFormData()).progress() }
     val cardData = data?.takeUnless { it.isEmpty }?.takeIf { it.isValid }?.toCardData()
         ?: throw invalidCardForm(data)
-    val jwe = encrypt(cardData)
+    val jwe = try {
+        encrypt(cardData)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        steps?.encryptFailed()
+        throw e
+    }
     // That the user submitted and the payload exists, timed from the form's ready: nothing about
     // the card, the JWE or its length.
     Telemetry.current?.submit(
         "card-form", GwLoggerTelemetry.Method.CARD, "card", flow = GwLoggerTelemetry.CARD_FORM_FLOW
     )
+    // The visit ends here, with its summary, before the form is emptied.
+    steps?.encrypted()
     // Only clear after encryption succeeded: on failure (e.g. key fetch offline) the user
     // shouldn't have to retype the card; authorization hasn't happened yet. Clearing also
     // empties the fields the form still shows, so the card does not outlive the JWE made
