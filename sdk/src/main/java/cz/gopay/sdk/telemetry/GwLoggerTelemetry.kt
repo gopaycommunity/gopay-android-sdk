@@ -17,14 +17,17 @@ import kotlin.math.roundToLong
  *
  * Fire and forget: one event per POST, nothing awaits it, nothing retries it (the ingest answers
  * 204 whether or not it kept the event, so a retry could not tell a transient failure from a
- * refused payload), the response is not read, and every failure, building the event included,
- * is swallowed. Nothing here can delay or fail a payment.
+ * refused payload), of the response only the status is read, to count an event that did not
+ * arrive, and every failure, building the event included, is swallowed. Nothing here can delay
+ * or fail a payment.
  *
- * Every event carries the same envelope ([base]); `seq` numbers the events this instance actually
- * handed to the HTTP client, 1, 2, 3, so a gap in it is an event that was sent and never stored.
- * An event refused by its budget, by a missing attribution key or by a failure to build takes
- * no number. The event is built and redacted on the caller's thread outside the lock; the lock
- * covers only the budget, the number and the hand-over to the HTTP client.
+ * Every event carries the same envelope ([base]); `seq` numbers the events the process actually
+ * handed to the HTTP client, 1, 2, 3, across every instance (see [Telemetry.handOver]), so a gap
+ * in it is an event that was sent and never stored, and `unsent`, when there are any, says how
+ * many of those never reached the ingest. An event refused by its budget, by a missing
+ * attribution key or by a failure to build takes no number. The event is built and redacted on
+ * the caller's thread outside the lock; the lock covers only the budget, the number and the
+ * hand-over to the HTTP client.
  *
  * With `GopayConfig.debug` on, each sent event is named in one Logcat line, without its content.
  */
@@ -33,7 +36,8 @@ internal class GwLoggerTelemetry(
     private val clientId: String?,
     private val client: Call.Factory,
     private val nanoTime: () -> Long = System::nanoTime,
-    private val newId: () -> String = { UUID.randomUUID().toString() }
+    private val newId: () -> String = { UUID.randomUUID().toString() },
+    private val wallClock: () -> Long = System::currentTimeMillis
 ) {
     /** The payment method an event is about, and the prefix of its `function_name`. */
     enum class Method(val prefix: String) {
@@ -56,17 +60,34 @@ internal class GwLoggerTelemetry(
      *
      * Spent per payment session rather than per instance: a browser SDK lives as long as its page,
      * an app's lives as long as its process, which is days and many payments. Every session start
-     * gives all four back (see [navigate]).
+     * gives them all back (see [navigate]).
+     *
+     * The card form's steps have two of their own, off the step budget the wallets share: field
+     * errors repeat with a customer who keeps getting the card wrong, and must not spend the
+     * `completed` that says whether they got there in the end. The errors of a submit count with
+     * the other steps instead: they are the moment the customer tried to pay, and typing must
+     * not be able to silence it. The card form's summary, one per visit, counts with the wallet
+     * steps.
      */
     private enum class Budget(val limit: Int) {
+        /** Gateway calls. */
         API_CALL(200),
-        LIFECYCLE(75),
-        STEP(150),
-        ERROR(50)
-    }
 
-    /** One per `initialize`: what ties an init to the payments made through that instance. */
-    val instanceId: String = newId()
+        /** Init, session start and close, the 3DS leave, ready, submit and unmount. */
+        LIFECYCLE(75),
+
+        /** Google Pay steps and card form summaries. */
+        STEP(150),
+
+        /** SDK errors. */
+        ERROR(50),
+
+        /** Card form steps, and the field errors of a submit. */
+        CARD_FORM(60),
+
+        /** Card form field errors raised by typing or by leaving a field. */
+        FIELD_ERRORS(30)
+    }
 
     /** When the instance was created, which `ready` is timed from. */
     private val createdAt: Long = nanoTime()
@@ -84,7 +105,6 @@ internal class GwLoggerTelemetry(
      */
     private val attached = ArrayList<String>()
 
-    private var lastSeq = 0L
     private val spent = IntArray(Budget.values().size)
 
     /** The monotonic clock the durations are measured on, in nanoseconds. */
@@ -343,13 +363,16 @@ internal class GwLoggerTelemetry(
     private fun base(paymentId: String?): LinkedHashMap<String, Any?> = LinkedHashMap<String, Any?>().apply {
         putIfPresent("client_id", clientId?.takeIf { it.isNotEmpty() })
         putIfPresent("payment_session_id", (paymentId ?: latestPaymentId())?.takeIf { it.isNotEmpty() })
-        put("sdk_instance_id", instanceId)
         put("sdk_version", BuildConfig.VERSION_NAME)
         put("integration", INTEGRATION)
         put("trace_id", newId())
         put("transaction_id", Telemetry.transactionId)
         put("origin", Telemetry.origin.take(MAX_ORIGIN_LENGTH))
         put("duration", null)
+        // The device's wall clock, the one place here that reads it: against the ingest's own
+        // timestamp it is the device's clock skew. Every duration stays on the monotonic clock.
+        put("client_time", wallClock())
+        putIfPresent("unsent", Telemetry.unsent)
     }
 
     /**
@@ -374,15 +397,15 @@ internal class GwLoggerTelemetry(
             if (bytes(json) > MAX_EVENT_BYTES) return
             synchronized(lock) {
                 if (spent[budget.ordinal] >= budget.limit) return
-                val seq = lastSeq + 1
-                // The event's own closing brace makes way for the number, then the envelope's.
-                val body = "{\"event\":" + json.dropLast(1) + ",\"seq\":" + seq + "}}"
-                val request = Request.Builder()
-                    .url(endpoint)
-                    .post(body.toByteArray(Charsets.UTF_8).toRequestBody(JSON))
-                    .build()
-                client.newCall(request).enqueue(Telemetry.discardResponse)
-                lastSeq = seq
+                Telemetry.handOver { seq ->
+                    // The event's own closing brace makes way for the number, then the envelope's.
+                    val body = "{\"event\":" + json.dropLast(1) + ",\"seq\":" + seq + "}}"
+                    val request = Request.Builder()
+                        .url(endpoint)
+                        .post(body.toByteArray(Charsets.UTF_8).toRequestBody(JSON))
+                        .build()
+                    client.newCall(request).enqueue(Telemetry.countUndelivered)
+                }
                 spent[budget.ordinal]++
             }
             SdkLog.d("telemetry: ${event["event_type"]} ${nameOf(event)}")

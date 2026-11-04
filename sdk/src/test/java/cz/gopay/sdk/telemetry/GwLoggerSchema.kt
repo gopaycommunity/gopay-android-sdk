@@ -7,6 +7,8 @@ import org.junit.Assert.fail
  * The gw-logger event schema (OpenAPI 0.9.0), as far as the SDK's events can break it: every type
  * has `additionalProperties: false`, so one key too many drops the whole event, and each type
  * has its own required keys and caps. A test that sends an event checks it against this.
+ * `client_time` and `unsent` come from gw-logger 2.0.2, which accepts them on every type; that
+ * schema is not at hand, so they are taken as integers, `unsent` from 1.
  */
 internal object GwLoggerSchema {
 
@@ -29,7 +31,9 @@ internal object GwLoggerSchema {
         "trace_id" to Field.Str(max = 256),
         "transaction_id" to Field.Str(max = 256),
         "origin" to Field.Str(max = 2048),
-        "duration" to Field.Num(nullable = true)
+        "duration" to Field.Num(nullable = true),
+        "client_time" to Field.Num(min = 0),
+        "unsent" to Field.Num(min = 1)
     )
 
     private val required = listOf("event_type", "trace_id", "origin", "duration")

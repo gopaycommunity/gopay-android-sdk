@@ -21,7 +21,6 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -36,14 +35,25 @@ class GwLoggerTelemetryTest {
 
     private val capture = TelemetryCapture()
     private var clock = 0L
+    private var wallClock = 1_767_225_600_123L
 
     private fun telemetry(clientId: String? = "client_test_123", client: Call.Factory = capture.client) =
         GwLoggerTelemetry(
             endpoint = "https://lx.sandbox.gopay.com/events",
             clientId = clientId,
             client = client,
-            nanoTime = { clock }
+            nanoTime = { clock },
+            wallClock = { wallClock }
         )
+
+    /** [capture]'s client, with what reaches the SDK of each captured POST changed by [answer]. */
+    private fun ingest(answer: (Response) -> Response): OkHttpClient = OkHttpClient.Builder()
+        .dispatcher(capture.client.dispatcher)
+        .addInterceptor { chain -> answer(chain.proceed(chain.request())) }
+        .apply { capture.client.interceptors.forEach { addInterceptor(it) } }
+        .build()
+
+    private fun answering(status: Int) = ingest { it.newBuilder().code(status).build() }
 
     private val events get() = capture.events.onEach { GwLoggerSchema.assertValid(it) }
 
@@ -164,21 +174,59 @@ class GwLoggerTelemetryTest {
         val sent = events
         assertEquals(1, sent.map { it["transaction_id"] }.toSet().size)
         assertEquals(3, sent.map { it["trace_id"] }.toSet().size)
-        assertNotEquals(sent[0]["sdk_instance_id"], sent[2]["sdk_instance_id"])
-        assertEquals(sent[0]["sdk_instance_id"], sent[1]["sdk_instance_id"])
+        // No id of the instance any more: the process's transaction id is the one that ties.
+        assertTrue(sent.none { it.containsKey("sdk_instance_id") })
     }
 
     @Test
-    fun `numbers the events it sent 1, 2, 3, per instance, with no gap for one it did not`() {
+    fun `numbers the events the process sent 1, 2, 3, across instances, with no gap for one it did not`() {
         val telemetry = telemetry()
         telemetry.init()
         // Refused by the schema's size cap rather than sent and lost.
         telemetry.apiCall("GET", "/x".repeat(10_000), 200, 1, null, null, null)
         telemetry.init()
-        telemetry.init()
+        // A client that cannot even take the request spends no number either.
+        telemetry(client = Call.Factory { throw IllegalStateException("no client") }).init()
+        // Initialized again: the series carries on.
         telemetry().init()
+        telemetry.init()
 
-        assertEquals(listOf(1L, 2L, 3L, 1L), events.map { number(it["seq"]) })
+        assertEquals(listOf(1L, 2L, 3L, 4L), events.map { number(it["seq"]) })
+    }
+
+    @Test
+    fun `carries the device's wall clock as whole milliseconds on every event`() {
+        val telemetry = telemetry()
+        telemetry.init()
+        wallClock += 2_500
+        telemetry.attach("3000000001")
+        telemetry.navigate("3000000001")
+
+        assertEquals(listOf(1_767_225_600_123L, 1_767_225_602_623L), events.map { number(it["client_time"]) })
+        assertTrue(capture.bodies.first().contains("\"client_time\":1767225600123,"))
+    }
+
+    @Test
+    fun `counts the events that never arrived and sends the total with every later one`() {
+        val telemetry = telemetry()
+        telemetry.init()
+        telemetry(client = ingest { throw IOException("ingest down") }).init()
+        telemetry.init()
+        telemetry(client = answering(503)).init()
+        telemetry.init()
+        telemetry.init()
+        // A 204 for a payload the ingest dropped is the ingest's to count, and so is any 2xx.
+        telemetry(client = answering(202)).init()
+        telemetry.init()
+
+        val sent = events
+        // The first is absent rather than 0; the lost ones are captured before they fail.
+        assertFalse(sent[0].containsKey("unsent"))
+        assertFalse(sent[1].containsKey("unsent"))
+        assertEquals(
+            listOf(1L, 1L, 2L, 2L, 2L, 2L),
+            sent.drop(2).map { number(it["unsent"]) }
+        )
     }
 
     @Test
@@ -216,13 +264,12 @@ class GwLoggerTelemetryTest {
         val throwingFactory = Call.Factory { throw IllegalStateException("no client") }
         telemetry(client = throwingFactory).init()
 
-        var ids = 0
         val throwingIds = GwLoggerTelemetry(
             endpoint = "https://lx.sandbox.gopay.com/events",
             clientId = "c",
             client = capture.client,
-            // The instance id, then a failure for the trace id of the event.
-            newId = { if (ids++ == 0) "instance" else throw IllegalStateException("no randomness") }
+            // A failure for the trace id of the event.
+            newId = { throw IllegalStateException("no randomness") }
         )
         throwingIds.init()
 
@@ -285,8 +332,9 @@ class GwLoggerTelemetryTest {
         val submit = events[1]
         assertEquals(
             setOf(
-                "client_id", "sdk_instance_id", "sdk_version", "integration", "trace_id", "transaction_id",
-                "origin", "duration", "event_type", "interaction_type", "element_id", "payment_method", "flow", "seq"
+                "client_id", "sdk_version", "integration", "trace_id", "transaction_id", "origin",
+                "duration", "client_time", "event_type", "interaction_type", "element_id", "payment_method",
+                "flow", "seq"
             ),
             submit.keys
         )

@@ -62,10 +62,14 @@ internal class TelemetryCapture {
     }
 
     companion object {
-        /** Drops every override and the current instance, so no test leaks into the next. */
+        /**
+         * Drops every override and the current instance, and starts the process-wide numbering
+         * and lost-event count over, so no test leaks into the next.
+         */
         fun reset() {
             Telemetry.current = null
             Telemetry.httpClientOverride = null
+            Telemetry.resetCounters()
         }
     }
 }

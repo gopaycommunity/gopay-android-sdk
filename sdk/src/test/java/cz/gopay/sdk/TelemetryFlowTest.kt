@@ -106,7 +106,7 @@ class TelemetryFlowTest {
         assertEquals("attach", sent[1]["flow"])
         assertEquals(listOf("3000000001", "3000000001", "3000000001"), sent.drop(1).map { it["payment_session_id"] })
         assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, sent[3]["function_name"])
-        assertEquals(1, sent.map { it["sdk_instance_id"] }.toSet().size)
+        assertTrue(sent.none { it.containsKey("sdk_instance_id") })
     }
 
     @Test
@@ -156,9 +156,8 @@ class TelemetryFlowTest {
     fun `a session reports through the instance that started it, after another initialize too`() {
         val sdk = sdk { issued() }
         val session = runBlocking { sdk.startPaymentSession("3000000001", "secret") }
-        val first = events.first()["sdk_instance_id"]
-
-        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX, clientId = "client-1"))
+        // The instances told apart by their client id, the one thing of theirs an event carries.
+        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX, clientId = "client-2"))
         // The challenge is reported before it opens; opening it needs an Android runtime.
         runCatching {
             runBlocking { session.handle3dsVerification(mock<Activity>(), "https://acs.example-bank.com/challenge?creq=SECRET") }
@@ -168,8 +167,9 @@ class TelemetryFlowTest {
         val redirect = events.single { it["flow"] == "3ds-redirect" }
         assertEquals("leave", redirect["navigation_type"])
         assertEquals("https://acs.example-bank.com/challenge", redirect["target"])
-        assertEquals(first, redirect["sdk_instance_id"])
-        assertEquals(first, events.last()["sdk_instance_id"])
+        assertEquals("client-1", redirect["client_id"])
+        assertEquals("client-1", events.last()["client_id"])
+        assertEquals(listOf("client-1", "client-2"), events.filter { it["navigation_type"] == "init" }.map { it["client_id"] })
         assertEquals("leave", events.last()["navigation_type"])
         assertEquals(2, events.count { it["navigation_type"] == "init" })
     }
@@ -200,7 +200,7 @@ class TelemetryFlowTest {
         assertEquals("card-form", submit["element_id"])
         assertEquals("card", submit["payment_method"])
         // The random ids aside, nothing in the event can have come from the form.
-        val values = submit.filterKeys { it !in setOf("trace_id", "transaction_id", "sdk_instance_id") }.values
+        val values = submit.filterKeys { it !in setOf("trace_id", "transaction_id") }.values
         for (leak in listOf("4444", "1228", "123", "eyJ")) {
             assertFalse("$leak in $values", values.any { it is String && it.contains(leak) })
         }

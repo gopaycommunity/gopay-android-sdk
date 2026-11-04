@@ -11,6 +11,7 @@ import okhttp3.Response
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Process-wide state of the operational data. Mirrors the iOS SDK's `Telemetry` setup.
@@ -26,8 +27,8 @@ internal object Telemetry {
      *
      * Only for what belongs to no SDK instance: the card form, which is composed without one, and
      * [cz.gopay.sdk.exception.ErrorReporter], which every entry point reports through. A payment
-     * session reports through the instance that started it, so one payment never shows under two
-     * `sdk_instance_id`s when the app initializes again in the middle of it.
+     * session reports through the instance that started it, so one payment keeps its `client_id`
+     * when the app initializes again in the middle of it.
      */
     @Volatile
     var current: GwLoggerTelemetry? = null
@@ -61,11 +62,51 @@ internal object Telemetry {
     @Volatile
     var httpClientOverride: Call.Factory? = null
 
-    /** What every event's request ends in: the response is closed unread. */
-    val discardResponse: Callback = object : Callback {
-        override fun onFailure(call: Call, e: IOException) = Unit
+    /** Guards [lastSeq]. Taken inside an instance's own lock, never the other way round. */
+    private val seqLock = Any()
 
-        override fun onResponse(call: Call, response: Response) = response.close()
+    /** The `seq` of the last event handed to the HTTP client, by any instance in the process. */
+    private var lastSeq = 0L
+
+    /**
+     * Events handed to the HTTP client that did not arrive: no response, or one outside 2xx.
+     * Cumulative for the process and never reset once reported, since the event that carries it
+     * can be lost too and a later one still holds the total. A 204 for a payload the ingest
+     * dropped is an arrival: that loss is the ingest's to count.
+     */
+    private val unsentCount = AtomicLong(0)
+
+    /** [unsentCount] as the next event carries it: absent while nothing has been lost. */
+    val unsent: Long? get() = unsentCount.get().takeIf { it > 0 }
+
+    /**
+     * Numbers one event and hands it to the HTTP client through [send], under one process-wide
+     * lock, so the events of every SDK instance form one series, as `transaction_id` ties them
+     * together, and a re-initialized SDK carries on where the last one stopped. A number is
+     * spent only when [send] returns: one that throws leaves no gap.
+     */
+    fun handOver(send: (seq: Long) -> Unit) = synchronized(seqLock) {
+        val seq = lastSeq + 1
+        send(seq)
+        lastSeq = seq
+    }
+
+    /** What every event's request ends in: the response is closed unread, a lost event counted. */
+    val countUndelivered: Callback = object : Callback {
+        override fun onFailure(call: Call, e: IOException) {
+            unsentCount.incrementAndGet()
+        }
+
+        override fun onResponse(call: Call, response: Response) {
+            response.use { if (!it.isSuccessful) unsentCount.incrementAndGet() }
+        }
+    }
+
+    /** Starts the numbering and the count of lost events over. Tests only. */
+    @VisibleForTesting
+    fun resetCounters() {
+        synchronized(seqLock) { lastSeq = 0 }
+        unsentCount.set(0)
     }
 
     /** The telemetry of an SDK instance initialized with [config], or null when it has nowhere to send. */
