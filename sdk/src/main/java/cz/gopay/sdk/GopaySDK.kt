@@ -1,9 +1,11 @@
 package cz.gopay.sdk
 
 import android.app.Activity
+import android.content.Context
 import androidx.annotation.VisibleForTesting
 import com.google.android.gms.wallet.IsReadyToPayRequest
 import com.google.android.gms.wallet.Wallet
+import cz.gopay.sdk.config.Environment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
@@ -280,35 +282,14 @@ class GopaySDK private constructor(
      * `PRODUCTION` for the production gateway, `TEST` otherwise. A `false` from Google Play
      * services is returned as such; the check never throws an SDK error.
      *
+     * The same check runs without an instance as `GopaySDK.isWalletAvailable(context,
+     * environment, info)`, for an app that decides what to show before it initializes the SDK.
+     *
      * @param activity The current Activity (used to create a PaymentsClient).
      * @param info The [GooglePayInfoResponse] from [PaymentSession.getWalletInfo], or null.
      */
-    suspend fun isWalletAvailable(activity: Activity, info: GooglePayInfoResponse? = null): Boolean {
-        Telemetry.noteOrigin(activity)
-        val startedAt = telemetry?.now()
-        val client = Wallet.getPaymentsClient(
-            activity,
-            Wallet.WalletOptions.Builder()
-                .setEnvironment(GooglePayHelper.walletEnvironment(info, config.environment))
-                .build()
-        )
-        val requestJson = GooglePayHelper.isReadyToPayRequestJson(info)
-        return suspendCoroutine { cont ->
-            client.isReadyToPay(IsReadyToPayRequest.fromJson(requestJson))
-                .addOnCompleteListener { task ->
-                    val available = task.isSuccessful && task.result == true
-                    telemetry?.walletAvailability(
-                        GwLoggerTelemetry.Method.GOOGLE_PAY,
-                        caller = "isWalletAvailable",
-                        checkSucceeded = task.isSuccessful,
-                        // Read only after a successful check: a failed task throws on result.
-                        ready = available,
-                        startedAt = startedAt
-                    )
-                    cont.resume(available)
-                }
-        }
-    }
+    suspend fun isWalletAvailable(activity: Activity, info: GooglePayInfoResponse? = null): Boolean =
+        checkWalletReady(activity, config.environment, info, telemetry)
 
     /**
      * Checks whether Google Pay is available and ready on this device using the allowed payment
@@ -389,5 +370,60 @@ class GopaySDK private constructor(
         /** Check if the SDK has been initialized. */
         @JvmStatic
         fun isInitialized(): Boolean = instance != null
+
+        /**
+         * Whether the device's wallet, Google Pay, can pay, without an SDK instance: the check
+         * [GopaySDK.isWalletAvailable] runs, which needs only a [Context] and the environment
+         * the app will initialize the SDK for, so an app can decide what to show before
+         * [initialize]. On iOS `isWalletAvailable` is static the same way.
+         *
+         * With [info], the readiness check uses the card networks and auth methods the gateway
+         * allows for that payment, in the environment it names; without one, the gateway's
+         * defaults in the environment [environment] implies. A `false` from Google Play services
+         * is returned as such; the check never throws an SDK error.
+         *
+         * @param context Any Context, used to create a PaymentsClient.
+         * @param environment The environment the app pays in, [GopayConfig.environment].
+         * @param info The [GooglePayInfoResponse] from [PaymentSession.getWalletInfo], or null.
+         */
+        @JvmStatic
+        suspend fun isWalletAvailable(
+            context: Context,
+            environment: Environment,
+            info: GooglePayInfoResponse? = null
+        ): Boolean = checkWalletReady(context, environment, info, Telemetry.current)
+
+        /** The readiness check behind both `isWalletAvailable`, reported to [telemetry]. */
+        private suspend fun checkWalletReady(
+            context: Context,
+            environment: Environment,
+            info: GooglePayInfoResponse?,
+            telemetry: GwLoggerTelemetry?
+        ): Boolean {
+            Telemetry.noteOrigin(context)
+            val startedAt = telemetry?.now()
+            val client = Wallet.getPaymentsClient(
+                context,
+                Wallet.WalletOptions.Builder()
+                    .setEnvironment(GooglePayHelper.walletEnvironment(info, environment))
+                    .build()
+            )
+            val requestJson = GooglePayHelper.isReadyToPayRequestJson(info)
+            return suspendCoroutine { cont ->
+                client.isReadyToPay(IsReadyToPayRequest.fromJson(requestJson))
+                    .addOnCompleteListener { task ->
+                        val available = task.isSuccessful && task.result == true
+                        telemetry?.walletAvailability(
+                            GwLoggerTelemetry.Method.GOOGLE_PAY,
+                            caller = "isWalletAvailable",
+                            checkSucceeded = task.isSuccessful,
+                            // Read only after a successful check: a failed task throws on result.
+                            ready = available,
+                            startedAt = startedAt
+                        )
+                        cont.resume(available)
+                    }
+            }
+        }
     }
 }

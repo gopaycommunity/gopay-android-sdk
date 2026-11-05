@@ -72,7 +72,7 @@ class CardFormErrorsTest {
     }
 
     @Test
-    fun `LIVE flags every edited field once a submit ran, never an empty one`() {
+    fun `LIVE flags every non-empty invalid field once a submit ran, never an empty one`() {
         val e = errors(invalid.copy(cvv = ""), CardFormValidationDisplay.LIVE, attempted = true)
 
         assertEquals(strings.panErrorPattern, e.cardNumber)
@@ -84,6 +84,20 @@ class CardFormErrorsTest {
     fun `LIVE never flags an empty field or a valid one`() {
         assertEquals(CardFormErrors.NONE, errors(CardFormData(), CardFormValidationDisplay.LIVE, attempted = true, left = true))
         assertEquals(CardFormErrors.NONE, errors(valid, CardFormValidationDisplay.LIVE, attempted = true, left = true))
+    }
+
+    @Test
+    fun `a field is left when it loses the focus after the user typed in it`() {
+        fun left(wasFocused: Boolean = true, isFocused: Boolean = false, edited: Boolean = true, changing: Boolean = false) =
+            CardFormErrors.isLeft(wasFocused, isFocused, edited, changingConfigurations = changing)
+
+        assertEquals(true, left())
+        assertEquals("never typed in", false, left(edited = false))
+        assertEquals("still focused", false, left(isFocused = true))
+        // The first report a field gets as it appears, unfocused, a restored one included.
+        assertEquals(false, left(wasFocused = false))
+        // The focus going with an activity recreated for a rotation.
+        assertEquals("a rotation is not leaving", false, left(changing = true))
     }
 
     @Test

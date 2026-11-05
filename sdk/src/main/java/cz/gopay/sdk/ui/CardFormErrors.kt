@@ -24,12 +24,27 @@ internal data class CardFormErrors(
         val NONE = CardFormErrors(null, null, null)
 
         /**
+         * Whether a focus change means the user left a field: it had the focus, lost it, and the
+         * user had typed in it. Not the first report a field gets, unfocused, as it appears, and
+         * not the focus going away because the activity is being recreated
+         * ([changingConfigurations]).
+         */
+        fun isLeft(
+            wasFocused: Boolean,
+            isFocused: Boolean,
+            edited: Boolean,
+            changingConfigurations: Boolean
+        ): Boolean = wasFocused && !isFocused && edited && !changingConfigurations
+
+        /**
          * In [CardFormValidationDisplay.LIVE] a field that holds something invalid is flagged
-         * once the user is done with it, never while it is still being typed: when it holds its
+         * once the user is done with it, not while it is first being typed: when it holds its
          * full length and still fails (a card number that fails its check, an expired date),
-         * when the user has typed in it and left it, or once a submit ran. An empty field is
-         * never flagged in LIVE; only [CardFormValidationDisplay.ON_SUBMIT] says "required".
-         * The same rule as the iOS form's `.live`.
+         * when the user has typed in it and left it, or once a submit ran. Once flagged, a field
+         * stays flagged while the user goes back to fix it, until it is valid or the form is
+         * emptied. An empty field is never flagged in LIVE; only
+         * [CardFormValidationDisplay.ON_SUBMIT] says "required". The same rule as the iOS form's
+         * `.live`.
          *
          * @param data what the fields hold.
          * @param strings the locale the messages come from.

@@ -1,8 +1,6 @@
 package cz.gopay.sdk.ui
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -47,13 +45,6 @@ class CardFieldPrivacyTest {
     }
 
     @Test
-    fun `only the CVV is a secret field`() {
-        assertTrue(CardFieldPrivacy.isSecret(CardField.CVV))
-        assertFalse(CardFieldPrivacy.isSecret(CardField.CARD_NUMBER))
-        assertFalse(CardFieldPrivacy.isSecret(CardField.EXPIRATION))
-    }
-
-    @Test
     fun `an expiry with a four-digit year keeps the month and the year's last two digits`() {
         assertEquals("1227", ExpiryEntry.digits("12/2027"))
         assertEquals("1227", ExpiryEntry.digits("12 / 2027"))
@@ -68,5 +59,9 @@ class CardFieldPrivacyTest {
         assertEquals("1227", ExpiryEntry.digits("12/271"))
         // A fifth digit typed into a full field is cut off.
         assertEquals("1227", ExpiryEntry.digits("12275"))
+        assertEquals("", ExpiryEntry.digits(""))
+        assertEquals("", ExpiryEntry.digits("ab"))
+        // A year first is not a date the form knows: it keeps the first four digits.
+        assertEquals("2027", ExpiryEntry.digits("2027-12"))
     }
 }

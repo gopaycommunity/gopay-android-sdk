@@ -1,5 +1,10 @@
 package cz.gopay.sdk.ui
 
+import android.app.Activity
+import android.app.Application
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.annotation.VisibleForTesting
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.telemetry.CardFormProgress
@@ -76,6 +81,22 @@ internal data class CardFormData(
 }
 
 /**
+ * What a [PaymentCardForm] knows about how far the user got, besides the card: whether a submit
+ * ran and which fields the user typed in and left. Parked with the card across a configuration
+ * change, so the errors on show come back with it; never kept in saved state, where they would
+ * outlive the card.
+ */
+internal data class CardFormFlags(
+    val submitAttempted: Boolean = false,
+    val cardNumberLeft: Boolean = false,
+    val expirationLeft: Boolean = false,
+    val cvvLeft: Boolean = false
+)
+
+/** What a form parked for the form that comes back after a configuration change. */
+internal data class ParkedForm(val data: CardFormData, val flags: CardFormFlags)
+
+/**
  * What a live [PaymentCardForm] lets the store do to it. Both run on the main thread.
  *
  * @param reset empties the visible fields, the edited flags and the submit-attempted flag.
@@ -108,6 +129,17 @@ internal class CardFormHandlers(
  * leaves nothing behind when it goes and never becomes the form a submit without an id reads.
  * The iOS `GopaySDK` keeps the same rule.
  *
+ * A configuration change, a rotation above all, recreates the activity and with it the form;
+ * the card would be lost with the composition. So a form leaving while its activity is being
+ * recreated parks its card here, under its id, for the form that comes back to take over at its
+ * first composition, see [park] and [takeParked]. The card never goes into saved state: a
+ * `Bundle` may be written out, the process memory is not. A parked card waits for a form of the
+ * same screen to take it, a form in a bottom sheet or dialog included, which composes a frame or
+ * more after the activity, but at most [PARK_TIMEOUT_MS] after the recreated screen is up. It is
+ * dropped then, when the user leaves that screen (it pauses) or it is destroyed for good, and by
+ * [clear] like the SDK's copy, so it does not outlive the screen it was typed on, nor the JWE
+ * made from it.
+ *
  * One lock around the data and the handlers together: the form writes from the main thread,
  * `submitCardForm` reads and clears from whatever dispatcher resumes it. The handlers write
  * Compose state, so they run on the main thread, outside the lock.
@@ -116,11 +148,50 @@ internal object CardFormStore {
 
     private class Registration(val owner: Any, val handlers: CardFormHandlers)
 
+    /**
+     * The screen a card was typed on: an activity is identified by its class and task, the only
+     * identity that survives its recreation.
+     */
+    data class Screen(val activityClass: Class<*>, val taskId: Int) {
+        companion object {
+            fun of(activity: Activity) = Screen(activity.javaClass, activity.taskId)
+        }
+    }
+
+    private class ParkedCard(val form: ParkedForm, val screen: Screen)
+
+    /** Runs a block later on the main thread; returns what cancels it. Swapped in tests. */
+    fun interface Timer {
+        fun schedule(delayMs: Long, block: () -> Unit): () -> Unit
+    }
+
+    private object MainTimer : Timer {
+        private val handler by lazy { Handler(Looper.getMainLooper()) }
+        override fun schedule(delayMs: Long, block: () -> Unit): () -> Unit {
+            val runnable = Runnable(block)
+            handler.postDelayed(runnable, delayMs)
+            return { handler.removeCallbacks(runnable) }
+        }
+    }
+
+    /** How long a parked card waits for its form once the recreated screen is up. */
+    const val PARK_TIMEOUT_MS = 10_000L
+
+    @VisibleForTesting
+    var timer: Timer = MainTimer
+
     private val lock = Any()
 
     /** In order of last sync: the last entry is the form a submit without an id reads. */
     private val data = LinkedHashMap<String, CardFormData>()
     private val registrations = HashMap<String, Registration>()
+    private val parked = HashMap<String, ParkedCard>()
+
+    /** Watches the activities while something is parked; null when nothing is. */
+    private var parkingWatch: Pair<Application, Application.ActivityLifecycleCallbacks>? = null
+
+    /** What cancels the timeout of each recreated screen that has a card waiting. */
+    private val timeouts = HashMap<Screen, () -> Unit>()
 
     /**
      * Runs the handlers. On `Dispatchers.Main.immediate`, resolved at each call rather than held
@@ -152,14 +223,19 @@ internal object CardFormStore {
      * Forgets a form that is leaving the screen, its data included, unless another composition
      * has registered under the same id since: then the data is that form's and stays. The form
      * empties its own fields; nothing is called back into it.
+     *
+     * @return whether [owner] was the form registered under [formId].
      */
-    fun unregister(formId: String, owner: Any) {
-        synchronized(lock) {
-            if (registrations[formId]?.owner !== owner) return
-            registrations.remove(formId)
-            data.remove(formId)
-        }
+    fun unregister(formId: String, owner: Any): Boolean = synchronized(lock) {
+        if (registrations[formId]?.owner !== owner) return@synchronized false
+        registrations.remove(formId)
+        data.remove(formId)
+        true
     }
+
+    /** Whether [owner] is the form registered under [formId], the one whose card the SDK holds. */
+    fun isRegistered(formId: String, owner: Any): Boolean =
+        synchronized(lock) { registrations[formId]?.owner === owner }
 
     /**
      * The form a submit reads: [formId] when given, else the most recently active form, the one
@@ -183,15 +259,20 @@ internal object CardFormStore {
     }
 
     /**
-     * Drops the stored data of [formId], or of every form when null, and empties the visible
-     * fields of each form concerned through its reset handler, on the main thread. The data is
-     * dropped again right before the resets run: a keystroke between the call and the hop to the
-     * main thread would otherwise sync the old card back in behind the reset.
+     * Drops the stored data of [formId], or of every form when null, a card parked for a
+     * recreated activity included, and empties the visible fields of each form concerned through
+     * its reset handler, on the main thread. The data is dropped again right before the resets
+     * run: a keystroke between the call and the hop to the main thread would otherwise sync the
+     * old card back in behind the reset.
      */
     fun clear(formId: String?) {
         val (ids, resets) = synchronized(lock) {
             val ids = if (formId != null) listOf(formId) else (data.keys + registrations.keys).distinct()
             ids.forEach { data.remove(it) }
+            // A submit whose JWE arrives while the activity is recreated finds the card parked:
+            // it must not come back on screen after the JWE.
+            if (formId != null) parked.remove(formId) else parked.clear()
+            parkedChanged()
             ids to ids.mapNotNull { registrations[it]?.handlers?.reset }
         }
         if (resets.isEmpty()) return
@@ -201,7 +282,91 @@ internal object CardFormStore {
         }
     }
 
+    /**
+     * Parks the card and [flags] of the form registered under [formId] by [owner] while
+     * [activity] is recreated for a configuration change. Nothing is parked for an empty card,
+     * for a form that is not the registered one, or when the SDK holds no copy of the card any
+     * more: a submit that cleared it off the main thread got there first. Called on the main
+     * thread, from the form's disposal.
+     */
+    fun park(formId: String, owner: Any, formData: CardFormData, flags: CardFormFlags, activity: Activity) =
+        park(formId, owner, ParkedForm(formData, flags), Screen.of(activity), activity.application)
+
+    /** [park] for [screen]; [application] is watched until the card is taken or dropped. */
+    fun park(formId: String, owner: Any, form: ParkedForm, screen: Screen, application: Application) {
+        if (form.data.isEmpty) return
+        synchronized(lock) {
+            if (registrations[formId]?.owner !== owner || data[formId] == null) return
+            parked[formId] = ParkedCard(form, screen)
+            watchActivities(application)
+        }
+    }
+
+    /**
+     * The card and flags parked under [formId] for [screen], removed; null when there is none,
+     * or when the one there was typed on another screen.
+     */
+    fun takeParked(formId: String, screen: Screen?): ParkedForm? = synchronized(lock) {
+        val card = parked[formId] ?: return@synchronized null
+        if (card.screen != screen) return@synchronized null
+        parked.remove(formId)
+        parkedChanged()
+        card.form
+    }
+
+    /** Drops every card parked for [screen]: the user left it, it is gone, or it waited too long. */
+    fun dropParked(screen: Screen) = synchronized(lock) {
+        parked.values.removeAll { it.screen == screen }
+        parkedChanged()
+    }
+
+    /** The recreated [screen] is up: what is parked for it waits [PARK_TIMEOUT_MS] at most. */
+    private fun screenResumed(screen: Screen) = synchronized(lock) {
+        if (screen in timeouts || parked.values.none { it.screen == screen }) return@synchronized
+        timeouts[screen] = timer.schedule(PARK_TIMEOUT_MS) { dropParked(screen) }
+    }
+
+    private fun watchActivities(application: Application) {
+        if (parkingWatch != null) return
+        val callbacks = object : Application.ActivityLifecycleCallbacks {
+            // Not dropped at the recreated screen's first frame: a form in a bottom sheet or a
+            // dialog composes in a window of its own, a frame or more after the activity. The
+            // card waits up to ten seconds for it, or until the user leaves the screen. The activity
+            // the card was parked by has paused already, so only the recreated one ends the wait.
+            override fun onActivityResumed(activity: Activity) = screenResumed(Screen.of(activity))
+
+            override fun onActivityPaused(activity: Activity) = dropParked(Screen.of(activity))
+
+            override fun onActivityDestroyed(activity: Activity) {
+                if (!activity.isChangingConfigurations) dropParked(Screen.of(activity))
+            }
+
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityStarted(activity: Activity) = Unit
+            override fun onActivityStopped(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+        }
+        application.registerActivityLifecycleCallbacks(callbacks)
+        parkingWatch = application to callbacks
+    }
+
+    /**
+     * After a card was taken or dropped, under the lock: cancels the timeout of a screen with
+     * nothing left waiting, and stops watching the activities once nothing is parked.
+     */
+    private fun parkedChanged() {
+        timeouts.keys.filter { screen -> parked.values.none { it.screen == screen } }
+            .forEach { timeouts.remove(it)?.invoke() }
+        if (parked.isNotEmpty()) return
+        parkingWatch?.let { (application, callbacks) -> application.unregisterActivityLifecycleCallbacks(callbacks) }
+        parkingWatch = null
+    }
+
     /** Which forms hold data, in order of last sync. */
     @VisibleForTesting
     fun storedFormIds(): Set<String> = synchronized(lock) { data.keys.toSet() }
+
+    /** Which forms have a card parked for a recreated activity. */
+    @VisibleForTesting
+    fun parkedFormIds(): Set<String> = synchronized(lock) { parked.keys.toSet() }
 }

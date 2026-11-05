@@ -1,8 +1,6 @@
 package cz.gopay.sdk.ui
 
-import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import android.content.pm.ApplicationInfo
 import android.view.View
 import android.view.Window
@@ -73,7 +71,7 @@ internal object SecureWindow {
      */
     private fun targetsFor(view: View): List<SecureFlagHolds.Target> {
         val root = view.rootView
-        val activityWindow = activityOf(view.context)?.window
+        val activityWindow = view.context.findActivity()?.window
         val own = dialogWindowOf(view)?.let { WindowTarget(it) }
             ?: activityWindow?.takeIf { it.decorView === root }?.let { WindowTarget(it) }
             ?: (root.layoutParams as? WindowManager.LayoutParams)?.let { RootViewTarget(root) }
@@ -90,12 +88,6 @@ internal object SecureWindow {
             parent = parent.parent
         }
         return null
-    }
-
-    private tailrec fun activityOf(context: Context): Activity? = when (context) {
-        is Activity -> context
-        is ContextWrapper -> activityOf(context.baseContext)
-        else -> null
     }
 
     /** An activity or dialog window, changed through [Window] so its own attributes stay right. */

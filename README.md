@@ -419,6 +419,7 @@ on its own when you want to log what goes out; pass its result to the charge unc
 | `clearCardFormData(formId?)` | Drops the SDK's copy of a form's card (every form when null) and empties its fields. |
 | `isWalletAvailable(activity, info?)` | Whether Google Pay can pay on this device: with the methods from a `GooglePayInfoResponse`, or without one, before a payment exists, with the gateway's defaults in the environment the config implies. |
 | `isGooglePayAvailable(activity, info)` | The Android name of `isWalletAvailable`, the same call. |
+| `GopaySDK.isWalletAvailable(context, environment, info?)` | The same check without an instance, before `initialize`: any `Context` and the `Environment` you will initialize for. Static, like `isWalletAvailable` on iOS. |
 | `currentLocaleStrings(preferred?)` | The `GopayLocaleStrings` the form resolves for a locale code, for showing its messages yourself. |
 
 ## `PaymentSession` API
@@ -541,7 +542,7 @@ emptied form fails with `VALIDATION_INVALID_INPUT` and the message
 its payload expires 10 minutes after creation. A charge that never reached the gateway leaves the
 JWE unused, so keep it until the charge is through: it can be charged again until it expires, and
 [After a network error](#after-a-network-error) says how to tell. Otherwise, to retry, have the
-user confirm the card again. A rotation empties the form as well, see
+user confirm the card again. A rotation keeps a half-typed card, see
 [Rotation and process death](#rotation-and-process-death).
 
 `validation` decides whether the form shows its own localized validation errors beneath the
@@ -562,8 +563,16 @@ field. The form also asks the keyboard not to learn from anything typed in it (A
 later), whether autofill is on or off. Pass `allowsAutofill = true` to let autofill fill and save
 the card number and the expiry date; the CVV is never offered. The iOS form has the same
 `allowsAutofill`, off by default. Either way every field stays in the accessibility tree with its
-label: the card number stays readable, so the user can check it, and the CVV is announced as a
-password field.
+label: the card number stays readable, so the user can check it, and the CVV is masked on screen.
+No field is announced as a password field, the CVV included, because password managers offer
+their logins in password fields. A known limit follows: the CVV is shown while it has the focus,
+as before, and TalkBack then reads its digits aloud too.
+
+**Know when the card is complete.** Pass `onValidityChange` to be told whether the card in the
+form passes its validation, once when the form appears and whenever that changes, for instance to
+enable your pay button. It carries a `Boolean` and nothing about the card. Only the form that holds
+its `formId` reports, and it reports `false` as it leaves the screen. The iOS form reports the same
+through its `isValid` binding.
 
 **Messages for the user come from the form.** The `message` of the `VALIDATION_INVALID_INPUT` that
 `submitCardForm` throws, and the messages `onValidationError` reports, are in English and meant
@@ -785,17 +794,17 @@ the SDK keeps nothing on disk. Three things follow:
   (`SavedStateHandle`, `onSaveInstanceState`), never `payment_secret`, and when your screen comes
   back with an `id` but no result, ask your backend for the payment's state before offering to pay
   again. Your backend learns it from the notification and `GET /payments/{id}`.
-- **A configuration change empties the card form.** `PaymentCardForm` holds the card in memory
-  only, never in saved state: the PAN and CVV must not go into a `Bundle`, which the system may
-  write out. When a rotation, a switch to dark mode or another configuration change recreates your
-  activity, the form leaves the composition, the SDK drops its copy of the card, and the form that
-  comes back is empty. A JWE already made from the card is not affected. To keep a half-typed card
-  across a rotation, have the checkout activity handle those changes itself, so it is not
-  recreated, for example with
-  `android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"`
-  in the manifest; Android recommends that only where recreating the activity is a problem, so
-  keep it to that activity, and anything you leave out of the list still recreates it. Otherwise
-  the user types the card again. After process death the form is empty in any case.
+- **The card form keeps a half-typed card across a configuration change.** When a rotation, a
+  switch to dark mode or another configuration change recreates your activity, the form parks the
+  card in the SDK's memory and the form that comes back under the same `formId` takes it over, so
+  the user goes on typing. A generated `formId` is kept in saved state for that; the card never
+  is, because a `Bundle` may be written out. The card waits for a form under that `formId` on the
+  recreated screen, one in a bottom sheet or a dialog included, for ten seconds after the screen
+  is up, and is dropped then, when the user leaves that screen, when the activity is destroyed for
+  good, or with `clearCardFormData`. The errors the form showed come back with the card; a
+  `true` from `onValidityChange` stays with you when no form takes the card over. After
+  process death the form is empty in any case, and a JWE already made from the card is not
+  affected either way.
 
 ### `PaymentCardForm` composable
 
@@ -1283,12 +1292,13 @@ listed in [`sdk/docs/API_3_0.md`](sdk/docs/API_3_0.md).
 | --- | --- | --- |
 | `session.chargeWithCardToken(cardToken, browserData, challengePreference?)` | variant: `chargeWithCardToken(activity, …)` derives `browserData` from the activity | a card token charge in one call; without an `activity` Android requires `browserData`, iOS derives it from the device default |
 | `session.chargeWithEncryptedCard(payload, browserData, challengePreference?)` | variant: `chargeWithEncryptedCard(activity, …)` derives `browserData` from the activity | a JWE charge in one call; without an `activity` Android requires `browserData`, iOS derives it from the device default |
-| `GopaySDK.isWalletAvailable(activity, info?)` | alias: `isGooglePayAvailable(activity, info)` | can the device pay with the platform wallet |
+| `GopaySDK.isWalletAvailable(activity, info?)` | alias: `isGooglePayAvailable(activity, info)`; variant without an instance: `GopaySDK.isWalletAvailable(context, environment, info?)` | can the device pay with the platform wallet |
 | `session.getWalletInfo()` | alias: `getGooglePayInfo()` | the wallet configuration for the payment |
 | `session.chargeWithWallet(activity, browserData?, challengePreference?)` | alias: `chargeWithGooglePay(...)` | the managed wallet sheet and charge |
 | `PaymentCardForm(formId)` + `submitCardForm(formId)` + `clearCardFormData(formId)` | older path: `onFormReady` / `onEncryptionComplete` / `onValidationError`, the same submit reported as a result | the card form model, now on Android too |
 | `PaymentCardForm(validation)` with `HIDDEN`, `LIVE`, `ON_SUBMIT` | — | the validation display modes, now on Android too |
 | `PaymentCardForm(allowsAutofill)`, off by default | — | whether autofill may fill and save the card number and expiry; never the CVV |
+| `PaymentCardForm(onValidityChange)` | iOS: the `isValid` binding | whether the card in the form passes its validation, as it changes |
 
 An alias is one body under a second name: it does exactly what the shared name does, with the
 same arguments and the same codes. A variant takes an `activity` instead of `browserData` and
@@ -1301,7 +1311,7 @@ code contract above, with one rule for `errorCallback` on both.
 
 ## What changed in 2.5
 
-2.5 changes what an integration sees in a few places:
+2.5 adds to the API without breaking it, and changes what an integration sees in a few places:
 
 - `LIVE` validation shows a field's error once the user is done with the field: when it holds its
   full length and still fails, when the user has left it, or once a submit ran. Before, it showed
@@ -1310,6 +1320,14 @@ code contract above, with one rule for `errorCallback` on both.
   `getQrPaymentInfo` and `awaitChargeState` among them, throws `AUTH_PAYMENT_SESSION_CLOSED` after
   `close()` before anything goes out, and a token that arrives after the close is not kept. Before,
   some of them still reached the gateway. `handle3dsVerification` still runs, as before.
+- A half-typed card survives a rotation and other configuration changes, see
+  [Rotation and process death](#rotation-and-process-death); the `android:configChanges`
+  workaround is no longer needed for that.
+- `PaymentCardForm(onValidityChange)` reports whether the card passes its validation as it changes.
+- `GopaySDK.isWalletAvailable(context, environment, info?)` checks Google Pay without an SDK
+  instance, before `initialize`.
+- The CVV field is no longer announced as a password field, so password managers stop offering
+  logins there; it stays masked on screen.
 - `ERROR_CODES.md` says for every code whether a charge may exist after it and whether the call is
   safe to retry.
 
@@ -1468,7 +1486,7 @@ A checklist for a secure release. The same list, in the same order, is in the iO
 - **Know what third-party keyboards and accessibility services see.** Keyboards and
   accessibility services from other developers see what is typed into any app, the card form
   included, and on Android neither the SDK nor your app can turn them off. The form asks keyboards
-  not to learn from the card fields and marks the CVV as a password field (see
+  not to learn from the card fields and masks the CVV on screen (see
   [The card form](#the-card-form)); take that as a request that well-behaved keyboards and
   services honour, not as a guarantee. What is in your hands: do not read the card fields through
   accessibility APIs or an input method of your own.

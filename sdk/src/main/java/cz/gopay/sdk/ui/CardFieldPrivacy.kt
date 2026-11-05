@@ -10,7 +10,6 @@ import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.PlatformTextInputMethodRequest
 import androidx.compose.ui.semantics.contentDataType
 import androidx.compose.ui.semantics.contentType
-import androidx.compose.ui.semantics.password
 import androidx.compose.ui.semantics.semantics
 import cz.gopay.sdk.ui.utils.ExpirationDateInputValidator
 
@@ -27,9 +26,13 @@ internal enum class CardFieldAutofill { NONE, CARD_NUMBER, EXPIRATION_DATE }
  * unfillable to autofill services, with no hints. On, the card number and the expiry are announced
  * as such; the CVV is never, on either platform.
  *
- * The CVV is the one secret field: it carries password semantics, as on iOS it is the one secure
- * text entry. The card number stays readable, to the user and to TalkBack alike, so the user can
- * check what they copied from the card. No label is taken out of the accessibility tree.
+ * No field carries password semantics, the CVV included: a password field is where a password
+ * manager offers its logins, which one did on the CVV, and the declared data type already keeps
+ * the field out of autofill. The CVV is masked by its visual transformation instead, and its
+ * keyboard is told not to learn from it. The card number stays readable, to the user and to
+ * TalkBack alike, so the user can check what they copied from the card. No label is taken out of
+ * the accessibility tree. iOS keeps its secure text entry on the CVV, where a password manager
+ * cannot reach a field without a content type.
  */
 internal object CardFieldPrivacy {
 
@@ -43,8 +46,6 @@ internal object CardFieldPrivacy {
                 CardField.CVV -> CardFieldAutofill.NONE
             }
         }
-
-    fun isSecret(field: CardField): Boolean = field == CardField.CVV
 }
 
 /**
@@ -64,7 +65,6 @@ internal fun Modifier.cardFieldSemantics(field: CardField, allowsAutofill: Boole
             CardFieldAutofill.CARD_NUMBER -> contentType = ContentType.CreditCardNumber
             CardFieldAutofill.EXPIRATION_DATE -> contentType = ContentType.CreditCardExpirationDate
         }
-        if (CardFieldPrivacy.isSecret(field)) password()
     }
 
 /**
