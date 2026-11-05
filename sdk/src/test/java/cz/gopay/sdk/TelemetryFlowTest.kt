@@ -9,7 +9,6 @@ import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.TokenResponse
-import cz.gopay.sdk.session.AwaitChargeOptions
 import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.telemetry.CardFormProgress
 import cz.gopay.sdk.telemetry.CardFormSteps
@@ -97,7 +96,7 @@ class TelemetryFlowTest {
         session.close()
         session.close()
         assertThrows(GopaySDKException::class.java) {
-            runBlocking { session.awaitChargeState(AwaitChargeOptions(intervalMs = 0)) }
+            runBlocking { session.awaitChargeState() }
         }
 
         val sent = events
@@ -109,7 +108,8 @@ class TelemetryFlowTest {
         assertEquals("client-1", sent[0]["client_id"])
         assertEquals("attach", sent[1]["flow"])
         assertEquals(listOf("3000000001", "3000000001", "3000000001"), sent.drop(1).map { it["payment_session_id"] })
-        assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, sent[3]["function_name"])
+        // The closed session is refused before the options are even looked at.
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, sent[3]["function_name"])
         assertTrue(sent.none { it.containsKey("sdk_instance_id") })
     }
 
@@ -138,7 +138,7 @@ class TelemetryFlowTest {
 
         assertThrows(GopaySDKException::class.java) { runBlocking { sdk.startPaymentSession("3000000001", "secret") } }
         CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = {}, submitAttempted = {}))
-        CardFormStore.update("form-1", CardFormData("4444444444444448", "1228", "123"))
+        CardFormStore.update("form-1", formOwner, CardFormData("4444444444444448", "1228", "123"))
         runBlocking { submitCardForm("form-1") { "jwe" } }
         live.close()
 
@@ -197,14 +197,14 @@ class TelemetryFlowTest {
         val steps = CardFormSteps()
         CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = steps::emptied, submitAttempted = {}, steps = steps))
         steps.ready()
-        CardFormStore.update("form-1", CardFormData())
+        CardFormStore.update("form-1", formOwner, CardFormData())
         runCatching { runBlocking { submitCardForm("form-1") { error("not reached") } } }
         for (data in listOf(
             CardFormData("4444444444444448"),
             CardFormData("4444444444444448", "1228"),
             CardFormData("4444444444444448", "1228", "123")
         )) {
-            CardFormStore.update("form-1", data)
+            CardFormStore.update("form-1", formOwner, data)
             steps.input(CardFormProgress.Field.PAN) { data.progress() }
         }
 
@@ -239,7 +239,7 @@ class TelemetryFlowTest {
             val steps = CardFormSteps()
             CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = steps::emptied, submitAttempted = {}, steps = steps))
             steps.ready()
-            CardFormStore.update("form-1", card)
+            CardFormStore.update("form-1", formOwner, card)
             steps.input(CardFormProgress.Field.PAN) { card.progress() }
 
             val thrown = runCatching { runBlocking { submitCardForm("form-1") { throw failure } } }.exceptionOrNull()
@@ -255,7 +255,7 @@ class TelemetryFlowTest {
     fun `the card form's submit says it happened and nothing of the card or the JWE`() {
         sdk { issued() }
         CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = {}, submitAttempted = {}))
-        CardFormStore.update("form-1", CardFormData("4444444444444448", "1228", "123"))
+        CardFormStore.update("form-1", formOwner, CardFormData("4444444444444448", "1228", "123"))
 
         runBlocking { submitCardForm("form-1") { "eyJhbGciOiJSU0EtT0FFUCJ9.abcdefghij.klmnopqrst.uvwxyzabcd.efghijklmn" } }
 

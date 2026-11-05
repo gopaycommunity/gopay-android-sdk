@@ -304,6 +304,7 @@ internal class CardFormProgress {
             "invalid_submits" to ::isCount,
             "errors_raised" to ::isCount,
             "error_codes_seen" to { v -> isList(v, errorKeys) },
+            // never empty: a summary always names the state of all three fields
             "progress_at_end" to { v -> v == null || (isList(v, progressKeys) && (v as String).isNotEmpty()) },
             "ended" to { v -> v is String && v in endings }
         )

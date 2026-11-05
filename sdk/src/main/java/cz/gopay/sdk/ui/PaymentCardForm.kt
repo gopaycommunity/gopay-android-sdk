@@ -212,10 +212,14 @@ fun PaymentCardForm(
     var cvv by remember { mutableStateOf("") }
     var isCardNumberFocused by remember { mutableStateOf(false) }
     var isCvvFocused by remember { mutableStateOf(false) }
-    // Whether the user has typed in each field, for LIVE; whether a submit ran, for ON_SUBMIT.
+    // Whether the user has typed in each field and left it since, for LIVE; whether a submit
+    // ran, for ON_SUBMIT and LIVE.
     var cardNumberEdited by remember { mutableStateOf(false) }
     var expirationEdited by remember { mutableStateOf(false) }
     var cvvEdited by remember { mutableStateOf(false) }
+    var cardNumberLeft by remember { mutableStateOf(false) }
+    var expirationLeft by remember { mutableStateOf(false) }
+    var cvvLeft by remember { mutableStateOf(false) }
     var submitAttempted by remember { mutableStateOf(false) }
     val isCardNumberValid = CardValidator.validateCardNumber(cardNumberDigits).isValid
 
@@ -238,7 +242,7 @@ fun PaymentCardForm(
         if (focused) steps.focused(field) else steps.blurred(field) { snapshot().progress() }
     }
 
-    // Reset function to clear all form fields. The edited and attempted flags go with the
+    // Reset function to clear all form fields. The edited, left and attempted flags go with the
     // digits, so the emptied fields come back pristine instead of lit up with "required".
     val resetForm = {
         cardNumberDigits = ""
@@ -249,6 +253,9 @@ fun PaymentCardForm(
         cardNumberEdited = false
         expirationEdited = false
         cvvEdited = false
+        cardNumberLeft = false
+        expirationLeft = false
+        cvvLeft = false
         submitAttempted = false
         steps.emptied()
     }
@@ -282,7 +289,7 @@ fun PaymentCardForm(
             owner,
             CardFormHandlers(reset = resetForm, submitAttempted = { submitAttempted = true }, steps = steps)
         )
-        CardFormStore.update(resolvedFormId, snapshot())
+        CardFormStore.update(resolvedFormId, owner, snapshot())
         onDispose { CardFormStore.unregister(resolvedFormId, owner) }
     }
 
@@ -326,9 +333,9 @@ fun PaymentCardForm(
         strings = resolvedStrings,
         mode = validation,
         submitAttempted = submitAttempted,
-        cardNumberEdited = cardNumberEdited,
-        expirationEdited = expirationEdited,
-        cvvEdited = cvvEdited
+        cardNumberLeft = cardNumberLeft,
+        expirationLeft = expirationLeft,
+        cvvLeft = cvvLeft
     )
 
     Column(
@@ -345,7 +352,7 @@ fun PaymentCardForm(
                 val validated = CardNumberInputValidator.validateInput(newValue)
                 cardNumberDigits = validated
                 cardNumberEdited = true
-                CardFormStore.update(resolvedFormId, snapshot())
+                CardFormStore.update(resolvedFormId, owner, snapshot())
                 reportInput(CardFormProgress.Field.PAN)
                 if (CardNumberInputValidator.isValidLength(validated) && CardNumberInputValidator.isValidLuhn(validated)) {
                     coroutineScope.launch {
@@ -365,6 +372,7 @@ fun PaymentCardForm(
                     .focusRequester(cardNumberFocusRequester)
                     .onFocusChanged {
                         isCardNumberFocused = it.isFocused
+                        if (!it.isFocused && cardNumberEdited) cardNumberLeft = true
                         reportFocus(CardFormProgress.Field.PAN, it.isFocused)
                     }
             ),
@@ -389,7 +397,7 @@ fun PaymentCardForm(
                         val validated = ExpiryEntry.digits(newValue)
                         expirationDateDigits = validated
                         expirationEdited = true
-                        CardFormStore.update(resolvedFormId, snapshot())
+                        CardFormStore.update(resolvedFormId, owner, snapshot())
                         reportInput(CardFormProgress.Field.EXPIRY)
                         if (validated.length == 4) {
                             coroutineScope.launch {
@@ -407,7 +415,10 @@ fun PaymentCardForm(
                         textFieldModifier = Modifier
                             .cardFieldSemantics(CardField.EXPIRATION, allowsAutofill)
                             .focusRequester(expirationFocusRequester)
-                            .onFocusChanged { reportFocus(CardFormProgress.Field.EXPIRY, it.isFocused) }
+                            .onFocusChanged {
+                                if (!it.isFocused && expirationEdited) expirationLeft = true
+                                reportFocus(CardFormProgress.Field.EXPIRY, it.isFocused)
+                            }
                     ),
                     modifier = Modifier.weight(1f),
                     theme = theme,
@@ -420,7 +431,7 @@ fun PaymentCardForm(
                         val validated = CvvValidator.validateInput(newValue, cvv)
                         cvv = validated
                         cvvEdited = true
-                        CardFormStore.update(resolvedFormId, snapshot())
+                        CardFormStore.update(resolvedFormId, owner, snapshot())
                         reportInput(CardFormProgress.Field.CVV)
                     },
                     config = LabeledInputFieldConfig(
@@ -437,6 +448,7 @@ fun PaymentCardForm(
                             .focusRequester(cvvFocusRequester)
                             .onFocusChanged {
                                 isCvvFocused = it.isFocused
+                                if (!it.isFocused && cvvEdited) cvvLeft = true
                                 reportFocus(CardFormProgress.Field.CVV, it.isFocused)
                             }
                     ),

@@ -54,7 +54,7 @@ class PaymentCardFormSubmitTest {
     }
 
     private suspend fun submit(data: CardFormData = valid, encrypt: suspend (CardData) -> String): CardEncryptionResult {
-        CardFormStore.update(FORM, data)
+        CardFormStore.update(FORM, owner, data)
         return submitCardDataImpl(
             formId = FORM,
             onEncryptionComplete = { results += it },
@@ -65,7 +65,7 @@ class PaymentCardFormSubmitTest {
 
     @Test
     fun `the shared submit returns the JWE, empties the form and reports nothing`() = runBlocking {
-        CardFormStore.update(FORM, valid)
+        CardFormStore.update(FORM, owner, valid)
         var encrypted: CardData? = null
 
         val jwe = submitCardForm(FORM) { encrypted = it; "header.key.iv.ciphertext.tag" }
@@ -80,13 +80,13 @@ class PaymentCardFormSubmitTest {
 
     @Test
     fun `the shared submit refuses an empty form and keeps an invalid one`() {
-        CardFormStore.update(FORM, CardFormData())
+        CardFormStore.update(FORM, owner, CardFormData())
         val empty = assertThrows(GopaySDKException::class.java) {
             runBlocking { submitCardForm(FORM) { throw AssertionError("must not encrypt") } }
         }
         assertEquals(CardEncryptionResult.NO_CARD_DATA_MESSAGE, empty.message)
 
-        CardFormStore.update(FORM, valid.copy(cvv = "12"))
+        CardFormStore.update(FORM, owner, valid.copy(cvv = "12"))
         val invalid = assertThrows(GopaySDKException::class.java) {
             runBlocking { submitCardForm(FORM) { throw AssertionError("must not encrypt") } }
         }

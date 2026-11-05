@@ -64,6 +64,8 @@ import kotlinx.coroutines.withContext
  * it leaves the method, except [GopayErrorCodes.PAYMENT_CANCELLED] and
  * [GopayErrorCodes.PAYMENT_TIMEOUT]; a coroutine cancellation is never reported. The iOS SDK
  * reports the same way.
+ *
+ * [close] says what a closed session does.
  */
 class PaymentSession internal constructor(
     val paymentId: String,
@@ -174,12 +176,19 @@ class PaymentSession internal constructor(
             }
             token = response.accessToken
             tokenExpiresAt = JwtUtils.expirationSecondsOrZero(response.accessToken)
+            // close() may have run while the token was on its way, and it does not take the lock.
+            // Checked after the write, so a close() landing in between still leaves no token.
+            if (paymentSecret == null) {
+                invalidateToken()
+                throw sessionClosed()
+            }
             response.accessToken
         }
     }
 
     /** GET /payments/{payment_id} */
     suspend fun getStatus(): PaymentCreateResponse = reportErrors(paymentId) {
+        ensureOpen()
         apiCall("get payment status") { paymentApi.getPaymentStatus(paymentId) }
     }
 
@@ -198,7 +207,7 @@ class PaymentSession internal constructor(
      * report the wrong thing, [GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING] without the key.
      */
     suspend fun charge(request: ChargePaymentRequest): ChargePaymentResponse = reportErrors(paymentId) {
-        if (paymentSecret == null) throw sessionClosed()
+        ensureOpen()
         val instrument = request.paymentInstrument
         val completed = request.copy(
             paymentInstrument = instrument.copy(
@@ -242,6 +251,7 @@ class PaymentSession internal constructor(
      *         exception as its cause.
      */
     suspend fun completeBrowserData(browserData: BrowserData): BrowserData = reportErrors(paymentId) {
+        ensureOpen()
         val userAgent = browserData.userAgent ?: syntheticUserAgent().also {
             SdkLog.w(
                 "browser_data has no user_agent, filling in a synthesized WebView User-Agent, " +
@@ -296,6 +306,11 @@ class PaymentSession internal constructor(
         }
     }
 
+    /** Refuses a call on a closed session before anything goes out. */
+    private fun ensureOpen() {
+        if (paymentSecret == null) throw sessionClosed()
+    }
+
     private fun sessionClosed() = GopaySDKException(
         errorCode = GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED,
         message = "PaymentSession for $paymentId is closed"
@@ -303,6 +318,7 @@ class PaymentSession internal constructor(
 
     /** GET /payments/{payment_id}/charge */
     suspend fun getChargeState(): ChargePaymentResponse = reportErrors(paymentId) {
+        ensureOpen()
         apiCall("get charge state") { paymentApi.getChargeState(paymentId) }
     }
 
@@ -364,6 +380,7 @@ class PaymentSession internal constructor(
     suspend fun awaitChargeState(
         options: AwaitChargeOptions = AwaitChargeOptions()
     ): ChargePaymentResponse = reportErrors(paymentId) {
+        ensureOpen()
         if (options.intervalMs <= 0 || options.initialTimeoutMs <= 0) {
             throw GopaySDKException(
                 errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
@@ -391,6 +408,7 @@ class PaymentSession internal constructor(
 
     /** GET /payments/{payment_id}/qr-payment/info */
     suspend fun getQrPaymentInfo(format: QrCodeFormat? = null): QrPaymentDetails = reportErrors(paymentId) {
+        ensureOpen()
         apiCall("get QR payment info") { paymentApi.getQrPaymentInfo(paymentId, format?.name?.lowercase()) }
     }
 
@@ -400,6 +418,7 @@ class PaymentSession internal constructor(
      * Apple Pay info; [getGooglePayInfo] is the same call.
      */
     suspend fun getWalletInfo(): GooglePayInfoResponse = reportErrors(paymentId) {
+        ensureOpen()
         apiCall("get Google Pay info") { paymentApi.getGooglePayInfo(paymentId) }
     }
 
@@ -444,6 +463,7 @@ class PaymentSession internal constructor(
         browserData: BrowserData? = null,
         challengePreference: ChallengePreference? = null
     ): ChargePaymentResponse = reportErrors(paymentId) {
+        ensureOpen()
         Telemetry.noteOrigin(activity)
         val info = getGooglePayInfo()
         val paymentRequestJson = GooglePayHelper.buildPaymentDataRequestJson(info)
@@ -706,9 +726,11 @@ class PaymentSession internal constructor(
 
     /**
      * Wipes the in-memory `payment_secret` and JWT, and unregisters this session from the SDK
-     * registry. Idempotent — once the secret is nulled, [reauthenticate] starts throwing
-     * [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED], and [charge] throws it outright, before
-     * asking the gateway for the browser data.
+     * registry. Idempotent. Afterwards every method that sends a request on the session throws
+     * [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] before it sends anything, [reauthenticate]
+     * included, and so does a call already in flight that needs to re-authenticate: a token that
+     * arrives after the close is not kept. Only [handle3dsVerification], which sends nothing on
+     * the session, still runs. The iOS `PaymentSession` does the same.
      */
     fun close() {
         if (paymentSecret == null) return

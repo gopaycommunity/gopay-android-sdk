@@ -102,8 +102,11 @@ internal class CardFormHandlers(
  * all, since `submitCardForm` is the call that throws `CONFIG_001` for that.
  *
  * Two forms can hold the same id for a moment, a screen transition composing the new one before
- * the old one leaves, so a registration names its owner, the composition that made it, and a
- * form leaving takes only its own registration with it.
+ * the old one leaves, so a registration names its owner, the composition that made it. The copy
+ * belongs to the registered form: a form leaving takes only its own registration with it, and a
+ * form that lost its registration to a newer one under the same id syncs nothing more, so it
+ * leaves nothing behind when it goes and never becomes the form a submit without an id reads.
+ * The iOS `GopaySDK` keeps the same rule.
  *
  * One lock around the data and the handlers together: the form writes from the main thread,
  * `submitCardForm` reads and clears from whatever dispatcher resumes it. The handlers write
@@ -128,9 +131,11 @@ internal object CardFormStore {
 
     /**
      * The form's current fields; called on every edit and once when the form appears, which
-     * makes the form the most recent one either way.
+     * makes the form the most recent one either way. Only the form registered under [formId] by
+     * [owner] is heard: an edit in a form that lost its registration goes nowhere.
      */
-    fun update(formId: String, formData: CardFormData) = synchronized(lock) {
+    fun update(formId: String, owner: Any, formData: CardFormData) = synchronized(lock) {
+        if (registrations[formId]?.owner !== owner) return@synchronized
         data.remove(formId)
         data[formId] = formData
     }
@@ -158,7 +163,8 @@ internal object CardFormStore {
 
     /**
      * The form a submit reads: [formId] when given, else the most recently active form, the one
-     * that synced last. The data is null when the form is not on screen.
+     * that synced last. The data is null when the form is not on screen; only a registered form
+     * ever has any.
      */
     fun resolve(formId: String?): Pair<String?, CardFormData?> = synchronized(lock) {
         val id: String? = formId ?: data.keys.lastOrNull()

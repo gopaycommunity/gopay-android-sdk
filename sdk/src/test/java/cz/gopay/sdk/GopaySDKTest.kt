@@ -246,11 +246,11 @@ class GopaySDKTest {
         CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = {}, submitAttempted = { attempts++ }))
         val sdk = GopaySDK.getInstance()
 
-        CardFormStore.update("form-1", CardFormData())
+        CardFormStore.update("form-1", formOwner, CardFormData())
         val empty = assertThrows(GopaySDKException::class.java) { runBlocking { sdk.submitCardForm("form-1") } }
         assertEquals(CardEncryptionResult.NO_CARD_DATA_MESSAGE, empty.message)
 
-        CardFormStore.update("form-1", CardFormData("4532015112830366", "1230", "12"))
+        CardFormStore.update("form-1", formOwner, CardFormData("4532015112830366", "1230", "12"))
         val invalid = assertThrows(GopaySDKException::class.java) { runBlocking { sdk.submitCardForm("form-1") } }
         assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, invalid.errorCode)
         assertEquals(CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE, invalid.message)
@@ -267,7 +267,7 @@ class GopaySDKTest {
         GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX, errorCallback = { reported.add(it) }))
         var resets = 0
         CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = { resets++ }, submitAttempted = {}))
-        CardFormStore.update("form-1", CardFormData("4532015112830366", "1230", "123"))
+        CardFormStore.update("form-1", formOwner, CardFormData("4532015112830366", "1230", "123"))
 
         val e = assertThrows(GopaySDKException::class.java) {
             runBlocking { GopaySDK.getInstance().submitCardForm() }
@@ -285,8 +285,8 @@ class GopaySDKTest {
         val resets = mutableListOf<String>()
         CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = { resets += "form-1" }, submitAttempted = {}))
         CardFormStore.register("form-2", formOwner, CardFormHandlers(reset = { resets += "form-2" }, submitAttempted = {}))
-        CardFormStore.update("form-1", CardFormData("4532015112830366", "1230", "123"))
-        CardFormStore.update("form-2", CardFormData("4444444444444448", "1228", "321"))
+        CardFormStore.update("form-1", formOwner, CardFormData("4532015112830366", "1230", "123"))
+        CardFormStore.update("form-2", formOwner, CardFormData("4444444444444448", "1228", "321"))
 
         GopaySDK.getInstance().clearCardFormData("form-2")
         assertEquals(listOf("form-2"), resets)

@@ -521,13 +521,20 @@ fields or the pay button. In a scrolling screen, put `imePadding()` on the scrol
 On Android 10 and older the padding reads the keyboard's height only when the activity declares
 `android:windowSoftInputMode="adjustResize"` in the manifest.
 
-A `submitCardForm()` without an id reads the most recently active form. The SDK drops its copy of
-the card after a successful `submitCardForm()`, when the form leaves the composition, and on
-demand through `GopaySDK.getInstance().clearCardFormData(formId)`; so call `submitCardForm()`
-while the form is on screen and forward the JWE promptly. **The visible fields are emptied too**:
+A `submitCardForm()` without an id reads the most recently active form. Keep one live form per
+`formId`: when a second form takes the same id, the first one no longer reaches the SDK for as long
+as it stays on screen, even after the second one leaves, so one id shared by two screens on top of
+each other is not supported. The iOS form has the same rule. The SDK drops its copy of the card
+after a successful `submitCardForm()`, when the form leaves the composition, and on demand through
+`GopaySDK.getInstance().clearCardFormData(formId)`; so call `submitCardForm()` while the form is
+on screen and forward the JWE promptly. **The visible fields are emptied too**:
 after a successful submit the form returns to its pristine state, so the user sees an empty card
-form and your own UI should move on rather than wait for further input. A failed encryption leaves
-everything as the user typed it, since nothing has been authorized yet. A second submit on the
+form and your own UI should move on rather than wait for further input. Treat the moment the JWE
+exists as the start of the payment: switch the screen to a "payment in progress" state, with the
+pay button disabled and the form out of reach, and keep it there until the charge is decided. The
+emptied form is not an invitation to type the card again, and the card cannot be shown again: the
+SDK keeps no copy of it. A failed encryption leaves everything as the user typed it, since nothing
+has been authorized yet. A second submit on the
 emptied form fails with `VALIDATION_INVALID_INPUT` and the message
 `CardEncryptionResult.NO_CARD_DATA_MESSAGE`; a form that fails validation with
 `CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE`. The gateway accepts each JWE **once** and
@@ -539,10 +546,14 @@ user confirm the card again. A rotation empties the form as well, see
 
 `validation` decides whether the form shows its own localized validation errors beneath the
 fields, from the resolved locale strings: `HIDDEN` (the default, and the only behaviour before
-2.2) shows none and leaves display to you; `LIVE` shows a field's error as soon as it holds
-something invalid, never for an empty field; `ON_SUBMIT` shows them, the "required" message for
-empty fields included, once a submit ran, and hides them again when the form is emptied. The
-modes are the iOS form's `.hidden`, `.live` and `.onSubmit`.
+2.2) shows none and leaves display to you; `LIVE` shows a field's error once the user is done with
+the field and it still holds something invalid: when it holds its full length and fails (a card
+number that fails its check, an expired date), when the user has left it, or once a submit ran,
+not while it is first being typed and never for an empty field, and once shown it stays while the
+user goes back to fix the field, until the field is valid; `ON_SUBMIT` shows them, the
+"required" message for empty fields included, once a submit ran, and hides them again when the
+form is emptied. The modes are the iOS form's `.hidden`, `.live` and `.onSubmit`, with the same
+rules.
 
 **Autofill is off unless you turn it on.** The form declares its fields unfillable to autofill
 services and gives them no card hints. That is a declaration, not a barrier: focusing a field
@@ -1145,7 +1156,7 @@ per-payment flow; what a `NETWORK_*` code means for the payment is under
 | `AUTH_PAYMENT_CREDENTIALS_INVALID` | `/oauth2/token` turned the `payment_id`/`payment_secret` pair down (HTTP 400, 401 or 403). Any other failure there keeps its `NETWORK_*` code, or `INTERNAL_*` when the answer cannot be read, so an offline device is not told the payment is bad |
 | `AUTH_PAYMENT_TOKEN_EXPIRED` | JWT still rejected after a single re-auth retry — fetch fresh creds from backend |
 | `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` | `startPaymentSession` called for a `paymentId` that already has a live session |
-| `AUTH_PAYMENT_SESSION_CLOSED` | API call on a session after `close()`, except `handle3dsVerification`, which sends nothing on the session; a charge is refused this way before the browser data is fetched |
+| `AUTH_PAYMENT_SESSION_CLOSED` | Any call on a session after `close()`, refused before anything is sent, except `handle3dsVerification`, which sends nothing on the session; a call in flight that has to refresh its token ends the same way, and a token that arrives after the close is not kept |
 | `AUTH_SHAREABLE_KEY_MISSING` | `charge(...)`, `encryptCardData` or `PaymentCardForm` called without `clientId`+`shareableKey` |
 | `PAYMENT_GOOGLE_PAY_IN_PROGRESS` | A second Google Pay sheet attempted while one is visible, and nothing else |
 | `PAYMENT_METHOD_UNAVAILABLE` | Google Pay cannot show its sheet on this device, e.g. Google Play services are missing, disabled or outdated |
@@ -1287,6 +1298,20 @@ callback instead of returning it. The response types stay platform-specific
 arguments: Android takes an `activity` where the wallet, the 3DS screen and the automatic
 polling need one, iOS finds the presenting view controller itself. The errors are the shared
 code contract above, with one rule for `errorCallback` on both.
+
+## What changed in 2.5
+
+2.5 changes what an integration sees in a few places:
+
+- `LIVE` validation shows a field's error once the user is done with the field: when it holds its
+  full length and still fails, when the user has left it, or once a submit ran. Before, it showed
+  the error from the first digit typed.
+- Every `PaymentSession` method that sends a request, `getStatus`, `completeBrowserData`,
+  `getQrPaymentInfo` and `awaitChargeState` among them, throws `AUTH_PAYMENT_SESSION_CLOSED` after
+  `close()` before anything goes out, and a token that arrives after the close is not kept. Before,
+  some of them still reached the gateway. `handle3dsVerification` still runs, as before.
+- `ERROR_CODES.md` says for every code whether a charge may exist after it and whether the call is
+  safe to retry.
 
 ## What changed in 2.2
 
@@ -1504,8 +1529,8 @@ and whether the card was complete then, and one summary per visit with the count
 all of it and how the visit ended: `submit` when the encrypted payload was made, sent before the
 SDK empties the form; `encrypt-error` when the last submit failed to encrypt and nothing was typed
 after; `unmount` when the form left the screen otherwise. A customer who types into the emptied
-form again, a second card after a declined one, starts a new visit with its own summary; its times
-still count from when the form became ready, not from the start of that visit.
+form again or submits it, a second card after a declined one, starts a new visit with its own
+summary; its times still count from when the form became ready, not from the start of that visit.
 
 What those carry is the state of each field (empty, partial or complete), the error codes
 (`required`, `pattern`), counts and times. Never a field's contents, a keystroke, the length of an

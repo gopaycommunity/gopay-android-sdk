@@ -1,8 +1,11 @@
 package cz.gopay.sdk.session
 
+import android.app.Activity
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.model.BrowserData
+import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.NetworkModule
@@ -25,6 +28,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.mockito.kotlin.mock
 import java.io.IOException
 import java.util.Collections
 import java.util.concurrent.Executors
@@ -74,6 +78,56 @@ class PaymentSessionTransportTest {
 
         assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.errorCode)
         assertEquals("nothing may go out on a closed session", 0, gateway.requests.get())
+        assertNoCrash()
+    }
+
+    @Test
+    fun `every public method of a closed session throws AUTH_013`() {
+        val gateway = Gateway(chargeState())
+        val session = session(gateway)
+        session.close()
+        val browserData = BrowserData(
+            language = "cs-CZ", timezone = -60, screenWidth = 1080, screenHeight = 2400, colorDepth = 24,
+            ip = "10.0.0.1", acceptHeader = "*/*", userAgent = "ua"
+        )
+
+        val calls: List<Pair<String, suspend () -> Any>> = listOf(
+            "getStatus" to { session.getStatus() },
+            "getChargeState" to { session.getChargeState() },
+            "awaitChargeState" to { session.awaitChargeState(AwaitChargeOptions(intervalMs = 1)) },
+            "getQrPaymentInfo" to { session.getQrPaymentInfo() },
+            "getWalletInfo" to { session.getWalletInfo() },
+            "getGooglePayInfo" to { session.getGooglePayInfo() },
+            "completeBrowserData" to { session.completeBrowserData(browserData) },
+            "charge" to { session.charge(ChargePaymentRequest.cardToken("tok", browserData)) },
+            "chargeWithCardToken" to { session.chargeWithCardToken("tok", browserData) },
+            "chargeWithEncryptedCard" to { session.chargeWithEncryptedCard("jwe", browserData) },
+            "chargeWithWallet" to { session.chargeWithWallet(mock<Activity>()) },
+            "chargeWithGooglePay" to { session.chargeWithGooglePay(mock<Activity>()) },
+            "reauthenticate" to { session.reauthenticate() }
+        )
+        for ((name, call) in calls) {
+            val e = assertThrows(name, GopaySDKException::class.java) { runBlocking { call() } }
+            assertEquals(name, GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.errorCode)
+        }
+
+        assertEquals("nothing may go out on a closed session", 0, gateway.requests.get())
+        assertNoCrash()
+    }
+
+    @Test
+    fun `a token that arrives after close is not kept`() {
+        lateinit var session: PaymentSession
+        val gateway = Gateway { chain -> response(chain, 401, "{}") }
+        // The token endpoint answers, but the host closed the session while it was on its way.
+        session = session(gateway, refresh = { session.close(); token("late-jwt") })
+
+        val e = assertThrows(GopaySDKException::class.java) {
+            runBlocking { session.getChargeState() }
+        }
+
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.errorCode)
+        assertEquals("the late token was dropped", null, session.currentToken())
         assertNoCrash()
     }
 

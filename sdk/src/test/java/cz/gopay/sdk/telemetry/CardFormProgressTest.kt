@@ -363,6 +363,42 @@ class CardFormProgressTest {
     }
 
     @Test
+    fun `a submit on the form the SDK emptied after the JWE wakes a new visit`() {
+        steps.ready()
+        type(Field.PAN, "4444444444444448", "1228", "123")
+        steps.submitRequested()
+        steps.submitted { card("4444444444444448", "1228", "123") }
+        steps.encrypted()
+        steps.emptied()
+        // The host's pay button pressed again on the emptied form, nothing typed.
+        steps.submitRequested()
+        steps.submitted { card() }
+        steps.unmounted()
+
+        assertEquals(listOf("submit: completed", "unmount: never started"), summaries.map { it.message })
+        val second = summaries[1]
+        assertEquals("pan:empty,expiry:empty,cvv:empty", second.params["progress_at_end"])
+        assertEquals(1, second.params["submit_requests"])
+        assertEquals(1, second.params["invalid_submit_requests"])
+        assertEquals(1, second.params["invalid_submits"])
+    }
+
+    @Test
+    fun `a failed encryption still ends the visit when the integrator empties the form after it`() {
+        steps.ready()
+        type(Field.PAN, "4444444444444448", "1228", "123")
+        steps.submitRequested()
+        steps.submitted { card("4444444444444448", "1228", "123") }
+        steps.encryptFailed()
+        // clearCardFormData: the visit goes on, emptied, and nothing is typed after.
+        steps.emptied()
+        steps.unmounted()
+
+        assertEquals("encrypt-error: completed", summaries.single().message)
+        assertEquals("pan:empty,expiry:empty,cvv:empty", summaries.single().params["progress_at_end"])
+    }
+
+    @Test
     fun `a form left untouched, or only submitted empty, never started, with every field empty at the end`() {
         steps.ready()
         steps.submitRequested()

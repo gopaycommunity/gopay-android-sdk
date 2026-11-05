@@ -35,13 +35,18 @@ class CardFormStoreTest {
         Dispatchers.resetMain()
     }
 
+    private fun register(formId: String, owner: Any = this.owner, reset: () -> Unit = {}, submitAttempted: () -> Unit = {}) =
+        CardFormStore.register(formId, owner, CardFormHandlers(reset = reset, submitAttempted = submitAttempted))
+
     @Test
     fun `a submit without an id reads the most recently active form`() {
-        CardFormStore.update("a", a)
-        CardFormStore.update("b", b)
+        register("a")
+        register("b")
+        CardFormStore.update("a", owner, a)
+        CardFormStore.update("b", owner, b)
         assertEquals("b" to b, CardFormStore.resolve(null))
 
-        CardFormStore.update("a", a)
+        CardFormStore.update("a", owner, a)
         assertEquals("a" to a, CardFormStore.resolve(null))
         assertEquals("b" to b, CardFormStore.resolve("b"))
         assertEquals(listOf("b", "a"), CardFormStore.storedFormIds().toList())
@@ -56,9 +61,10 @@ class CardFormStoreTest {
     @Test
     fun `clearing a form drops its data and empties its fields through the handler`() {
         var resets = 0
-        CardFormStore.register("a", owner, CardFormHandlers(reset = { resets++ }, submitAttempted = {}))
-        CardFormStore.update("a", a)
-        CardFormStore.update("b", b)
+        register("a", reset = { resets++ })
+        register("b")
+        CardFormStore.update("a", owner, a)
+        CardFormStore.update("b", owner, b)
 
         CardFormStore.clear("a")
 
@@ -78,12 +84,12 @@ class CardFormStoreTest {
         val main = StandardTestDispatcher()
         Dispatchers.setMain(main)
         var resets = 0
-        CardFormStore.register("a", owner, CardFormHandlers(reset = { resets++ }, submitAttempted = {}))
-        CardFormStore.update("a", a)
+        register("a", reset = { resets++ })
+        CardFormStore.update("a", owner, a)
 
         CardFormStore.clear("a")
         assertTrue("dropped at the call", CardFormStore.storedFormIds().isEmpty())
-        CardFormStore.update("a", a)
+        CardFormStore.update("a", owner, a)
         assertEquals("the keystroke in between", setOf("a"), CardFormStore.storedFormIds())
 
         main.scheduler.runCurrent()
@@ -95,8 +101,8 @@ class CardFormStoreTest {
     @Test
     fun `a form leaving the screen takes its data with it and calls nothing back`() {
         var resets = 0
-        CardFormStore.register("a", owner, CardFormHandlers(reset = { resets++ }, submitAttempted = {}))
-        CardFormStore.update("a", a)
+        register("a", reset = { resets++ })
+        CardFormStore.update("a", owner, a)
 
         CardFormStore.unregister("a", owner)
 
@@ -114,10 +120,10 @@ class CardFormStoreTest {
         val resets = mutableListOf<String>()
         val first = Any()
         val second = Any()
-        CardFormStore.register("a", first, CardFormHandlers(reset = { resets += "first" }, submitAttempted = {}))
-        CardFormStore.update("a", a)
-        CardFormStore.register("a", second, CardFormHandlers(reset = { resets += "second" }, submitAttempted = {}))
-        CardFormStore.update("a", b)
+        register("a", first, reset = { resets += "first" })
+        CardFormStore.update("a", first, a)
+        register("a", second, reset = { resets += "second" })
+        CardFormStore.update("a", second, b)
 
         CardFormStore.unregister("a", first)
 
@@ -129,10 +135,43 @@ class CardFormStoreTest {
     }
 
     @Test
+    fun `a newer form leaving first leaves nothing of the older form in the SDK`() {
+        // Two live forms under one id, the newer one took the registration and leaves first.
+        // The older one is still on screen, unregistered: what it holds must not reach the
+        // SDK, and a submit without an id must not find it.
+        val first = Any()
+        val second = Any()
+        register("a", first)
+        CardFormStore.update("a", first, a)
+        register("a", second)
+        CardFormStore.update("a", second, b)
+
+        CardFormStore.unregister("a", second)
+        assertNull("the newer form took its data with it", CardFormStore.resolve("a").second)
+
+        CardFormStore.update("a", first, a)
+        assertNull("the older form is no longer heard", CardFormStore.resolve("a").second)
+        assertEquals(null to null, CardFormStore.resolve(null))
+
+        CardFormStore.unregister("a", first)
+        assertTrue(CardFormStore.storedFormIds().isEmpty())
+    }
+
+    @Test
+    fun `an unregistered form's edits never reach the SDK`() {
+        CardFormStore.update("a", owner, a)
+        assertTrue("no registration, no data", CardFormStore.storedFormIds().isEmpty())
+
+        register("a", Any())
+        CardFormStore.update("a", owner, a)
+        assertNull("registered to someone else", CardFormStore.resolve("a").second)
+    }
+
+    @Test
     fun `a submit attempt reaches the form it was made for`() {
         val attempted = mutableListOf<String>()
-        CardFormStore.register("a", owner, CardFormHandlers(reset = {}, submitAttempted = { attempted += "a" }))
-        CardFormStore.register("b", owner, CardFormHandlers(reset = {}, submitAttempted = { attempted += "b" }))
+        register("a", submitAttempted = { attempted += "a" })
+        register("b", submitAttempted = { attempted += "b" })
 
         CardFormStore.submitAttempted("b")
         CardFormStore.submitAttempted(null)
