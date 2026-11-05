@@ -1,3 +1,15 @@
+# 2.5.0 (2026-11-05)
+
+
+### Features
+
+* flag a field only once the customer is done with it, and refuse every call on a closed session GPMOB-193 946fe8b
+* keep a half-typed card across a rotation and report the card form's validity GPMOB-193 f04c696
+* keep the card fields out of autofill and keyboard learning GPMOB-148 3148953
+* report how far the customer got with the card form GPMOB-190 2fb70d6
+* time every event on the device clock and count the ones that never arrived GPMOB-190 384396f
+* warn once when a replaced card form keeps syncing under its id GPMOB-193 ac21cfe, closes #35
+
 # 2.4.0 (2026-10-26)
 
 
