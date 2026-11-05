@@ -10,6 +10,7 @@ import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.telemetry.CardFormProgress
 import cz.gopay.sdk.telemetry.CardFormSteps
 import cz.gopay.sdk.ui.utils.CardValidator
+import cz.gopay.sdk.util.SdkLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -190,6 +191,12 @@ internal object CardFormStore {
     /** Watches the activities while something is parked; null when nothing is. */
     private var parkingWatch: Pair<Application, Application.ActivityLifecycleCallbacks>? = null
 
+    /**
+     * The ids a replaced form was warned about syncing under, once each, until a form registers
+     * under the id again. Under [lock].
+     */
+    private val warnedUnregisteredSyncs = HashSet<String>()
+
     /** What cancels the timeout of each recreated screen that has a card waiting. */
     private val timeouts = HashMap<Screen, () -> Unit>()
 
@@ -206,7 +213,17 @@ internal object CardFormStore {
      * [owner] is heard: an edit in a form that lost its registration goes nowhere.
      */
     fun update(formId: String, owner: Any, formData: CardFormData) = synchronized(lock) {
-        if (registrations[formId]?.owner !== owner) return@synchronized
+        if (registrations[formId]?.owner !== owner) {
+            // Once per id: the replaced form syncs on every keystroke, and the integrator needs to
+            // hear it once, because the form otherwise goes quiet without a visible error.
+            if (warnedUnregisteredSyncs.add(formId)) {
+                SdkLog.w(
+                    "Card form '$formId' is no longer the form registered under this id, so its input" +
+                        " is dropped: keep one live form per formId (see README, \"What changed in 2.5\")."
+                )
+            }
+            return@synchronized
+        }
         data.remove(formId)
         data[formId] = formData
     }
@@ -217,6 +234,7 @@ internal object CardFormStore {
      */
     fun register(formId: String, owner: Any, formHandlers: CardFormHandlers) = synchronized(lock) {
         registrations[formId] = Registration(owner, formHandlers)
+        warnedUnregisteredSyncs.remove(formId)
     }
 
     /**

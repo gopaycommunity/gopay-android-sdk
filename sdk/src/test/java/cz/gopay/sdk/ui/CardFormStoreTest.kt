@@ -3,6 +3,7 @@ package cz.gopay.sdk.ui
 import android.app.Activity
 import android.app.Application
 import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.util.SdkLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -190,6 +191,27 @@ class CardFormStoreTest {
         register("a", stranger)
         CardFormStore.update("a", owner, a)
         assertNull("registered to someone else", CardFormStore.resolve("a").second)
+    }
+
+    @Test
+    fun `a replaced form's sync warns once per id`() {
+        val defaultWarnSink = SdkLog.warnSink
+        val warnings = mutableListOf<String>()
+        SdkLog.warnSink = { warnings.add(it) }
+        try {
+            register("a", stranger)
+            CardFormStore.update("a", owner, a)
+            CardFormStore.update("a", owner, b)
+            CardFormStore.update("a", stranger, a)
+            assertEquals("one warning for the id, however often the replaced form syncs", 1, warnings.size)
+            assertTrue(warnings.first(), warnings.first().contains("'a'"))
+
+            register("a", owner)
+            CardFormStore.update("a", stranger, a)
+            assertEquals("a new registration opens the warning again", 2, warnings.size)
+        } finally {
+            SdkLog.warnSink = defaultWarnSink
+        }
     }
 
     @Test
