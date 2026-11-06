@@ -1,5 +1,6 @@
 package cz.gopay.sdk.telemetry
 
+import cz.gopay.sdk.modules.network.SessionCloseSignal
 import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
@@ -35,7 +36,10 @@ internal class ApiCallTelemetryInterceptor(
         val response = try {
             chain.proceed(request)
         } catch (e: IOException) {
-            report(request, null, startedAt)
+            // A request PaymentSession.close() cancelled: nothing to report. A call timeout
+            // cancels the call as well, so the close says so itself rather than isCanceled.
+            val closed = request.tag(SessionCloseSignal::class.java)?.closed == true
+            if (!closed) report(request, null, startedAt)
             throw e
         }
         report(request, response, startedAt)

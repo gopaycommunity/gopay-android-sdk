@@ -3,16 +3,22 @@ package cz.gopay.sdk.session
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import androidx.annotation.VisibleForTesting
+import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.exception.HttpErrorContext
 import cz.gopay.sdk.exception.reportErrors
+import cz.gopay.sdk.locales.GopayLocales
+import cz.gopay.sdk.locales.acceptLanguageHeader
 import cz.gopay.sdk.model.BrowserData
 import cz.gopay.sdk.model.BrowserDataDetected
 import cz.gopay.sdk.model.ChallengePreference
 import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargePaymentResponse
+import cz.gopay.sdk.model.ClientType
 import cz.gopay.sdk.model.GooglePayInfoResponse
+import cz.gopay.sdk.model.InitSessionRequest
 import cz.gopay.sdk.model.PaymentChargeInstrument
 import cz.gopay.sdk.model.PaymentCreateResponse
 import cz.gopay.sdk.model.QrCodeFormat
@@ -21,10 +27,14 @@ import cz.gopay.sdk.model.deviceDefault
 import cz.gopay.sdk.model.syntheticUserAgent
 import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.GatewayErrorBody
+import cz.gopay.sdk.modules.network.NoAuthRecovery
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.PublicApi
+import cz.gopay.sdk.modules.network.SdkIOException
+import cz.gopay.sdk.modules.network.SessionCloseSignal
 import cz.gopay.sdk.modules.network.SessionTokenProvider
 import cz.gopay.sdk.modules.network.apiCall
+import cz.gopay.sdk.modules.network.transportError
 import cz.gopay.sdk.service.GooglePayHelper
 import cz.gopay.sdk.telemetry.GwLoggerTelemetry
 import cz.gopay.sdk.telemetry.Telemetry
@@ -42,6 +52,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import retrofit2.Call
+import retrofit2.Callback
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 /**
  * A live, per-payment authentication context.
@@ -107,6 +121,82 @@ class PaymentSession internal constructor(
     }
 
     private val paymentApi: PaymentApi = paymentApiBuilder(tokenProvider)
+
+    /** The `init-session` request on its way, if any; [close] cancels it. */
+    @Volatile
+    private var initSession: InitSessionInFlight? = null
+
+    private class InitSessionInFlight(val call: Call<Unit>, val closeSignal: SessionCloseSignal) {
+        /** Marks the cancel as the close's before it happens, so nothing reports it. */
+        fun cancelForClose() {
+            closeSignal.closed = true
+            call.cancel()
+        }
+    }
+
+    /**
+     * `POST /payments/{payment_id}/init-session`, sent once when the session starts, after it is
+     * registered: tells GoPay that this SDK, in [GopaySDK.version], works with the payment, and
+     * sets the payment's language from the system's languages ([acceptLanguageHeader]).
+     *
+     * Nothing depends on it, so it must cost the payment nothing: it returns at once and the
+     * request goes out in the background, with a 10 s call timeout and no retry of its own (OkHttp
+     * may still retry a failed connection, as for every request). Its failure is never thrown nor
+     * reported to `errorCallback`, and its 401 does not renew the session's token
+     * ([NoAuthRecovery]). The request is reported as an `api_call` like any other; one that ends
+     * without an HTTP response, the timeout included, also as the `NETWORK_*` error it maps to,
+     * straight to the operational data. [close] cancels it and nothing reports that
+     * ([SessionCloseSignal]). Not sent when the session's scope lacks `payment:read`, which the
+     * gateway would answer with 403, nor without a token. The endpoint answers 409 for a payment
+     * past `CREATED`, routine for a session opened to read the result. The browser SDK sends it
+     * from `attachPayment()` the same way, and so does the iOS SDK.
+     */
+    internal fun startInitSession() {
+        if (scope.split(WHITESPACE).none { it == SCOPE_PAYMENT_READ }) return
+        if (paymentSecret == null || currentToken() == null) return
+        try {
+            val closeSignal = SessionCloseSignal()
+            val call = paymentApi.initSession(
+                paymentId = paymentId,
+                acceptLanguage = acceptLanguageHeader(GopayLocales.preferredLanguages()),
+                request = InitSessionRequest(ClientType.SDK_ANDROID, GopaySDK.version),
+                noAuthRecovery = NoAuthRecovery,
+                closeSignal = closeSignal
+            )
+            call.timeout().timeout(initSessionTimeoutMs, TimeUnit.MILLISECONDS)
+            val inFlight = InitSessionInFlight(call, closeSignal)
+            initSession = inFlight
+            // close() may have run in between and found nothing to cancel.
+            if (paymentSecret == null) {
+                inFlight.cancelForClose()
+                return
+            }
+            call.enqueue(object : Callback<Unit> {
+                override fun onResponse(call: Call<Unit>, response: retrofit2.Response<Unit>) {
+                    // Any status: the api_call that carries it is all there is to report.
+                    finished(inFlight)
+                }
+
+                override fun onFailure(call: Call<Unit>, t: Throwable) {
+                    finished(inFlight)
+                    // The close is not the network's failure, and neither is an SdkIOException,
+                    // a request that never left the device (a closed session, no token). A call
+                    // timeout cancels the call too, so isCanceled says nothing here.
+                    if (closeSignal.closed || t !is IOException || t is SdkIOException) return
+                    telemetry?.error(transportError("init session", t), paymentId)
+                }
+            })
+        } catch (e: VirtualMachineError) {
+            throw e
+        } catch (e: Throwable) {
+            // Nothing waits on it, so nothing building it, an Error from a shrunk or mismatched
+            // library included, may fail the session start the host is waiting on.
+        }
+    }
+
+    private fun finished(inFlight: InitSessionInFlight) {
+        if (initSession === inFlight) initSession = null
+    }
 
     /**
      * Returns the cached JWT if it's still valid, otherwise null. Lets
@@ -737,6 +827,8 @@ class PaymentSession internal constructor(
         paymentSecret = null
         token = null
         tokenExpiresAt = 0
+        // Nothing waits on it; cancelled by the close, it reports nothing.
+        initSession?.cancelForClose()
         onClose(this)
     }
 
@@ -779,5 +871,19 @@ class PaymentSession internal constructor(
         // Custom GoPay grant type for the payment-credentials flow (Payments.yaml,
         // components.schemas.Payment-Credentials-Request).
         private const val GRANT_TYPE_PAYMENT_CREDENTIALS = "payment_credentials"
+
+        /** The scope `init-session` needs. */
+        private const val SCOPE_PAYMENT_READ = "payment:read"
+
+        private val WHITESPACE = Regex("\\s+")
+
+        /**
+         * The `init-session` call timeout, 10 s like the operational data's own requests
+         * (`NetworkModule.TELEMETRY_TIMEOUT_SECONDS`); nothing waits on it longer. Shortened by
+         * the test of a real timeout.
+         */
+        @VisibleForTesting
+        @Volatile
+        internal var initSessionTimeoutMs: Long = 10_000L
     }
 }

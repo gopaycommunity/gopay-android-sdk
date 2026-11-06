@@ -97,6 +97,10 @@ class GopaySDK private constructor(
      * before starting another for the same payment, or use [getPaymentSession] to reuse an
      * existing one.
      *
+     * Once started, the session tells GoPay that this SDK, and which version, works with the
+     * payment, and GoPay sets the payment's language from the languages set on the device; this
+     * call does not wait for that, and its failure changes nothing.
+     *
      * @param scope OAuth scopes to request. Defaults to [PaymentSession.DEFAULT_SCOPE]
      *              (`payment:charge payment:read`), which are the only two scopes the gateway
      *              grants for payment credentials; any other answers with
@@ -159,6 +163,8 @@ class GopaySDK private constructor(
             )
         }
         telemetry?.navigate(paymentId)
+        // In the background; nothing here waits for it or hears of its failure.
+        session.startInitSession()
         session
     }
 

@@ -9,13 +9,16 @@ import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.model.GooglePayInfoResponse
+import cz.gopay.sdk.model.InitSessionRequest
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.model.PaymentCreateResponse
 import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.model.syntheticUserAgent
 import cz.gopay.sdk.modules.network.AuthApi
+import cz.gopay.sdk.modules.network.NoAuthRecovery
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.PublicApi
+import cz.gopay.sdk.modules.network.SessionCloseSignal
 import cz.gopay.sdk.modules.network.TokenResponse
 import cz.gopay.sdk.util.SdkLog
 import kotlinx.coroutines.runBlocking
@@ -29,6 +32,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import retrofit2.Call
 import retrofit2.Response
 import java.io.IOException
 
@@ -318,6 +322,15 @@ class PaymentSessionBrowserDataTest {
 
         override suspend fun getGooglePayInfo(paymentId: String): Response<GooglePayInfoResponse> =
             throw UnsupportedOperationException()
+
+        // Sessions here are built by the factory, not started, so init-session is never sent.
+        override fun initSession(
+            paymentId: String,
+            acceptLanguage: String?,
+            request: InitSessionRequest,
+            noAuthRecovery: NoAuthRecovery,
+            closeSignal: SessionCloseSignal
+        ): Call<Unit> = throw UnsupportedOperationException()
     }
 
     private companion object {

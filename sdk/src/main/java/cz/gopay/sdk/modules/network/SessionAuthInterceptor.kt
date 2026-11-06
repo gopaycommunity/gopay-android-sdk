@@ -43,10 +43,19 @@ internal class SessionAuthInterceptor(
 
     private fun authorize(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
-        val token = tokenProvider.currentToken() ?: reauthBlocking()
+        // A request nothing waits on must not touch the token the session's own calls use: no
+        // credentials exchange before it, none after its 401, as in the browser SDK.
+        val recoverAuth = originalRequest.tag(NoAuthRecovery::class.java) == null
+        val token = tokenProvider.currentToken()
+            ?: if (recoverAuth) reauthBlocking() else throw SdkIOException(
+                GopaySDKException(
+                    errorCode = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
+                    message = "No payment-scoped token for a request that does not renew it"
+                )
+            )
 
         val firstResponse = chain.proceed(originalRequest.withBearer(token))
-        if (firstResponse.code != 401) {
+        if (firstResponse.code != 401 || !recoverAuth) {
             return firstResponse
         }
 

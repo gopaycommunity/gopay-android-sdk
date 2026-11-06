@@ -15,17 +15,21 @@ import cz.gopay.sdk.model.GooglePayMerchantInfo
 import cz.gopay.sdk.model.GooglePayMethodParameters
 import cz.gopay.sdk.model.GooglePayTokenizationSpec
 import cz.gopay.sdk.model.GooglePayTransactionInfo
+import cz.gopay.sdk.model.InitSessionRequest
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.model.PaymentCreateResponse
 import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.modules.network.AuthApi
+import cz.gopay.sdk.modules.network.NoAuthRecovery
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.PublicApi
+import cz.gopay.sdk.modules.network.SessionCloseSignal
 import cz.gopay.sdk.modules.network.TokenResponse
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
+import retrofit2.Call
 import retrofit2.Response
 
 /**
@@ -136,5 +140,14 @@ class PaymentSessionSharedApiTest {
             infoCalls++
             return Response.success(info)
         }
+
+        // Sessions here are built by the factory, not started, so init-session is never sent.
+        override fun initSession(
+            paymentId: String,
+            acceptLanguage: String?,
+            request: InitSessionRequest,
+            noAuthRecovery: NoAuthRecovery,
+            closeSignal: SessionCloseSignal
+        ): Call<Unit> = throw UnsupportedOperationException()
     }
 }

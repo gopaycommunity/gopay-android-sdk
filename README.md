@@ -428,6 +428,12 @@ A `PaymentSession` is the per-payment auth context. Construct it via `startPayme
 **never** instantiate directly. All methods but `close()` are `suspend`, and every one propagates
 `GopaySDKException` on auth, HTTP or transport errors.
 
+When a session starts, the SDK also tells GoPay that the Android SDK, and which version of it,
+works with the payment, and GoPay sets the payment's language from the languages set on the
+device: the one ranked highest among those GoPay supports, or English. Nothing to configure.
+`startPaymentSession` does not wait for this, and if it fails, as it does for a payment that is no
+longer `CREATED`, nothing throws and `errorCallback` is not called.
+
 | Method | Maps to |
 | --- | --- |
 | `getStatus()` | `GET /payments/{payment_id}` |
@@ -1574,7 +1580,9 @@ events of one checkout together, and it identifies a payment rather than a perso
 HTTP request does, and GoPay keeps it with the data, together with the SDK's own User-Agent (which
 names the SDK and its version, not the device or the person) and your app's package name. The
 data is therefore pseudonymised personal data, not anonymous. GoPay processes it under legitimate
-interest to keep the payment integration working and diagnosable.
+interest to keep the payment integration working and diagnosable. When a payment session starts,
+the SDK sends GoPay the languages set on the device, and GoPay records them with the payment
+together with the IP address the request came from.
 
 **What you should do.** Reflect this in your own privacy notice: you are the controller for your
 checkout, and your customers' data is being processed in your app. In the Play Console's Data

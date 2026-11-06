@@ -1,5 +1,6 @@
 package cz.gopay.sdk.locales
 
+import androidx.annotation.VisibleForTesting
 import java.util.Locale
 
 /**
@@ -379,6 +380,16 @@ object GopayLocales {
 
     /** The device language code, e.g. `"cs"` for a Czech device. */
     fun systemLanguage(): String = normalize(Locale.getDefault().language)
+
+    /**
+     * The system's languages in the user's order, as BCP 47 tags, which the payment's language
+     * is chosen from (see [acceptLanguageHeader]); unrelated to the form's locale. Empty when
+     * the platform cannot say. Replaceable for tests, like the iOS
+     * `GopayLocales.preferredLanguages`.
+     */
+    @VisibleForTesting
+    @Volatile
+    internal var preferredLanguages: () -> List<String> = ::systemLanguageTags
 
     /**
      * Resolves the [GopayLocaleStrings] to use, in priority order:
