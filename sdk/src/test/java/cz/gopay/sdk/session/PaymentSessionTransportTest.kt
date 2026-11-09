@@ -12,6 +12,8 @@ import cz.gopay.sdk.modules.network.NetworkModule
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.SessionAuthInterceptor
 import cz.gopay.sdk.modules.network.TokenResponse
+import cz.gopay.sdk.testing.SETTLE_TIMEOUT_MS
+import cz.gopay.sdk.testing.drain
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import okhttp3.Dispatcher
@@ -62,7 +64,7 @@ class PaymentSessionTransportTest {
         ErrorReporter.clear()
         // A test that failed before assertNoCrash must not leave a crash for the next one.
         dispatcherThreads.shutdown()
-        dispatcherThreads.awaitTermination(5, TimeUnit.SECONDS)
+        dispatcherThreads.awaitTermination(SETTLE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         Thread.setDefaultUncaughtExceptionHandler(defaultHandler)
     }
 
@@ -347,8 +349,7 @@ class PaymentSessionTransportTest {
     private fun assertNoCrash() {
         // The dispatcher rethrows after it has failed the call, on its own thread; once the pool
         // has terminated, every such rethrow has reached the uncaught handler.
-        dispatcherThreads.shutdown()
-        assertTrue(dispatcherThreads.awaitTermination(5, TimeUnit.SECONDS))
+        drain(dispatcherThreads)
         assertTrue("a thread died with $crashes", crashes.isEmpty())
     }
 
