@@ -18,6 +18,10 @@ import cz.gopay.sdk.telemetry.ApiCallTelemetryInterceptor
 import cz.gopay.sdk.telemetry.GwLoggerSchema
 import cz.gopay.sdk.telemetry.JsonText
 import cz.gopay.sdk.telemetry.TelemetryCapture
+import cz.gopay.sdk.testing.SETTLE_TIMEOUT_MS
+import cz.gopay.sdk.testing.awaitSettled
+import cz.gopay.sdk.testing.drain
+import cz.gopay.sdk.testing.settle
 import kotlinx.coroutines.runBlocking
 import okhttp3.Dispatcher
 import okhttp3.Interceptor
@@ -52,7 +56,9 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * The SDK runs as it does in an app, through `startPaymentSession` and a real OkHttp client with
  * the session's auth and telemetry interceptors; only the transport is faked, by the last
- * interceptor. [settle] waits for the request in the background to finish.
+ * interceptor. A test waits for the state it checks ([awaitSettled]), and before it checks that
+ * something did not happen it lets every request in the background finish ([drain]); no fixed
+ * pause anywhere.
  */
 class PaymentSessionInitSessionTest {
 
@@ -88,7 +94,7 @@ class PaymentSessionInitSessionTest {
         GopayLocales.preferredLanguages = ::systemLanguageTags
         PaymentSession.initSessionTimeoutMs = 10_000L
         dispatcherThreads.shutdownNow()
-        dispatcherThreads.awaitTermination(5, TimeUnit.SECONDS)
+        dispatcherThreads.awaitTermination(SETTLE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         Thread.setDefaultUncaughtExceptionHandler(defaultHandler)
         GopaySDK::class.java.getDeclaredField("instance").apply { isAccessible = true }.set(null, null)
         TelemetryCapture.reset()
@@ -98,7 +104,8 @@ class PaymentSessionInitSessionTest {
     @Test
     fun `sends the Android SDK and its version, with the session's token and the system's languages`() {
         start()
-        settle()
+        awaitInitEvents(1)
+        drain(dispatcherThreads)
 
         val request = initRequests.single()
         assertEquals("POST", request.method)
@@ -119,7 +126,7 @@ class PaymentSessionInitSessionTest {
     fun `does not hold up the start or the calls after it`() {
         val release = CountDownLatch(1)
         initAnswer = { chain ->
-            release.await(5, TimeUnit.SECONDS)
+            release.await(SETTLE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             response(chain, 204, "")
         }
 
@@ -129,7 +136,8 @@ class PaymentSessionInitSessionTest {
         assertEquals(1L, release.count)
         assertTrue("init-session is still on its way", initEvents().isEmpty())
         release.countDown()
-        settle()
+        awaitInitEvents(1)
+        drain(dispatcherThreads)
 
         assertEquals(ChargeState.SUCCEEDED, state.state)
         assertEquals(1, initRequests.size)
@@ -138,14 +146,17 @@ class PaymentSessionInitSessionTest {
 
     @Test
     fun `an HTTP failure reaches neither the start nor errorCallback, only its api_call`() {
-        for (status in listOf(400, 403, 404, 409, 500)) {
+        for ((i, status) in listOf(400, 403, 404, 409, 500).withIndex()) {
             initAnswer = { response(it, status, """{"errors":[]}""") }
             val session = start()
             val state = runBlocking { session.getChargeState() }
 
             assertEquals("$status", ChargeState.SUCCEEDED, state.state)
+            // The gateway reads initAnswer when the request reaches it, which may be after the
+            // next round has set its own: it must have answered this one first.
+            awaitInitEvents(i + 1)
         }
-        settle()
+        drain(dispatcherThreads)
 
         assertEquals(5, initRequests.size)
         assertTrue("$reported", reported.isEmpty())
@@ -163,13 +174,16 @@ class PaymentSessionInitSessionTest {
             UnknownHostException("offline") to GopayErrorCodes.NETWORK_NO_CONNECTION,
             SocketTimeoutException("timeout") to GopayErrorCodes.NETWORK_TIMEOUT
         )
-        for ((failure, _) in failures) {
+        for ((i, failure) in failures.map { it.first }.withIndex()) {
             initAnswer = { throw failure }
             val session = start()
             val state = runBlocking { session.getChargeState() }
             assertEquals(ChargeState.SUCCEEDED, state.state)
+            // As above: this round's request must have met this round's failure.
+            awaitInitEvents(i + 1)
         }
-        settle()
+        awaitSettled("both error events") { errorEvents().size >= failures.size }
+        drain(dispatcherThreads)
 
         assertTrue("$reported", reported.isEmpty())
         assertEquals(listOf(null, null), initEvents().map { status(it) })
@@ -186,15 +200,17 @@ class PaymentSessionInitSessionTest {
         // OkHttp cancels a call that runs out of time, the way close() does.
         PaymentSession.initSessionTimeoutMs = 200
         initAnswer = { chain ->
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
-            while (!chain.call().isCanceled() && System.nanoTime() < deadline) Thread.sleep(10)
+            // Shorter than the test's own wait, so a timeout that never comes still ends the call.
+            settle(timeoutMs = 10_000) { chain.call().isCanceled() }
             // What the socket does to a cancelled exchange.
             throw IOException("Canceled")
         }
 
         val session = start()
         val state = runBlocking { session.getChargeState() }
-        settle()
+        awaitInitEvents(1)
+        awaitSettled("the NETWORK_TIMEOUT") { errorEvents().isNotEmpty() }
+        drain(dispatcherThreads)
 
         assertEquals(ChargeState.SUCCEEDED, state.state)
         assertTrue("$reported", reported.isEmpty())
@@ -210,14 +226,14 @@ class PaymentSessionInitSessionTest {
         val hold = CountDownLatch(1)
         beforeAuth = {
             entered.countDown()
-            hold.await(5, TimeUnit.SECONDS)
+            hold.await(SETTLE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         }
 
         val session = start()
-        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        assertTrue(entered.await(SETTLE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
         session.invalidateToken()
         hold.countDown()
-        settle()
+        drain(dispatcherThreads)
 
         assertTrue("never reached the gateway", initRequests.isEmpty())
         assertTrue("$reported", reported.isEmpty())
@@ -231,8 +247,10 @@ class PaymentSessionInitSessionTest {
         initAnswer = { response(it, 401, """{"errors":[]}""") }
 
         val session = start()
-        awaitInitSession()
+        // Done before the read, so its 401 could not be the read's.
+        awaitInitEvents(1)
         val state = runBlocking { session.getChargeState() }
+        drain(dispatcherThreads)
 
         assertEquals(ChargeState.SUCCEEDED, state.state)
         assertEquals("no second credentials exchange", 1, tokenExchanges.get())
@@ -251,7 +269,7 @@ class PaymentSessionInitSessionTest {
         assertThrows(GopaySDKException::class.java) {
             runBlocking { sdk.startPaymentSession(PAYMENT, "secret") }
         }
-        settle()
+        drain(dispatcherThreads)
 
         assertEquals(
             listOf("/api/payments/$PAYMENT/init-session", "/api/payments/$OTHER_PAYMENT/init-session"),
@@ -263,7 +281,7 @@ class PaymentSessionInitSessionTest {
     @Test
     fun `a session without payment_read sends none`() {
         runBlocking { sdk().startPaymentSession(PAYMENT, "secret", scope = "payment:charge") }
-        settle()
+        drain(dispatcherThreads)
 
         assertTrue(initRequests.isEmpty())
         assertNoCrash()
@@ -275,17 +293,17 @@ class PaymentSessionInitSessionTest {
         val release = CountDownLatch(1)
         initAnswer = { chain ->
             arrived.countDown()
-            release.await(5, TimeUnit.SECONDS)
+            release.await(SETTLE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             // What the socket does to a cancelled exchange.
             if (chain.call().isCanceled()) throw IOException("Canceled")
             response(chain, 204, "")
         }
 
         val session = start()
-        assertTrue(arrived.await(5, TimeUnit.SECONDS))
+        assertTrue(arrived.await(SETTLE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
         session.close()
         release.countDown()
-        settle()
+        drain(dispatcherThreads)
 
         assertTrue("$reported", reported.isEmpty())
         assertTrue("no api_call for a cancelled request", initEvents().isEmpty())
@@ -348,19 +366,11 @@ class PaymentSessionInitSessionTest {
     }
 
     /**
-     * Waits for every request in the background to finish, the init-session's callback
-     * included: they all run on [dispatcherThreads]. Nothing can be sent after it.
+     * Waits until [count] init-session requests have been answered and reported: the `api_call`
+     * goes out once the gateway has answered, on the request's thread.
      */
-    private fun settle() {
-        dispatcherThreads.shutdown()
-        assertTrue(dispatcherThreads.awaitTermination(5, TimeUnit.SECONDS))
-    }
-
-    /** Waits until the init-session's `api_call` is out, for a test that goes on sending. */
-    private fun awaitInitSession() {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
-        while (initEvents().isEmpty() && System.nanoTime() < deadline) Thread.sleep(10)
-    }
+    private fun awaitInitEvents(count: Int) =
+        awaitSettled("$count init-session api_call") { initEvents().size >= count }
 
     private fun assertNoCrash() = assertTrue("a thread died with $crashes", crashes.isEmpty())
 
