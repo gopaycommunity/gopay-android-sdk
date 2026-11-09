@@ -538,7 +538,9 @@ on screen and forward the JWE promptly. **The visible fields are emptied too**:
 after a successful submit the form returns to its pristine state, so the user sees an empty card
 form and your own UI should move on rather than wait for further input. Treat the moment the JWE
 exists as the start of the payment: switch the screen to a "payment in progress" state, with the
-pay button disabled and the form out of reach, and keep it there until the charge is decided. The
+pay button disabled and the form out of reach, and keep it there until the charge is decided.
+A second charge on a payment that already has one is refused with `PAYMENT_013`; the first charge
+stands, so read its state rather than charging again. The
 emptied form is not an invitation to type the card again, and the card cannot be shown again: the
 SDK keeps no copy of it. A failed encryption leaves everything as the user typed it, since nothing
 has been authorized yet. A second submit on the
@@ -773,9 +775,9 @@ class PaymentStillPending : Exception()   // your own exception: ask your backen
 
 A charge that comes back in `ACTION_REQUIRED` with `action?.redirectUrl` needs
 `handle3dsVerification`; call `settle` again once it returns. When no charge went out, for
-instance after a Google Pay sheet closed without paying, `getChargeState()` throws `NETWORK_002`
-with HTTP 404. Your backend, not the app, decides whether the order is paid (see
-[Your backend](#your-backend)).
+instance after a Google Pay sheet closed without paying, `getChargeState()` throws `PAYMENT_012`
+(`PAYMENT_NOT_FOUND`, HTTP 404), on either path. Your backend, not the app, decides whether the
+order is paid (see [Your backend](#your-backend)).
 
 ### Rotation and process death
 
@@ -1167,7 +1169,7 @@ per-payment flow; what a `NETWORK_*` code means for the payment is under
 | `NETWORK_NO_CONNECTION` | The gateway could not be reached: offline, DNS failure, connection refused |
 | `NETWORK_SSL_ERROR` | The gateway's certificate failed the check or does not match its host name; a TLS connection that drops is `NETWORK_IO_ERROR` |
 | `NETWORK_IO_ERROR` | Any other transport failure, e.g. the connection dropped mid-response |
-| `NETWORK_CLIENT_ERROR` / `NETWORK_SERVER_ERROR` | The gateway answered with a 4xx / 5xx; the status and the gateway's error are in `httpContext` |
+| `NETWORK_CLIENT_ERROR` / `NETWORK_SERVER_ERROR` | The gateway answered with a 4xx / 5xx; the status and the gateway's error are in `httpContext`. A 404 on the payment calls is `PAYMENT_NOT_FOUND`, a 409 on a charge `PAYMENT_CHARGE_ALREADY_EXISTS` |
 | `AUTH_PAYMENT_CREDENTIALS_INVALID` | `/oauth2/token` turned the `payment_id`/`payment_secret` pair down (HTTP 400, 401 or 403). Any other failure there keeps its `NETWORK_*` code, or `INTERNAL_*` when the answer cannot be read, so an offline device is not told the payment is bad |
 | `AUTH_PAYMENT_TOKEN_EXPIRED` | JWT still rejected after a single re-auth retry — fetch fresh creds from backend |
 | `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` | `startPaymentSession` called for a `paymentId` that already has a live session |
@@ -1179,6 +1181,8 @@ per-payment flow; what a `NETWORK_*` code means for the payment is under
 | `PAYMENT_VERIFICATION_IN_PROGRESS` | A second 3DS WebView attempted while one is open |
 | `PAYMENT_VERIFICATION_UNREACHABLE` | The 3DS challenge never reached the user: the page would not load, e.g. the redirect URL is dead or is not a web address, or no app took the hand-off |
 | `PAYMENT_CANCELLED` | The Google Pay sheet or the 3DS screen closed before it finished, or the 3DS page failed after it had drawn; read the charge before paying again |
+| `PAYMENT_NOT_FOUND` | HTTP 404 from a charge, `getChargeState`, `awaitChargeState` or `getStatus`: the payment or its charge does not exist |
+| `PAYMENT_CHARGE_ALREADY_EXISTS` | HTTP 409 from a charge: the payment already has a charge, e.g. after a double tap; read it instead of charging again |
 | `PAYMENT_DECLINED` | `awaitChargeState` saw the charge end `FAILED`; the charge is on `chargeState`, with `failReason` when the gateway sends one, which the message then repeats. A retry needs a new payment |
 | `PAYMENT_TIMEOUT` | `awaitChargeState` saw the charge stay undecided (`REQUESTED`/`PROCESSING`/`UNKNOWN`, or `ACTION_REQUIRED` without a new address) for the whole `initialTimeoutMs`; the last state is on `chargeState`. Not a failure and not passed to `errorCallback`: read the state again or wait for the notification |
 | `VALIDATION_INVALID_INPUT` | Invalid input: an empty `paymentId` / `paymentSecret`, a card that fails the PAN / month / year / CVV rules in `encryptCardData`, a `submitCardForm` with no card or an invalid one, or `awaitChargeState` with a non-positive interval or timeout, or in `ThreeDSMode.AUTOMATIC` without an `activity` |
@@ -1261,7 +1265,7 @@ failed. What to do depends on the call that threw it.
   - **Without an HTTP status** (`NETWORK_001`, `NETWORK_004`, `NETWORK_005`, `NETWORK_007`), the
     charge may not have gone out, or it reached the gateway and the answer was lost. Read
     `getChargeState()`: a charge state means the charge exists, so follow it as above;
-    `NETWORK_002` with HTTP status 404 means no charge exists.
+    `PAYMENT_012` means no charge exists.
 
 ```kotlin
 import cz.gopay.sdk.exception.GopayErrorCodes
@@ -1273,10 +1277,8 @@ suspend fun chargeExists(session: PaymentSession): Boolean = try {
     session.getChargeState()
     true
 } catch (e: GopaySDKException) {
-    // No charge is NETWORK_002 with HTTP 404; anything else, such as still being offline, does
-    // not tell.
-    if (e.errorCode == GopayErrorCodes.NETWORK_CLIENT_ERROR && e.getHttpStatusCode() == 404) false
-    else throw e
+    // No charge; anything else, such as still being offline, does not tell.
+    if (e.errorCode == GopayErrorCodes.PAYMENT_NOT_FOUND) false else throw e
 }
 ```
 
@@ -1314,6 +1316,18 @@ callback instead of returning it. The response types stay platform-specific
 arguments: Android takes an `activity` where the wallet, the 3DS screen and the automatic
 polling need one, iOS finds the presenting view controller itself. The errors are the shared
 code contract above, with one rule for `errorCallback` on both.
+
+## What changed in 2.7
+
+Nothing was removed or renamed, but two gateway answers have codes of their own now, and an
+integration written against an earlier 2.x that matches them may notice:
+
+- An HTTP 404 from a charge, `getChargeState`, `awaitChargeState` or `getStatus` throws
+  `PAYMENT_012` (`PAYMENT_NOT_FOUND`) instead of `NETWORK_002`. `getHttpStatusCode()` is still 404,
+  so a check on the status alone keeps working; one that also asks for `NETWORK_002` no longer
+  matches.
+- An HTTP 409 from a charge throws `PAYMENT_013` (`PAYMENT_CHARGE_ALREADY_EXISTS`) instead of
+  `NETWORK_002`, with `getHttpStatusCode()` 409.
 
 ## What changed in 2.5
 

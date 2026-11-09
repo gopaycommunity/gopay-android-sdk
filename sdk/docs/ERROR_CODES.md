@@ -220,8 +220,8 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
   - Check request parameters
   - Verify authentication
   - Implement rate limiting handling
-- **A charge may exist**: For a charge: no on a 400, 403 or 404, the gateway refused the request; a 409 means a charge already exists for the payment. No other call makes a charge
-- **Safe to retry**: After fixing what `httpContext.gatewayError` names; on a 409 read the charge instead of charging again
+- **A charge may exist**: For a charge: no, the gateway refused the request; since 2.7 a 404 is `PAYMENT_012` and a 409 is `PAYMENT_013`. No other call makes a charge
+- **Safe to retry**: After fixing what `httpContext.gatewayError` names
 
 ### NETWORK_003: HTTP Server Error (5xx)
 - **Description**: HTTP server error (status codes 500-599)
@@ -505,10 +505,35 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
   - The 3DS page failed after it had started rendering, when the user may already have answered
 - **Developer Action**:
   - Not a failed payment, and not necessarily one that did not happen: read `getChargeState()` before offering the payment again. A 3DS challenge may have been answered
-  - When there is no charge (`NETWORK_002`, HTTP 404) or it did not go through, let the user pick a method again
+  - When there is no charge (`PAYMENT_012`) or it did not go through, let the user pick a method again
 - **A charge may exist**: From the 3DS screen, yes: the charge exists and may have been authorized. From the wallet sheet, no
 - **Safe to retry**: Read the charge state first; with no charge, let the user pick a method again
 - **Note**: not reported through `errorCallback`. Cancelling the coroutine that awaits the call is not this code: it stays a `CancellationException`, closes the 3DS screen and frees `PAYMENT_008`. With a Google Pay sheet up the call ends at once with the `CancellationException`; the sheet stays until the user closes it, what they do in it is discarded and nothing is charged. The iOS SDK reports the same code for Apple Pay and its 3DS screen
+
+### PAYMENT_012: Payment Not Found
+- **Description**: The gateway answered HTTP 404 to a call on the payment: a charge (`POST /payments/{id}/charge`), `getChargeState()` or a read of `awaitChargeState()` (`GET /payments/{id}/charge`), `getStatus()` (`GET /payments/{id}`). The payment or its charge does not exist, or the session's token has no access to the payment
+- **Common Causes**:
+  - No charge has been made on the payment yet, e.g. the Google Pay sheet closed without paying, or a charge call failed before the charge went out
+  - A `payment_id` from another gateway, e.g. a sandbox payment on production
+- **Developer Action**:
+  - From `getChargeState()` after a charge call that ended without an HTTP status: no charge exists, so charge again
+  - From a charge or `getStatus()`: check the `payment_id` and the environment the app uses
+  - `httpContext.statusCode` is 404 and `httpContext.gatewayError` carries the gateway's error body, as on `NETWORK_002`
+- **A charge may exist**: No: the gateway found no charge, or no payment, for the call
+- **Safe to retry**: Yes, after checking the payment
+- **Note**: a contract of the SDK over the gateway's documented 404, the same on both platforms since 2.7; until then the same answer was `NETWORK_002` with HTTP 404. A 404 from any other call, such as the token, the public key, the browser data or the QR and wallet info, stays `NETWORK_002`
+
+### PAYMENT_013: Charge Already Exists
+- **Description**: The gateway answered HTTP 409 to a charge (`POST /payments/{id}/charge`): the payment already has a charge, and a payment is charged once
+- **Common Causes**:
+  - A double tap on the pay button sent a second charge
+  - A charge sent again after a code without an HTTP status, when the first one had reached the gateway after all
+- **Developer Action**:
+  - Do not charge again: read the charge that exists with `getChargeState()` or `awaitChargeState()` and follow its state
+  - Disable the pay button while a charge is in flight
+- **A charge may exist**: Yes: the first charge exists; this one was not made
+- **Safe to retry**: No: read the charge state instead
+- **Note**: a contract of the SDK over the gateway's documented 409, the same on both platforms since 2.7; until then the same answer was `NETWORK_002` with HTTP 409. `httpContext.statusCode` is 409 and `httpContext.gatewayError` carries the gateway's error body
 
 ## Card Errors (CARD_XXX)
 

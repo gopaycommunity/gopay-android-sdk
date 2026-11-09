@@ -276,10 +276,13 @@ class PaymentSession internal constructor(
         }
     }
 
-    /** GET /payments/{payment_id} */
+    /**
+     * `GET /payments/{payment_id}`. A 404, a payment that does not exist or that the session's
+     * token has no access to, throws [GopayErrorCodes.PAYMENT_NOT_FOUND].
+     */
     suspend fun getStatus(): PaymentCreateResponse = reportErrors(paymentId) {
         ensureOpen()
-        apiCall("get payment status") { paymentApi.getPaymentStatus(paymentId) }
+        apiCall("get payment status", PAYMENT_STATUS_CODES) { paymentApi.getPaymentStatus(paymentId) }
     }
 
     /**
@@ -295,6 +298,11 @@ class PaymentSession internal constructor(
      * A closed session is refused first, with [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED]:
      * the charge could not be sent anyway, and asking for the data before saying so would
      * report the wrong thing, [GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING] without the key.
+     *
+     * The gateway's 404, no such payment or no access to it, throws
+     * [GopayErrorCodes.PAYMENT_NOT_FOUND]; its 409, a charge already made on the payment, throws
+     * [GopayErrorCodes.PAYMENT_CHARGE_ALREADY_EXISTS], and the first charge stands: read it with
+     * [getChargeState]. The `chargeWith*` calls end here, so they throw the same.
      */
     suspend fun charge(request: ChargePaymentRequest): ChargePaymentResponse = reportErrors(paymentId) {
         ensureOpen()
@@ -307,7 +315,7 @@ class PaymentSession internal constructor(
         // Counted for the card form's unmount, which reports whether it cut a charge short.
         Telemetry.runningCharges.incrementAndGet()
         try {
-            apiCall("charge payment") { paymentApi.chargePayment(paymentId, completed) }
+            apiCall("charge payment", CHARGE_STATUS_CODES) { paymentApi.chargePayment(paymentId, completed) }
         } finally {
             Telemetry.runningCharges.decrementAndGet()
         }
@@ -406,10 +414,13 @@ class PaymentSession internal constructor(
         message = "PaymentSession for $paymentId is closed"
     )
 
-    /** GET /payments/{payment_id}/charge */
+    /**
+     * `GET /payments/{payment_id}/charge`. A 404, no charge made on the payment yet or no such
+     * payment, throws [GopayErrorCodes.PAYMENT_NOT_FOUND].
+     */
     suspend fun getChargeState(): ChargePaymentResponse = reportErrors(paymentId) {
         ensureOpen()
-        apiCall("get charge state") { paymentApi.getChargeState(paymentId) }
+        apiCall("get charge state", PAYMENT_STATUS_CODES) { paymentApi.getChargeState(paymentId) }
     }
 
     /**
@@ -443,7 +454,8 @@ class PaymentSession internal constructor(
      *   [GopayErrorCodes.PAYMENT_TIMEOUT] the same way.
      *
      * Any error of a read or of the challenge ends the call with that error unchanged: the
-     * `NETWORK_*` codes, [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] after [close],
+     * `NETWORK_*` codes, [GopayErrorCodes.PAYMENT_NOT_FOUND] when the gateway has no charge on the
+     * payment, [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] after [close],
      * [GopayErrorCodes.PAYMENT_CANCELLED] when the user closed the challenge (the charge was sent,
      * so read [getChargeState] before paying again), [GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE]
      * and [GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS]. An exception thrown by
@@ -876,6 +888,13 @@ class PaymentSession internal constructor(
         private const val SCOPE_PAYMENT_READ = "payment:read"
 
         private val WHITESPACE = Regex("\\s+")
+
+        /** The payment's own reads: a 404 is a payment or a charge the gateway does not have. */
+        private val PAYMENT_STATUS_CODES = mapOf(404 to GopayErrorCodes.PAYMENT_NOT_FOUND)
+
+        /** `POST /payments/{payment_id}/charge`: the reads' 404, and a 409 for a second charge. */
+        private val CHARGE_STATUS_CODES = PAYMENT_STATUS_CODES +
+            (409 to GopayErrorCodes.PAYMENT_CHARGE_ALREADY_EXISTS)
 
         /**
          * The `init-session` call timeout, 10 s like the operational data's own requests

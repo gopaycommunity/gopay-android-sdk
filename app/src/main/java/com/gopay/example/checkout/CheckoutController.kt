@@ -376,7 +376,7 @@ class CheckoutController {
      * is all it takes. Once the charge went out the issuer may have authorised it already, so
      * offering a new payment could charge the shopper twice, and the charge decides first: a
      * result is shown, an undecided charge is waited for again, and only a charge the gateway
-     * does not have (404) or that did not go through gets the banner. When the charge cannot be
+     * does not have (`PAYMENT_NOT_FOUND`) or that did not go through gets the banner. When the charge cannot be
      * read, the pending screen offers Refresh rather than a new payment. The iOS demo does the
      * same.
      */
@@ -412,8 +412,7 @@ class CheckoutController {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            val noCharge = e is GopaySDKException &&
-                e.errorCode == GopayErrorCodes.NETWORK_CLIENT_ERROR && e.getHttpStatusCode() == 404
+            val noCharge = e is GopaySDKException && e.errorCode == GopayErrorCodes.PAYMENT_NOT_FOUND
             if (noCharge) {
                 // The gateway has no charge on this payment: nothing went out.
                 outcome = null

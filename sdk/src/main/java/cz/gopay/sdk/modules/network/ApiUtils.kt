@@ -24,7 +24,8 @@ import javax.net.ssl.SSLPeerUnverifiedException
  *   payload and got none;
  * - on HTTP error, throws [GopaySDKException] with [HttpErrorContext] populated from the
  *   request and error body: [GopayErrorCodes.NETWORK_SERVER_ERROR] for a 5xx status,
- *   [GopayErrorCodes.NETWORK_CLIENT_ERROR] for any other. The iOS SDK maps statuses the same way.
+ *   [GopayErrorCodes.NETWORK_CLIENT_ERROR] for any other, unless [statusCodes] names a code of
+ *   its own for the status. The iOS SDK maps statuses the same way.
  *   The gateway's error body, when the response carries one, goes into
  *   [HttpErrorContext.gatewayError] and its `message` into the exception's, so "HTTP 403" says
  *   why.
@@ -33,13 +34,15 @@ import javax.net.ssl.SSLPeerUnverifiedException
  * every API error in the SDK has the same shape.
  *
  * @param action short verb phrase used in error messages, e.g. `"charge payment"`.
+ * @param statusCodes the codes a route gives particular statuses instead of the `NETWORK_*` one,
+ *        e.g. `404` to [GopayErrorCodes.PAYMENT_NOT_FOUND] on the payment's own routes.
  */
-internal fun <T> Response<T>.unwrap(action: String): T {
+internal fun <T> Response<T>.unwrap(action: String, statusCodes: Map<Int, String> = emptyMap()): T {
     if (!isSuccessful) {
         val body = errorBody()?.string()
         val gatewayError = GatewayErrorBody.parse(body)
         throw GopaySDKException(
-            errorCode = if (code() in 500..599) {
+            errorCode = statusCodes[code()] ?: if (code() in 500..599) {
                 GopayErrorCodes.NETWORK_SERVER_ERROR
             } else {
                 GopayErrorCodes.NETWORK_CLIENT_ERROR
@@ -81,10 +84,15 @@ internal fun <T> Response<T>.unwrap(action: String): T {
  * caller that needs the [Response] first.
  *
  * @param action short verb phrase used in error messages, e.g. `"charge payment"`.
+ * @param statusCodes passed to [unwrap]: the codes the route gives particular HTTP statuses.
  */
-internal suspend fun <T> apiCall(action: String, call: suspend () -> Response<T>): T =
+internal suspend fun <T> apiCall(
+    action: String,
+    statusCodes: Map<Int, String> = emptyMap(),
+    call: suspend () -> Response<T>
+): T =
     try {
-        call().unwrap(action)
+        call().unwrap(action, statusCodes)
     } catch (e: SdkIOException) {
         // An SDK error raised inside an interceptor, wrapped only to get it out of OkHttp.
         throw e.sdkException

@@ -170,7 +170,7 @@ class PaymentSessionErrorCallbackTest {
             runBlocking { session.awaitChargeState(AwaitChargeOptions(threeDSMode = ThreeDSMode.MANUAL)) }
         }
 
-        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_NOT_FOUND, e.errorCode)
         assertEquals("getChargeState and awaitChargeState are both entry points", listOf(e), received)
     }
 
