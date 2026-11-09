@@ -456,14 +456,14 @@ class CheckoutController {
  * Whether a charge call that threw this may still have left a charge on the payment: the gateway
  * has one already, or it answered with a 5xx, or no answer arrived at all.
  */
-private fun GopaySDKException.chargeMayExist(): Boolean = when {
+internal fun GopaySDKException.chargeMayExist(): Boolean = when {
     errorCode == GopayErrorCodes.PAYMENT_CHARGE_ALREADY_EXISTS -> true
     errorCode == GopayErrorCodes.NETWORK_SERVER_ERROR -> true
     else -> httpContext == null && errorCode in TRANSPORT_CODES
 }
 
 /** The transport failures, where the request may have reached the gateway and the answer was lost. */
-private val TRANSPORT_CODES = setOf(
+internal val TRANSPORT_CODES = setOf(
     GopayErrorCodes.NETWORK_TIMEOUT,
     GopayErrorCodes.NETWORK_NO_CONNECTION,
     GopayErrorCodes.NETWORK_SSL_ERROR,
