@@ -1,3 +1,11 @@
+# 2.7.0 (2026-11-09)
+
+
+### Features
+
+* give a missing payment and a second charge codes of their own GPMOB-199 b166594
+* read in one call whether a payment was paid, declined or not charged GPMOB-199 d930ad6
+
 # 2.6.0 (2026-11-09)
 
 
