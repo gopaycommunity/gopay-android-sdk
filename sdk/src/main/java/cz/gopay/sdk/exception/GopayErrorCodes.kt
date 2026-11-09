@@ -185,21 +185,23 @@ object GopayErrorCodes {
 
     /**
      * The gateway answered HTTP 404 for the payment: the payment does not exist, the session's
-     * token has no access to it, or, from `getChargeState()` and `awaitChargeState()`, no charge
-     * has been made on it yet. Thrown by `getStatus()`, `getChargeState()`, `awaitChargeState()`
-     * and the charge request of every charge call; a 404 from any other request, the wallet info
-     * a wallet charge reads first included, stays [NETWORK_CLIENT_ERROR]. The status and the
-     * gateway's error stay on [GopaySDKException.httpContext]. Introduced in 2.7.0; before, the
-     * same answer was [NETWORK_CLIENT_ERROR] with HTTP 404.
+     * token has no access to it, or, from a charge read, the payment has no charge yet. Thrown by
+     * [cz.gopay.sdk.session.PaymentSession.getStatus],
+     * [cz.gopay.sdk.session.PaymentSession.getPaymentOutcome],
+     * [cz.gopay.sdk.session.PaymentSession.getChargeState],
+     * [cz.gopay.sdk.session.PaymentSession.awaitChargeState] and by the charge request of every
+     * charge call. A 404 from any other request stays [NETWORK_CLIENT_ERROR], the wallet info that
+     * a wallet charge reads first included. The status and the gateway's error are on
+     * [GopaySDKException.httpContext].
      */
     const val PAYMENT_NOT_FOUND = "PAYMENT_012"
 
     /**
      * The gateway answered a charge with HTTP 409: the payment already has a charge, and a
-     * payment is charged once. Thrown by `charge()` and every `chargeWith*` call. The first
-     * charge is not affected: read it with `getChargeState()` instead of charging again. The
-     * status and the gateway's error stay on [GopaySDKException.httpContext]. Introduced in
-     * 2.7.0; before, the same answer was [NETWORK_CLIENT_ERROR] with HTTP 409.
+     * payment is charged once. Thrown by [cz.gopay.sdk.session.PaymentSession.charge] and every
+     * `chargeWith*` call. The first charge stands: read it with
+     * [cz.gopay.sdk.session.PaymentSession.getChargeState] instead of charging again. The status
+     * and the gateway's error are on [GopaySDKException.httpContext].
      */
     const val PAYMENT_CHARGE_ALREADY_EXISTS = "PAYMENT_013"
 

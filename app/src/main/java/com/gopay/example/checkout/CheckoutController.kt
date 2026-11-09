@@ -288,13 +288,23 @@ class CheckoutController {
         qrDetails = current.getQrPaymentInfo(QrCodeFormat.PNG)
     }
 
-    /** Charge, then settle. Shared by every card-based method. */
+    /**
+     * Charge, then settle. Shared by every card-based method. A charge call that fails in a way
+     * that leaves a charge possible counts as sent, so the charge decides what comes next: the
+     * gateway already has one (`PAYMENT_013`), or the answer never arrived or was a 5xx and the
+     * request may have reached it.
+     */
     private suspend fun runCharge(
         activity: Activity,
         session: PaymentSession,
         charge: suspend () -> ChargePaymentResponse
     ) {
-        charge()
+        try {
+            charge()
+        } catch (e: GopaySDKException) {
+            if (e.chargeMayExist()) chargeSent = true
+            throw e
+        }
         chargeSent = true
         outcome = settle(activity, session)
     }
@@ -376,9 +386,9 @@ class CheckoutController {
      * is all it takes. Once the charge went out the issuer may have authorised it already, so
      * offering a new payment could charge the shopper twice, and the charge decides first: a
      * result is shown, an undecided charge is waited for again, and only a charge the gateway
-     * does not have (`PAYMENT_NOT_FOUND`) or that did not go through gets the banner. When the charge cannot be
-     * read, the pending screen offers Refresh rather than a new payment. The iOS demo does the
-     * same.
+     * does not have (`PAYMENT_012`) or that did not go through gets the banner. When the charge
+     * cannot be read, the pending screen offers Refresh rather than a new payment. The iOS demo
+     * does the same.
      */
     private suspend fun afterInterruptedCharge(
         activity: Activity,
@@ -441,3 +451,21 @@ class CheckoutController {
         const val CARD_FORM_ID = "checkout-card"
     }
 }
+
+/**
+ * Whether a charge call that threw this may still have left a charge on the payment: the gateway
+ * has one already, or it answered with a 5xx, or no answer arrived at all.
+ */
+private fun GopaySDKException.chargeMayExist(): Boolean = when {
+    errorCode == GopayErrorCodes.PAYMENT_CHARGE_ALREADY_EXISTS -> true
+    errorCode == GopayErrorCodes.NETWORK_SERVER_ERROR -> true
+    else -> httpContext == null && errorCode in TRANSPORT_CODES
+}
+
+/** The transport failures, where the request may have reached the gateway and the answer was lost. */
+private val TRANSPORT_CODES = setOf(
+    GopayErrorCodes.NETWORK_TIMEOUT,
+    GopayErrorCodes.NETWORK_NO_CONNECTION,
+    GopayErrorCodes.NETWORK_SSL_ERROR,
+    GopayErrorCodes.NETWORK_IO_ERROR
+)

@@ -511,16 +511,16 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **Note**: not reported through `errorCallback`. Cancelling the coroutine that awaits the call is not this code: it stays a `CancellationException`, closes the 3DS screen and frees `PAYMENT_008`. With a Google Pay sheet up the call ends at once with the `CancellationException`; the sheet stays until the user closes it, what they do in it is discarded and nothing is charged. The iOS SDK reports the same code for Apple Pay and its 3DS screen
 
 ### PAYMENT_012: Payment Not Found
-- **Description**: The gateway answered HTTP 404 to a call on the payment: a charge (`POST /payments/{id}/charge`), `getChargeState()` or a read of `awaitChargeState()` (`GET /payments/{id}/charge`), `getStatus()` (`GET /payments/{id}`). The payment or its charge does not exist, or the session's token has no access to the payment
+- **Description**: The gateway answered HTTP 404 to a call on the payment: a charge (`POST /payments/{id}/charge`), `getChargeState()` or a read of `awaitChargeState()` (`GET /payments/{id}/charge`), `getStatus()` or `getPaymentOutcome()` (`GET /payments/{id}`). The payment or its charge does not exist, or the session's token has no access to the payment
 - **Common Causes**:
   - No charge has been made on the payment yet, e.g. the Google Pay sheet closed without paying, or a charge call failed before the charge went out
-  - A `payment_id` from another gateway, e.g. a sandbox payment on production
+  - A `payment_id` the session's token has no access to
 - **Developer Action**:
   - From `getChargeState()` after a charge call that ended without an HTTP status: no charge exists, so charge again
   - From a charge or `getStatus()`: check the `payment_id` and the environment the app uses
   - `httpContext.statusCode` is 404 and `httpContext.gatewayError` carries the gateway's error body, as on `NETWORK_002`
 - **A charge may exist**: No: the gateway found no charge, or no payment, for the call
-- **Safe to retry**: Yes, after checking the payment
+- **Safe to retry**: After a 404 from `getChargeState()`, yes: charge, while the payment is not `CANCELED` or `TIMEOUTED`. After any other call, no: this session has no such payment
 - **Note**: a contract of the SDK over the gateway's documented 404, the same on both platforms since 2.7; until then the same answer was `NETWORK_002` with HTTP 404. A 404 from any other call, such as the token, the public key, the browser data or the QR and wallet info, stays `NETWORK_002`
 
 ### PAYMENT_013: Charge Already Exists
@@ -529,7 +529,7 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
   - A double tap on the pay button sent a second charge
   - A charge sent again after a code without an HTTP status, when the first one had reached the gateway after all
 - **Developer Action**:
-  - Do not charge again: read the charge that exists with `getChargeState()` or `awaitChargeState()` and follow its state
+  - Do not charge again: read the charge that exists with `getChargeState()`, `awaitChargeState()` or `getPaymentOutcome()` and follow its state
   - Disable the pay button while a charge is in flight
 - **A charge may exist**: Yes: the first charge exists; this one was not made
 - **Safe to retry**: No: read the charge state instead
@@ -768,7 +768,7 @@ suspend fun readChargeBeforeRetrying(session: PaymentSession) {
     try {
         showResult(session.getChargeState())
     } catch (e: GopaySDKException) {
-        if (e.getHttpStatusCode() == 404) offerPaymentAgain() // no charge went out
+        if (e.errorCode == GopayErrorCodes.PAYMENT_NOT_FOUND) offerPaymentAgain() // no charge went out
         else askBackendForState() // still unknown: the charge may be through
     }
 }

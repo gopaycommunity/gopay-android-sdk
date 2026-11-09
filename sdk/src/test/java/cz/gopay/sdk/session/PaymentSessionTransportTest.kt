@@ -95,6 +95,7 @@ class PaymentSessionTransportTest {
 
         val calls: List<Pair<String, suspend () -> Any>> = listOf(
             "getStatus" to { session.getStatus() },
+            "getPaymentOutcome" to { session.getPaymentOutcome() },
             "getChargeState" to { session.getChargeState() },
             "awaitChargeState" to { session.awaitChargeState(AwaitChargeOptions(intervalMs = 1)) },
             "getQrPaymentInfo" to { session.getQrPaymentInfo() },

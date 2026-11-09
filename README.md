@@ -43,6 +43,8 @@ forward; the backend submits the JWE and gets back the card token.
   auto-init. `payment_secret` and JWT live for the lifetime of the session and are wiped on
   `close()`.
 - Managed Google Pay and 3DS flows directly on the session.
+- The result read for you: `awaitChargeState` waits for the charge, `getPaymentOutcome()` says in
+  one read whether the payment was paid, declined, not charged or is still undecided.
 - JWE card encryption using the merchant public key, fetched for every encryption and stamped
   with the gateway's time.
 - Compose `PaymentCardForm` composable that holds the card under a `formId`, which
@@ -165,6 +167,11 @@ The demo app does steps 1 to 4 and 6 in the app itself, in
 [`MerchantBackendSimulator.kt`](app/src/main/java/com/gopay/example/MerchantBackendSimulator.kt),
 so it runs without a server; it is a working example of the requests, and in a real integration
 they belong on your server.
+
+The app can read the outcome too, with `getPaymentOutcome()` (see
+[Reading the result](#reading-the-result)): after it comes back to the foreground during a
+payment, or after a charge call ended with a network error. That is for the screen the user sees;
+what your server learns from the notification and `GET /payments/{id}` settles the order.
 
 ## Quick start
 
@@ -437,6 +444,7 @@ longer `CREATED`, nothing throws and `errorCallback` is not called.
 | Method | Maps to |
 | --- | --- |
 | `getStatus()` | `GET /payments/{payment_id}` |
+| `getPaymentOutcome()` | `GET /payments/{payment_id}`: the payment's outcome in one read, without waiting; see [Reading the result](#reading-the-result) |
 | `charge(ChargePaymentRequest)` | `POST /payments/{payment_id}/charge` — low level; you supply `BrowserData`, the SDK completes `ip` and `accept_header` from `GET /cards/browser-data` first, and a missing `user_agent` before that |
 | `completeBrowserData(browserData)` | `GET /cards/browser-data` — fills the null ones of `ip` and `accept_header`, and a missing `user_agent` with a synthesized WebView one; `charge(...)` does this itself |
 | `chargeWithCardToken(activity, cardToken, browserData?, challengePreference?)` | `charge(...)` with a card token + device-derived `BrowserData` |
@@ -540,11 +548,10 @@ form and your own UI should move on rather than wait for further input. Treat th
 exists as the start of the payment: switch the screen to a "payment in progress" state, with the
 pay button disabled and the form out of reach, and keep it there until the charge is decided.
 A second charge on a payment that already has one is refused with `PAYMENT_013`; the first charge
-stands, so read its state rather than charging again. The
-emptied form is not an invitation to type the card again, and the card cannot be shown again: the
-SDK keeps no copy of it. A failed encryption leaves everything as the user typed it, since nothing
-has been authorized yet. A second submit on the
-emptied form fails with `VALIDATION_INVALID_INPUT` and the message
+stands, so read its state rather than charging again. The emptied form is not an invitation to
+type the card again, and the card cannot be shown again: the SDK keeps no copy of it. A failed
+encryption leaves everything as the user typed it, since nothing has been authorized yet. A second
+submit on the emptied form fails with `VALIDATION_INVALID_INPUT` and the message
 `CardEncryptionResult.NO_CARD_DATA_MESSAGE`; a form that fails validation with
 `CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE`. The gateway accepts each JWE **once** and
 its payload expires 10 minutes after creation. A charge that never reached the gateway leaves the
@@ -740,9 +747,10 @@ with the timeout started over from the challenge's return; in `ThreeDSMode.MANUA
 reported address cancels the timeout for good and you run the challenge. The same address is never
 run or reported twice. The challenge's own errors end the call unchanged: `PAYMENT_CANCELLED` when
 the user closed it, `PAYMENT_VERIFICATION_UNREACHABLE`, `PAYMENT_VERIFICATION_IN_PROGRESS`. So does
-a failed read, with its `NETWORK_*` code, and an exception thrown by one of the callbacks. The
-charge was sent by then, so a `NETWORK_*` here means the result is not known yet, not that the
-payment failed; see [After a network error](#after-a-network-error).
+a failed read, with its `NETWORK_*` code or `PAYMENT_012` when the payment has no charge, and an
+exception thrown by one of the callbacks. The charge was sent by then, so a `NETWORK_*` here means
+the result is not known yet, not that the payment failed; see
+[After a network error](#after-a-network-error).
 Cancelling the coroutine stops the polling at once, closes a challenge that is up, and stays a
 `CancellationException`. `AUTOMATIC` without an `activity`, or an interval or timeout that is not
 positive, is refused with `VALIDATION_INVALID_INPUT` before anything is sent. Two calls on the same
@@ -778,6 +786,24 @@ A charge that comes back in `ACTION_REQUIRED` with `action?.redirectUrl` needs
 instance after a Google Pay sheet closed without paying, `getChargeState()` throws `PAYMENT_012`
 (`PAYMENT_NOT_FOUND`, HTTP 404), on either path. Your backend, not the app, decides whether the
 order is paid (see [Your backend](#your-backend)).
+
+**`getPaymentOutcome`** reads the payment once with `GET /payments/{id}` and says how it stands,
+without waiting. Use it where the app needs an answer now rather than a result: when it comes
+back to the foreground after the user left it during the payment, or after a charge call ended
+with a network error. `outcome` is one of four, decided by the payment's state first and by its
+charge only while the payment is still open:
+
+| `outcome` | When |
+| --- | --- |
+| `PAID` | The payment is `PAID`, `AUTHORIZED`, `REFUNDED` or `PARTIALLY_REFUNDED`, or it is still open and its charge `SUCCEEDED`. A refunded payment stays `PAID` whatever its charge says |
+| `DECLINED` | The charge `FAILED`; the payment is over, a retry means a new payment |
+| `UNDECIDED` | The payment is still open and its charge is `REQUESTED`, `PROCESSING`, `ACTION_REQUIRED` or in a state this SDK does not know: wait for it with `awaitChargeState`. Without a charge, the payment is in a state this SDK does not know: read it again later, or ask your backend |
+| `NOT_CHARGED` | Nothing was charged. On a payment that is `CREATED` or `PAYMENT_METHOD_CHOSEN` no charge exists: charge it, after a lost answer with the same JWE while it is valid. On a payment that is `CANCELED` or `TIMEOUTED` the payment is over, with any charge it had released: a retry means a new payment |
+
+`payment` is the whole answer, as `getStatus()` returns it, and `charge` the charge in it, which
+carries only its `id` and `state`; read `getChargeState()` for its `failReason`. A payment that
+does not exist throws `PAYMENT_012`. The notification to your backend stays the authoritative
+signal.
 
 ### Rotation and process death
 
@@ -1181,7 +1207,7 @@ per-payment flow; what a `NETWORK_*` code means for the payment is under
 | `PAYMENT_VERIFICATION_IN_PROGRESS` | A second 3DS WebView attempted while one is open |
 | `PAYMENT_VERIFICATION_UNREACHABLE` | The 3DS challenge never reached the user: the page would not load, e.g. the redirect URL is dead or is not a web address, or no app took the hand-off |
 | `PAYMENT_CANCELLED` | The Google Pay sheet or the 3DS screen closed before it finished, or the 3DS page failed after it had drawn; read the charge before paying again |
-| `PAYMENT_NOT_FOUND` | HTTP 404 from a charge, `getChargeState`, `awaitChargeState` or `getStatus`: the payment or its charge does not exist |
+| `PAYMENT_NOT_FOUND` | HTTP 404 from a charge, `getChargeState`, `awaitChargeState`, `getStatus` or `getPaymentOutcome`: the payment or its charge does not exist, or the session's token has no access to the payment |
 | `PAYMENT_CHARGE_ALREADY_EXISTS` | HTTP 409 from a charge: the payment already has a charge, e.g. after a double tap; read it instead of charging again |
 | `PAYMENT_DECLINED` | `awaitChargeState` saw the charge end `FAILED`; the charge is on `chargeState`, with `failReason` when the gateway sends one, which the message then repeats. A retry needs a new payment |
 | `PAYMENT_TIMEOUT` | `awaitChargeState` saw the charge stay undecided (`REQUESTED`/`PROCESSING`/`UNKNOWN`, or `ACTION_REQUIRED` without a new address) for the whole `initialTimeoutMs`; the last state is on `chargeState`. Not a failure and not passed to `errorCallback`: read the state again or wait for the notification |
@@ -1261,7 +1287,9 @@ failed. What to do depends on the call that threw it.
   went out.
   - **With an HTTP status** (`NETWORK_002` for a 4xx, `NETWORK_003` for a 5xx), the gateway
     answered, and its message says why. After a 5xx, read `getChargeState()` as well before
-    anything else: the charge may exist.
+    anything else: the charge may exist. `PAYMENT_013` means a charge already exists on the payment:
+    do not charge again, follow that charge with `awaitChargeState` or `getPaymentOutcome()`.
+    `PAYMENT_012` means the payment does not exist for this session.
   - **Without an HTTP status** (`NETWORK_001`, `NETWORK_004`, `NETWORK_005`, `NETWORK_007`), the
     charge may not have gone out, or it reached the gateway and the answer was lost. Read
     `getChargeState()`: a charge state means the charge exists, so follow it as above;
@@ -1281,6 +1309,11 @@ suspend fun chargeExists(session: PaymentSession): Boolean = try {
     if (e.errorCode == GopayErrorCodes.PAYMENT_NOT_FOUND) false else throw e
 }
 ```
+
+`getPaymentOutcome()` answers the same question in one read and says more: `NOT_CHARGED` on a
+payment that is `CREATED` or `PAYMENT_METHOD_CHOSEN` means no charge exists, `UNDECIDED` with a
+`charge` that one exists and is still being decided, so follow it with `awaitChargeState`, and
+`PAID`, `DECLINED` or `NOT_CHARGED` on a `CANCELED` or `TIMEOUTED` payment that the payment is over.
 
 When no charge exists after a code without an HTTP status, charge again with the same JWE while it
 is within its 10 minutes: no charge used it. `submitCardForm` empties the form once it has returned
@@ -1328,6 +1361,8 @@ integration written against an earlier 2.x that matches them may notice:
   matches.
 - An HTTP 409 from a charge throws `PAYMENT_013` (`PAYMENT_CHARGE_ALREADY_EXISTS`) instead of
   `NETWORK_002`, with `getHttpStatusCode()` 409.
+- `getPaymentOutcome()` reads the payment once and says whether it was paid, declined, not charged
+  or is still undecided.
 
 ## What changed in 2.5
 

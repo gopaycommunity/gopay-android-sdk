@@ -21,6 +21,7 @@ import cz.gopay.sdk.model.GooglePayInfoResponse
 import cz.gopay.sdk.model.InitSessionRequest
 import cz.gopay.sdk.model.PaymentChargeInstrument
 import cz.gopay.sdk.model.PaymentCreateResponse
+import cz.gopay.sdk.model.PaymentOutcome
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.model.deviceDefault
@@ -283,6 +284,28 @@ class PaymentSession internal constructor(
     suspend fun getStatus(): PaymentCreateResponse = reportErrors(paymentId) {
         ensureOpen()
         apiCall("get payment status", PAYMENT_STATUS_CODES) { paymentApi.getPaymentStatus(paymentId) }
+    }
+
+    /**
+     * What became of the payment, in one read of `GET /payments/{payment_id}` and without
+     * waiting: [PaymentOutcome.Outcome.PAID], [PaymentOutcome.Outcome.DECLINED],
+     * [PaymentOutcome.Outcome.NOT_CHARGED] or [PaymentOutcome.Outcome.UNDECIDED], with the
+     * payment and its charge it was decided from. Call it when the app does not know where the
+     * payment stands, back in the app after leaving it or after a charge call ended with a
+     * network error, rather than [getChargeState], which cannot tell a payment that was never
+     * charged from one it does not know. To wait for an undecided charge, call
+     * [awaitChargeState]. The iOS SDK has the same method.
+     *
+     * A 404 throws [GopayErrorCodes.PAYMENT_NOT_FOUND], a closed session
+     * [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] before anything goes out, and any other
+     * failure the code [getStatus] would throw.
+     */
+    suspend fun getPaymentOutcome(): PaymentOutcome = reportErrors(paymentId) {
+        ensureOpen()
+        val payment = apiCall("get payment status", PAYMENT_STATUS_CODES) {
+            paymentApi.getPaymentStatus(paymentId)
+        }
+        PaymentOutcome.of(payment)
     }
 
     /**
