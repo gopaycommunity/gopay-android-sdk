@@ -1,6 +1,5 @@
 package com.gopay.example.checkout
 
-import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,7 +43,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -62,8 +60,6 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun CheckoutScreen(onClose: () -> Unit) {
-    val context = LocalContext.current
-    val activity = context as Activity
     val scope = rememberCoroutineScope()
     val model = remember { CheckoutController() }
 
@@ -74,7 +70,7 @@ fun CheckoutScreen(onClose: () -> Unit) {
             cart = model.cart,
             paymentId = model.paymentId,
             isRefreshing = model.isBusy,
-            onRefresh = { scope.launch { model.refreshChargeState(activity) } },
+            onRefresh = { scope.launch { model.refreshChargeState() } },
             onRetry = { model.resumeShopping() },
             onDone = {
                 model.resumeShopping()
@@ -121,7 +117,7 @@ fun CheckoutScreen(onClose: () -> Unit) {
             TrustFooter()
         }
 
-        PayBar(model = model, onPay = { scope.launch { model.pay(activity) } })
+        PayBar(model = model, onPay = { scope.launch { model.pay() } })
     }
 }
 

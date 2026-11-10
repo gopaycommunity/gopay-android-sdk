@@ -1,6 +1,5 @@
 package com.gopay.example.checkout
 
-import android.app.Activity
 import androidx.annotation.VisibleForTesting
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -135,7 +134,7 @@ class CheckoutController {
 
     // region Actions
 
-    suspend fun pay(activity: Activity) {
+    suspend fun pay() {
         // The label is the lock. A second tap can land before the pay button has redrawn
         // disabled, so it is taken here, before the first suspension, and a second pay() that
         // finds it held sends nothing.
@@ -146,9 +145,9 @@ class CheckoutController {
         chargeSent = false
         try {
             when (selectedMethod) {
-                Method.CARD -> payWithNewCard(activity)
-                Method.GOOGLE_PAY -> payWithGooglePay(activity)
-                Method.SAVED_CARD -> payWithSavedCard(activity)
+                Method.CARD -> payWithNewCard()
+                Method.GOOGLE_PAY -> payWithGooglePay()
+                Method.SAVED_CARD -> payWithSavedCard()
                 Method.BANK_TRANSFER -> showBankTransfer()
             }
         } catch (e: CancellationException) {
@@ -157,7 +156,7 @@ class CheckoutController {
         } catch (e: GopaySDKException) {
             // Once the charge went out, no error may lead to a new payment: the charge decides.
             if (chargeSent || e.code == GopayErrorCodes.PAYMENT_CANCELLED) {
-                afterInterruptedCharge(activity, session, e)
+                afterInterruptedCharge(session, e)
                 return
             }
             fail("[${e.code}] ${e.message}")
@@ -183,19 +182,19 @@ class CheckoutController {
     }
 
     /** Waits for the charge again — used by the pending result screen. */
-    suspend fun refreshChargeState(activity: Activity) {
+    suspend fun refreshChargeState() {
         val current = session ?: return
         // Same lock as pay(): a second tap before Refresh redraws disabled waits for nothing new.
         if (isBusy) return
         busyLabel = "Refreshing…"
         try {
-            outcome = settle(activity, current)
+            outcome = settle(current)
         } catch (e: CancellationException) {
             throw e
         } catch (e: GopaySDKException) {
             // The charge is out: read it, and show what went wrong on the result screen, which is
             // the one on screen, rather than in the checkout's banner behind it.
-            afterInterruptedCharge(activity, current, e)
+            afterInterruptedCharge(current, e)
         } catch (e: Exception) {
             outcome = Outcome(
                 state = outcome?.state ?: ChargeState.UNKNOWN,
@@ -211,7 +210,7 @@ class CheckoutController {
 
     // region Flows
 
-    private suspend fun payWithNewCard(activity: Activity) {
+    private suspend fun payWithNewCard() {
         // The SDK's card form has no pay button of its own: it keeps the card under CARD_FORM_ID
         // and the checkout's pay button asks the SDK to encrypt it, the same call as on iOS.
         // Submit validates locally before it encrypts, so an invalid card costs no payment.
@@ -235,32 +234,31 @@ class CheckoutController {
 
         val current = startNewSession()
         busyLabel = "Authorizing…"
-        runCharge(activity, current) {
+        runCharge(current) {
             current.chargeWithEncryptedCard(
-                activity = activity,
                 payload = jwe,
                 challengePreference = ChallengePreference.AUTO
             )
         }
     }
 
-    private suspend fun payWithGooglePay(activity: Activity) {
+    private suspend fun payWithGooglePay() {
         // Unlike Apple Pay's static availability check, Google Pay readiness is answered from the
         // gateway's per-payment info — so the payment has to exist before we can ask.
         val current = startNewSession()
 
         busyLabel = "Checking Google Pay…"
         val info = current.getWalletInfo()
-        if (!GopaySDK.getInstance().isWalletAvailable(activity, info)) {
+        if (!GopaySDK.isWalletAvailable(info)) {
             banner = "Google Pay isn't available on this device."
             return
         }
 
         busyLabel = "Waiting for Google Pay…"
-        runCharge(activity, current) { current.chargeWithWallet(activity) }
+        runCharge(current) { current.chargeWithWallet() }
     }
 
-    private suspend fun payWithSavedCard(activity: Activity) {
+    private suspend fun payWithSavedCard() {
         // Stands in for a card the shopper saved on a previous order. In a real integration your
         // server holds the token; here we mint one on the fly from a known test card.
         busyLabel = "Loading saved card…"
@@ -271,9 +269,8 @@ class CheckoutController {
 
         val current = startNewSession()
         busyLabel = "Authorizing…"
-        runCharge(activity, current) {
+        runCharge(current) {
             current.chargeWithCardToken(
-                activity = activity,
                 cardToken = token,
                 challengePreference = ChallengePreference.AUTO
             )
@@ -293,7 +290,6 @@ class CheckoutController {
      * request may have reached it.
      */
     private suspend fun runCharge(
-        activity: Activity,
         session: PaymentSession,
         charge: suspend () -> ChargePaymentResponse
     ) {
@@ -304,7 +300,7 @@ class CheckoutController {
             throw e
         }
         chargeSent = true
-        outcome = settle(activity, session)
+        outcome = settle(session)
     }
 
     /**
@@ -319,13 +315,12 @@ class CheckoutController {
      * screen shows "failed", or "pending" with a Refresh button that re-enters this method. A
      * closed challenge (`PAYMENT_011`) and every other error propagate to the caller.
      */
-    private suspend fun settle(activity: Activity, session: PaymentSession): Outcome {
+    private suspend fun settle(session: PaymentSession): Outcome {
         busyLabel = "Confirming payment…"
         var lastRead: ChargePaymentResponse? = null
         return try {
             val charge = session.awaitChargeState(
                 AwaitChargeOptions(
-                    activity = activity,
                     // The address the payment was created with, not the charge response's, which
                     // GoPay is removing.
                     returnUrl = paymentReturnUrl,
@@ -389,7 +384,6 @@ class CheckoutController {
      * does the same.
      */
     private suspend fun afterInterruptedCharge(
-        activity: Activity,
         session: PaymentSession?,
         error: GopaySDKException
     ) {
@@ -410,7 +404,7 @@ class CheckoutController {
             when (charge.state) {
                 ChargeState.SUCCEEDED -> outcome = Outcome(charge.state, charge, null)
                 ChargeState.REQUESTED, ChargeState.PROCESSING, ChargeState.UNKNOWN ->
-                    outcome = settle(activity, session)
+                    outcome = settle(session)
                 else -> {
                     // Not through: back to the checkout, also from the pending screen's Refresh.
                     outcome = null

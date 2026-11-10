@@ -189,13 +189,27 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **Description**: SDK has not been initialized before use
 - **Common Causes**:
   - `GopaySDK.getInstance()`, and so `startPaymentSession`, `encryptCardData` or `submitCardForm`, called on app start before `GopaySDK.initialize()`
+  - `GopaySDK.isWalletAvailable()` called before `GopaySDK.initialize()`
   - Initialization called after SDK usage
 - **Developer Action**:
-  - Call `GopaySDK.initialize(config)` before using SDK
+  - Call `GopaySDK.initialize(context, config)` before using SDK
   - Ensure initialization happens in Application.onCreate()
 - **A charge may exist**: No
 - **Safe to retry**: Yes, after `initialize`
 - **Note**: never reported through `errorCallback`, see the rule at the top. The iOS SDK throws the same code from the same three calls since 2.2
+
+### CONFIG_004: Missing Context
+- **Description**: A call needed the application Context, and the SDK was not given one
+- **Common Causes**:
+  - The SDK was initialized through the deprecated `GopaySDK.initialize(config)`, without a Context, and then `chargeWithWallet`, `handle3dsVerification`, `awaitChargeState` in `ThreeDSMode.AUTOMATIC` or `BrowserData.deviceDefault` was called without an `activity`, or a card charge had to derive the browser data without one
+  - `GopaySDK.isWalletAvailable()` called after such an `initialize`
+  - The `activity` a call named was already finishing or destroyed, and there was no Context to find another screen with
+- **Developer Action**:
+  - Call `GopaySDK.initialize(context, config)` in `Application.onCreate`; the SDK keeps the application Context and follows the screen in front itself
+  - Or keep passing an `activity` to each call, as in 2.x
+- **A charge may exist**: No: thrown before anything is opened or sent
+- **Safe to retry**: Yes, after `initialize(context, config)` or with an `activity`
+- **Note**: Android only, thrown from 3.0 on. The iOS SDK needs no Context and never throws it
 
 ### CONFIG_006: Invalid Base URL
 - **Description**: Invalid API base URL provided
@@ -225,7 +239,7 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
   - Retry with different payment method
 - **A charge may exist**: No: the wallet failed before the charge was sent
 - **Safe to retry**: Yes: the user can try the wallet again or pay another way
-- **Note**: The SDK raises it when the wallet sheet fails (Google Pay, and Apple Pay on iOS): an error from the wallet, no payment data, a token the SDK cannot read (`GooglePayHelper.parseGooglePayToken` throws it, with the parse failure as the `cause`), or the SDK's own Google Pay activity missing from the merged manifest. The wallet's own error is the `cause`. Any error Google Pay returns from the sheet lands here, whatever its cause, a setup problem of the app included, except Google Play services missing, disabled or outdated, which is `PAYMENT_004`. The iOS SDK reports a wallet the app is not set up for as `PAYMENT_004` instead.
+- **Note**: Since 3.0 also when `chargeWithWallet` has no screen to open the Google Pay sheet from, the app in the background say: Google Pay does not wait for one, and nothing is charged; and when the sheet was started and did not appear within 30 seconds. The SDK raises it when the wallet sheet fails (Google Pay, and Apple Pay on iOS): an error from the wallet, no payment data, a token the SDK cannot read (`GooglePayHelper.parseGooglePayToken` throws it, with the parse failure as the `cause`), or the SDK's own Google Pay activity missing from the merged manifest. The wallet's own error is the `cause`. Any error Google Pay returns from the sheet lands here, whatever its cause, a setup problem of the app included, except Google Play services missing, disabled or outdated, which is `PAYMENT_004`. The iOS SDK reports a wallet the app is not set up for as `PAYMENT_004` instead.
 
 ### PAYMENT_004: Payment Method Unavailable
 - **Description**: Selected payment method is not available
@@ -293,6 +307,7 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
   - The redirect URL is not an `http(s)` address, so the WebView could never have loaded it
   - No connectivity while the challenge was opening
   - The challenge asked to hand off to a banking app and nothing on the device opened it
+  - The challenge screen was started and did not appear within 30 seconds; Android can drop the start of a screen without a word
 - **Developer Action**:
   - Read the charge state and report the payment as unverified rather than as abandoned
   - Do not treat it as a user dismissal, which arrives as `PAYMENT_011` instead
@@ -347,7 +362,7 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
   - Empty `paymentId` / `paymentSecret` passed to `startPaymentSession`
   - `encryptCardData` called with a card that fails validation: the PAN is not 13 to 19 digits, the month is not `01` to `12`, the year is not 2 to 4 digits, or the CVV is not 3 or 4 digits. The same rules apply on iOS
   - `submitCardForm` called while the card in the `PaymentCardForm` is not valid. A form that holds no card at all throws `VALIDATION_008`
-  - `awaitChargeState()` called with an `intervalMs` or `initialTimeoutMs` that is not positive, or in `ThreeDSMode.AUTOMATIC` without an `activity`; nothing is sent
+  - `awaitChargeState()` called with an `intervalMs` or `initialTimeoutMs` that is not positive; nothing is sent. `ThreeDSMode.AUTOMATIC` no longer needs an `activity`; without one and without the Context it is `CONFIG_004`
 - **Developer Action**:
   - Validate before calling, and let the form show its own validation state (`validation = LIVE` or `ON_SUBMIT`)
 - **A charge may exist**: No: nothing is sent
@@ -415,7 +430,7 @@ try {
 ### 2. Use Error Codes for Logic
 ```kotlin
 try {
-    session.chargeWithWallet(activity)
+    session.chargeWithWallet()
 } catch (e: GopaySDKException) {
     when (e.code) {
         GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS -> Unit // a sheet is already open

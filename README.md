@@ -209,6 +209,7 @@ class MyApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         GopaySDK.initialize(
+            this,                                         // the Context; only the application's is kept
             GopayConfig(
                 environment = GopayEnvironment.SANDBOX,        // or PRODUCTION / DEVELOPMENT
                 clientId = BuildConfig.GOPAY_CLIENT_ID,   // for shareable-key endpoints
@@ -225,6 +226,20 @@ under the shareable key (see below). They are also what `encryptCardData()` and
 `PaymentCardForm` use. Without them a charge fails with
 `AUTH_SHAREABLE_KEY_MISSING` before anything is sent.
 
+**No Activity on every call.** With the Context from `initialize`, the SDK follows the screen in
+front itself: it opens the 3DS challenge and the Google Pay sheet from the Activity that is
+resumed, held by a weak reference, and reads the device's browser data without one. A call may
+still name the Activity to open from, as `presenting` does on iOS, and the calls written
+against 2.x with the Activity first keep working. See
+[The screen the SDK opens from](#the-screen-the-sdk-opens-from).
+
+Call `initialize` in `Application.onCreate`. Called later, with a screen already up, the SDK
+learns that screen only at its next `onResume`, and a call that opens a challenge waits until
+then; a debug build says so in Logcat. If you have to initialize late, pass the resumed Activity
+as the `context`: it is used at once, and still only the application Context is kept.
+`initialize(config)` without a Context is deprecated; after it every call has to name its
+Activity, and one that does not fails with `CONFIG_MISSING_CONTEXT` (`CONFIG_004`).
+
 ### 3. Show the card form and charge
 
 The first card payment needs the keys above and a payment your backend has created;
@@ -237,7 +252,6 @@ Every session call is a `suspend` function. Run them in a scope that outlives a 
 ViewModel's `viewModelScope`; [Rotation and process death](#rotation-and-process-death) says why.
 
 ```kotlin
-import android.app.Activity
 import android.util.Log
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.imePadding
@@ -256,8 +270,6 @@ import cz.gopay.sdk.session.AwaitChargeOptions
 import cz.gopay.sdk.ui.PaymentCardFormValidationDisplay
 import cz.gopay.sdk.ui.PaymentCardForm
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 const val CARD_FORM_ID = "checkout-card"
@@ -277,11 +289,6 @@ fun CheckoutScreen(viewModel: CheckoutViewModel, onPay: () -> Unit) {
 }
 
 class CheckoutViewModel : ViewModel() {
-    // The activity showing the checkout: set it in onStart and back to null in onStop. Each SDK
-    // call waits for the one on screen, so the coroutine never holds one a rotation destroyed.
-    val screen = MutableStateFlow<Activity?>(null)
-    private suspend fun currentScreen(): Activity = screen.filterNotNull().first()
-
     // What the checkout tells the user.
     val status = MutableStateFlow("")
 
@@ -314,13 +321,11 @@ class CheckoutViewModel : ViewModel() {
                     }
                     return@launch
                 }
-                session.chargeWithEncryptedCard(currentScreen(), jwe)
+                session.chargeWithEncryptedCard(jwe)
                 charged = true
-                // Polls the charge once a second and runs the 3DS challenge itself, from the
-                // activity given here, until the charge is SUCCEEDED.
-                session.awaitChargeState(
-                    AwaitChargeOptions(activity = currentScreen(), returnUrl = returnUrl)
-                )
+                // Polls the charge once a second and runs the 3DS challenge itself, on the
+                // screen in front, until the charge is SUCCEEDED.
+                session.awaitChargeState(AwaitChargeOptions(returnUrl = returnUrl))
                 status.value = "Paid"
             } catch (e: GopaySDKException) {
                 Log.w("Checkout", "The payment did not complete", e)   // the code is for you
@@ -354,13 +359,11 @@ what the app reports is not proof of payment (see [Your backend](#your-backend))
 
 Prefer `chargeWithCardToken` / `chargeWithEncryptedCard` / `chargeWithWallet` over the raw
 `charge(ChargePaymentRequest)`: the spec requires `browser_data` on every card charge, and the
-wrappers fill it in from the activity (locale, screen metrics, timezone, user agent). Drop to
+wrappers fill it in from the device (locale, screen metrics, timezone, user agent). Drop to
 `charge(...)` only when you have collected more accurate browser data yourself. The card helpers
-also come without an `activity`, the shape the iOS SDK has: `chargeWithCardToken(cardToken,
-browserData, challengePreference)` and `chargeWithEncryptedCard(payload, browserData,
-challengePreference)`, for when you pass the browser data yourself. There `browserData` is a
-required parameter: deriving the device's browser data needs a `Context`, which iOS does not
-need, so on iOS it is optional.
+have the shape the iOS SDK has: `chargeWithCardToken(cardToken, browserData?,
+challengePreference?)` and `chargeWithEncryptedCard(payload, browserData?, challengePreference?)`,
+with the browser data optional on both platforms.
 
 #### Charging a saved card token instead
 
@@ -369,7 +372,7 @@ When your backend has saved the card as a token (`POST /cards/tokens`, step 6 un
 everything after the charge stays as above:
 
 ```kotlin
-session.chargeWithCardToken(currentScreen(), cardToken)
+session.chargeWithCardToken(cardToken)
 ```
 
 Card tokenization is off until GoPay enables it for you through `integration@gopay.com`. The card
@@ -377,7 +380,7 @@ form path above needs no such step.
 
 ### Browser data / User-Agent
 
-`BrowserData.deviceDefault(activity)` is the public extension those wrappers call. Call it
+`BrowserData.deviceDefault()` is the public extension those wrappers call. Call it
 yourself when you want to see or adjust what goes out:
 
 ```kotlin
@@ -385,12 +388,13 @@ import cz.gopay.sdk.model.BrowserData
 import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.deviceDefault
 
-val browserData = BrowserData.deviceDefault(activity)
+val browserData = BrowserData.deviceDefault()
 session.charge(ChargePaymentRequest.cardToken(cardToken, browserData = browserData))
 ```
 
-It reads the language and screen metrics off the activity, the timezone off the device clock as
-minutes west of UTC, and `user_agent` from `WebSettings.getDefaultUserAgent(activity)` — the same
+It reads the language and screen metrics off the screen in front, or off the application Context
+when there is none (or off the Activity you pass, `deviceDefault(activity)`), the timezone off the
+device clock as minutes west of UTC, and `user_agent` from `WebSettings.getDefaultUserAgent` — the same
 WebView that renders the 3DS challenge, so the value the issuer weighs in the AReq matches the
 browser it will actually see. On a device with the WebView package disabled the lookup fails and a
 synthesized User-Agent of the same shape stands in, with a warning in Logcat. `color_depth` is
@@ -404,8 +408,8 @@ answer; `javascript_enabled` is sent as `true`, because the challenge runs in a 
 JavaScript on. The request carries the WebView's User-Agent from `BrowserData`, so the issuer
 sees the same value in the AReq and in the challenge. A `BrowserData` you built without `user_agent` gets a synthesized
 WebView-shaped one instead, on the request and in the charge, with a warning in Logcat: the
-session holds no `Context` to read the WebView's own, so use `deviceDefault(activity)` to send
-that one. Only fields that are still `null` are filled: a value you set on
+session does not read the WebView's own for a `BrowserData` it was handed, so use
+`deviceDefault()` to send that one. Only fields that are still `null` are filled: a value you set on
 `BrowserData` stays, and when `ip` and `accept_header` are both set the gateway is not
 asked. When the fetch fails the charge is not sent; the error carries the underlying code
 (an HTTP or transport code as listed under [Error handling](#error-handling),
@@ -417,7 +421,7 @@ on its own when you want to log what goes out; pass its result to the charge unc
 
 | Method | Purpose |
 | --- | --- |
-| `initialize(GopayConfig)` | Sets up the SDK singleton. Call once on app start. |
+| `initialize(context, GopayConfig)` | Sets up the SDK singleton and takes the Context, from which the SDK follows the screen in front. Call once, in `Application.onCreate`. `initialize(GopayConfig)` without a Context is deprecated. |
 | `getInstance()` | Returns the singleton; throws if not initialized. |
 | `isInitialized()` | Quick check before calling `getInstance()`. |
 | `isDebugEnabled()` | Reflects `GopayConfig.debugLoggingEnabled`. |
@@ -428,9 +432,8 @@ on its own when you want to log what goes out; pass its result to the charge unc
 | `encryptCardData(GopayCardData)` | Validates the card (`VALIDATION_INVALID_INPUT` when it fails), fetches the JWK, returns a JWE string; an encryption that fails is `INTERNAL_UNEXPECTED_ERROR`. |
 | `submitCardForm(formId?)` | Encrypts the card the `PaymentCardForm` on screen holds under `formId` (the most recently active form when null) into a JWE and empties the form; see [Card form → JWE](#card-form--jwe). |
 | `clearCardFormData(formId?)` | Drops the SDK's copy of a form's card (every form when null) and empties its fields. |
-| `isWalletAvailable(activity, info?)` | Whether Google Pay can pay on this device: with the methods from a `GooglePayInfoResponse`, or without one, before a payment exists, with the gateway's defaults in the environment the config implies. Whether the user has a card saved in Google Pay is not checked. |
-| `isGooglePayAvailable(activity, info)` | Deprecated: the platform name of `isWalletAvailable`, the same call. |
-| `GopaySDK.isWalletAvailable(context, environment, info?)` | The same check without an instance, before `initialize`: any `Context` and the `GopayEnvironment` you will initialize for. Static, like `isWalletAvailable` on iOS. |
+| `GopaySDK.isWalletAvailable(info?)` | Static, as on iOS. Whether Google Pay can pay on this device: with the methods from a `GooglePayInfoResponse`, or without one, before a payment exists, with the gateway's defaults in the environment the config implies. Whether the user has a card saved in Google Pay is not checked. `CONFIG_001` before `initialize`, `CONFIG_004` when the SDK has no Context. |
+| `isWalletAvailable(activity, info?)`, `GopaySDK.isWalletAvailable(context, environment, info?)`, `isGooglePayAvailable(activity, info)` | Deprecated: the forms of 2.x of the same check. |
 | `currentLocaleStrings(preferred?)` | The `GopayLocaleStrings` the form resolves for a locale code, for showing its messages yourself. |
 
 ## `PaymentSession` API
@@ -451,18 +454,16 @@ longer `CREATED`, nothing throws and `errorCallback` is not called.
 | `getPaymentOutcome()` | `GET /payments/{payment_id}`: the payment's outcome in one read, without waiting; see [Reading the result](#reading-the-result) |
 | `charge(ChargePaymentRequest)` | `POST /payments/{payment_id}/charge` — low level; you supply `BrowserData`, the SDK completes `ip` and `accept_header` from `GET /cards/browser-data` first, and a missing `user_agent` before that |
 | `completeBrowserData(browserData)` | `GET /cards/browser-data` — fills the null ones of `ip` and `accept_header`, and a missing `user_agent` with a synthesized WebView one; `charge(...)` does this itself |
-| `chargeWithCardToken(activity, cardToken, browserData?, challengePreference?)` | `charge(...)` with a card token + device-derived `BrowserData` |
-| `chargeWithCardToken(cardToken, browserData, challengePreference?)` | The same without an activity, as on iOS; `browserData` is required here, iOS derives it from the device |
-| `chargeWithEncryptedCard(activity, payload, browserData?, challengePreference?)` | `charge(...)` with a JWE + device-derived `BrowserData` |
-| `chargeWithEncryptedCard(payload, browserData, challengePreference?)` | The same without an activity, as on iOS; `browserData` is required here, iOS derives it from the device |
+| `chargeWithCardToken(cardToken, browserData?, challengePreference?, activity?)` | `charge(...)` with a card token; `BrowserData` derived from the device when left out |
+| `chargeWithEncryptedCard(payload, browserData?, challengePreference?, activity?)` | `charge(...)` with a JWE; `BrowserData` derived from the device when left out |
 | `getChargeState()` | `GET /payments/{payment_id}/charge` |
 | `awaitChargeState(options?)` | Polls `GET /payments/{payment_id}/charge` once a second until the charge is `SUCCEEDED` (returned) or `FAILED` (`PAYMENT_DECLINED`), running the 3DS challenge itself; see [Reading the result](#reading-the-result) |
 | `getQrPaymentInfo(format?)` | `GET /payments/{payment_id}/qr-payment/info` |
 | `getWalletInfo()` | `GET /payments/{payment_id}/google-pay/info`, the wallet's name shared with iOS |
 | `getGooglePayInfo()` | Deprecated: the platform name of `getWalletInfo()`, the same call |
-| `chargeWithWallet(activity, browserData?, challengePreference?)` | Managed flow: wallet info → Google Pay sheet → `charge(...)`, the name shared with iOS |
-| `chargeWithGooglePay(activity, browserData?, challengePreference?)` | Deprecated: the platform name of `chargeWithWallet`, the same call |
-| `handle3dsVerification(activity, redirectUrl, returnUrl?)` | Managed WebView; suspends until the challenge is answered, closed or found unreachable. Works after `close()` too: it sends nothing on the session |
+| `chargeWithWallet(activity?, browserData?, challengePreference?)` | Managed flow: wallet info → Google Pay sheet → `charge(...)`, the name shared with iOS. Does not wait for a screen: `PAYMENT_PROCESSING_FAILED` at once with none in front |
+| `chargeWithGooglePay(activity?, browserData?, challengePreference?)` | Deprecated: the platform name of `chargeWithWallet`, the same call |
+| `handle3dsVerification(redirectUrl, returnUrl?, activity?)` | Managed WebView; waits for a screen to open from, then suspends until the challenge is answered, closed or found unreachable. Works after `close()` too: it sends nothing on the session |
 | `close()` | Wipes `payment_secret`, JWT; unregisters from the SDK |
 
 `getWalletInfo()` and `chargeWithWallet()` are the wallet's names shared with the iOS SDK;
@@ -470,6 +471,35 @@ longer `CREATED`, nothing throws and `errorCallback` is not called.
 
 Every method in the table but the two deprecated ones is on `PaymentSessionApi`, the interface
 `PaymentSession` implements; see [Replacing the session in tests](#replacing-the-session-in-tests).
+
+#### The screen the SDK opens from
+
+The `activity` in these calls, and in `AwaitChargeOptions` and `BrowserData.deviceDefault`, is
+optional, as `presenting` is on iOS. Leave it out and the SDK uses the screen in front, the
+Activity of yours that is resumed, which it follows since `GopaySDK.initialize(context, config)`.
+Name one and it is used while it is still alive; once it is finishing or destroyed, the one in
+front takes its place. The SDK keeps only a weak reference, and its own screens, the challenge
+and the Google Pay launcher, do not count as yours. The forms of 2.x with the Activity first,
+`chargeWithCardToken(activity, cardToken, …)`, `chargeWithEncryptedCard(activity, payload, …)`
+and `handle3dsVerification(activity, redirectUrl, returnUrl)`, are the same calls and still
+compile.
+
+With no screen in front, the app in the background or its Activity being recreated by a rotation:
+
+- **A 3DS challenge waits for one.** `handle3dsVerification` waits until a screen comes to the
+  front, or until you cancel its coroutine. `awaitChargeState` keeps reading the charge while it
+  waits: the screen coming up opens the challenge, and a charge that was decided in the meantime
+  is returned or thrown as usual. So a rotation or a return from the background needs nothing
+  from the app.
+- **Google Pay does not wait.** `chargeWithWallet` fails at once with `PAYMENT_PROCESSING_FAILED`
+  (`PAYMENT_003`), before anything is charged: a sheet the user did not ask for must not turn up
+  later.
+- **A screen that was started and does not appear within 30 seconds ends the call**: the
+  challenge with `PAYMENT_VERIFICATION_UNREACHABLE` (`PAYMENT_010`), the Google Pay sheet with
+  `PAYMENT_PROCESSING_FAILED`. Android can drop the start of a screen without a word.
+- **Without the Context**, when the SDK was initialized through the deprecated
+  `initialize(config)`, a call that names no Activity is refused with `CONFIG_MISSING_CONTEXT`
+  (`CONFIG_004`) before anything opens or is sent.
 
 Every enum the gateway sends back (`ChargeState`, `ChargeActionType`, `Emv3dsState`, `CardScheme`,
 `PaymentState`, `Currency`) has an `UNKNOWN` constant: a value the gateway added after this SDK
@@ -662,19 +692,19 @@ val jwe = GopaySDK.getInstance().encryptCardData(
     GopayCardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
 )
 val charge = session.chargeWithEncryptedCard(
-    activity = activity,
     payload = jwe,
     challengePreference = ChallengePreference.AUTO
 )
 // returnUrl: the callback.return_url your backend created the payment with. Polls the charge
 // and runs the 3DS challenge; see Reading the result for the manual path.
-val finalState = session.awaitChargeState(AwaitChargeOptions(activity = activity, returnUrl = returnUrl))
+val finalState = session.awaitChargeState(AwaitChargeOptions(returnUrl = returnUrl))
 ```
 
 ### 3DS verification
 
-`handle3dsVerification(activity, redirectUrl, returnUrl)` opens the challenge in an SDK-managed
-WebView and suspends. Pass `returnUrl` the address your backend created the payment with
+`handle3dsVerification(redirectUrl, returnUrl)` opens the challenge in an SDK-managed
+WebView, from the screen in front, and suspends; with no screen in front it waits for one (see
+[The screen the SDK opens from](#the-screen-the-sdk-opens-from)). Pass `returnUrl` the address your backend created the payment with
 (`callback.return_url`), which the app gets from its backend together with `payment_id` and
 `payment_secret`. GoPay is removing `return_url` from the charge response, so do not rely on it
 there. The ACS comes back to the address once the user has answered. Without a usable one (null,
@@ -710,7 +740,7 @@ nothing on the session, so only the `getChargeState()` that follows needs a live
 
 ```kotlin
 try {
-    session.handle3dsVerification(activity, redirectUrl, returnUrl)   // from your backend
+    session.handle3dsVerification(redirectUrl, returnUrl)   // returnUrl from your backend
 } catch (e: GopaySDKException) {
     when (e.code) {
         GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE -> retryCharge()
@@ -742,7 +772,6 @@ try {
             intervalMs = 1_000,                  // default: the cadence GoPay recommends
             initialTimeoutMs = 30_000,           // default: how long REQUESTED/PROCESSING/UNKNOWN may last
             threeDSMode = ThreeDSMode.AUTOMATIC, // default: the SDK runs the challenge itself
-            activity = activity,                 // the challenge is started from it
             returnUrl = returnUrl,               // the callback.return_url from your backend
             onStateChange = { showProgress(it.state) },
             onActionRequired = { redirectUrl -> /* once per new challenge address */ }
@@ -773,8 +802,10 @@ The gateway may still decide it, so read the state again or wait for your backen
 rather than offering a new payment; the SDK does not pass this code to `errorCallback`, as nothing
 failed. A 3DS challenge takes as long as the user takes, so it is not timed: for each new, non-empty
 `redirect_url` the call reports it through `onActionRequired` and, in `ThreeDSMode.AUTOMATIC`,
-runs `handle3dsVerification` with the `activity` and `returnUrl` from the options, then polls on
-with the timeout started over from the challenge's return; in `ThreeDSMode.MANUAL` the first
+runs `handle3dsVerification` with the `returnUrl` from the options, on the screen in front or on
+the `activity` in the options, then polls on with the timeout started over from the challenge's
+return. With no screen in front it keeps reading the charge while it waits for one, and the
+timeout does not run meanwhile; in `ThreeDSMode.MANUAL` the first
 reported address cancels the timeout for good and you run the challenge. The same address is never
 run or reported twice. The challenge's own errors end the call unchanged: `PAYMENT_CANCELLED` when
 the user closed it, `PAYMENT_VERIFICATION_UNREACHABLE`, `PAYMENT_VERIFICATION_IN_PROGRESS`. So does
@@ -783,14 +814,15 @@ exception thrown by one of the callbacks. The charge was sent by then, so a `NET
 the result is not known yet, not that the payment failed; see
 [After a network error](#after-a-network-error).
 Cancelling the coroutine stops the polling at once, closes a challenge that is up, and stays a
-`CancellationException`. `AUTOMATIC` without an `activity`, or an interval or timeout that is not
-positive, is refused with `VALIDATION_INVALID_INPUT` before anything is sent. Two calls on the same
+`CancellationException`. An interval or timeout that is not positive is refused with
+`VALIDATION_INVALID_INPUT` before anything is sent, and `AUTOMATIC` without an `activity` when the
+SDK has no Context with `CONFIG_MISSING_CONTEXT`. Two calls on the same
 session poll independently; only one of them can open the challenge. The iOS SDK has the same
 method with the matching options (milliseconds on Android, seconds on iOS).
 
-The `activity` is held for the duration of the call, as `chargeWithWallet` holds its one: the
-SDK stores nothing, and the call ends with your scope. Pass the activity on screen when you call,
-and read [Rotation and process death](#rotation-and-process-death) for the scope to call from.
+An `activity` you do pass is held for the duration of the call, as `chargeWithWallet` holds its
+one: the SDK stores nothing, and the call ends with your scope. Read
+[Rotation and process death](#rotation-and-process-death) for the scope to call from.
 
 **By hand**, ask for the state with `getChargeState()` after a charge, and again after
 `handle3dsVerification` returns or throws `PAYMENT_011`. Keep asking while it is `REQUESTED`,
@@ -845,17 +877,15 @@ the SDK keeps nothing on disk. Three things follow:
   `viewModelScope`, not your activity's `lifecycleScope`. A rotation, a switch to dark mode or a
   font size change recreates your activity behind the SDK's screen, and a call running in the old
   activity's scope is cancelled with it; for `handle3dsVerification` that also closes the
-  challenge. The `activity` you pass starts the SDK's screen and gives the device's browser data.
-  `handle3dsVerification` and the card charges use it only when the call starts;
-  `chargeWithWallet` keeps it until the sheet returns, because it reads the browser data then,
-  and `awaitChargeState` keeps the one in its options until the charge is decided, because it
-  starts the challenge from it whenever the gateway asks.
-  So pass the one on screen at that moment and do not keep one captured in the coroutine, as the
-  [quick start](#3-show-the-card-form-and-charge) shows. The SDK's own screens keep their state
-  across a rotation.
+  challenge. The SDK itself needs nothing from you across the change: it opens its screens from
+  the Activity in front at that moment, the recreated one once it is up, and a challenge asked
+  for in between waits for it. If you pass an `activity` yourself, pass the one on screen at
+  that moment and do not keep one captured in the coroutine; one that was destroyed is not used.
+  The SDK's own screens keep their state across a rotation.
 - **Process death ends the call.** It happens above all while the user is away in a banking app
   during 3DS and Android reclaims your app. When the user comes back, the restored 3DS screen
-  closes itself and nothing returns to your code. Keep the payment `id` in saved state
+  closes itself and nothing returns to your code. The new process knows no screen until
+  `initialize` has run and an Activity has resumed, which `Application.onCreate` takes care of. Keep the payment `id` in saved state
   (`SavedStateHandle`, `onSaveInstanceState`), never `payment_secret`, and when your screen comes
   back with an `id` but no result, ask your backend for the payment's state before offering to pay
   again. Your backend learns it from the notification and `GET /payments/{id}`.
@@ -1055,7 +1085,7 @@ Set a preferred locale globally on the config, or per form:
 
 ```kotlin
 // Global default for every form (null = follow the device language)
-GopaySDK.initialize(GopayConfig(environment = …, locale = "de"))
+GopaySDK.initialize(context, GopayConfig(environment = …, locale = "de"))
 
 // Per-form override (wins over the global default)
 PaymentCardForm(locale = "cs")
@@ -1072,6 +1102,7 @@ import cz.gopay.sdk.ui.PaymentCardForm
 val brandEnglish = GopayLocales.EN.copy(panLabel = "Your card number")
 
 GopaySDK.initialize(
+    context,
     GopayConfig(environment = …, customLocales = mapOf("en" to brandEnglish))
 )
 // or at runtime: GopayLocales.register("en", brandEnglish)
@@ -1090,10 +1121,10 @@ val strings = GopaySDK.getInstance().currentLocaleStrings(preferred = "cs")
 
 ```kotlin
 val info = session.getWalletInfo()
-if (GopaySDK.getInstance().isWalletAvailable(activity, info)) {
-    session.chargeWithWallet(activity)
+if (GopaySDK.isWalletAvailable(info)) {
+    session.chargeWithWallet()
     // returnUrl: the callback.return_url your backend created the payment with.
-    val finalState = session.awaitChargeState(AwaitChargeOptions(activity = activity, returnUrl = returnUrl))
+    val finalState = session.awaitChargeState(AwaitChargeOptions(returnUrl = returnUrl))
 }
 ```
 
@@ -1102,13 +1133,15 @@ the iOS SDK, where they ask Apple Pay; `isGooglePayAvailable`, `getGooglePayInfo
 `chargeWithGooglePay` are the same calls under their platform names, deprecated since 3.0.
 `isWalletAvailable` says whether Google Pay can show its sheet with the card networks the gateway
 allows; it does not check whether the user has a card saved, the sheet lets them add one.
-`isWalletAvailable(activity)` without the info, before a payment exists, asks Google Pay for `PAN_ONLY` and `CRYPTOGRAM_3DS`
+`GopaySDK.isWalletAvailable()` without the info, before a payment exists, asks Google Pay for `PAN_ONLY` and `CRYPTOGRAM_3DS`
 with Visa and Mastercard, which is what the gateway allows, in the environment
 `GopayConfig.environment` implies (`PRODUCTION` for the production gateway, `TEST` otherwise).
 
 `chargeWithWallet` launches the Google Pay sheet inside an SDK-managed activity, parses the
-returned token, and posts the charge in one step. It takes an optional `browserData`, derived
-from the activity when left out, and an optional `challengePreference`. The user closing the sheet without paying
+returned token, and posts the charge in one step. The sheet opens from the screen in front, and
+with none in front the call fails at once with `PAYMENT_PROCESSING_FAILED`, before anything is
+charged. It takes an optional `browserData`, derived from the device when left out, and an
+optional `challengePreference`. The user closing the sheet without paying
 throws `PAYMENT_CANCELLED`. Google Pay unable to show its sheet throws
 `PAYMENT_METHOD_UNAVAILABLE`, any other failure of the sheet or its token
 `PAYMENT_PROCESSING_FAILED`, and `PAYMENT_GOOGLE_PAY_IN_PROGRESS` only means another sheet is
@@ -1200,7 +1233,8 @@ per-payment flow; what a `NETWORK_*` code means for the payment is under
 | `PAYMENT_TIMEOUT` | `awaitChargeState` saw the charge stay undecided (`REQUESTED`/`PROCESSING`/`UNKNOWN`, or `ACTION_REQUIRED` without a new address) for the whole `initialTimeoutMs`; the last state is on `chargeState`. Not a failure and not passed to `errorCallback`: read the state again or wait for the notification |
 | `VALIDATION_INVALID_INPUT` | Invalid input: an empty `paymentId` / `paymentSecret`, a card that fails the PAN / month / year / CVV rules in `encryptCardData`, a card form whose data is not valid, or `awaitChargeState` with a non-positive interval or timeout, or in `ThreeDSMode.AUTOMATIC` without an `activity` |
 | `VALIDATION_CARD_FORM_EMPTY` | `submitCardForm` on a card form that holds no card: none is on screen, or all its fields are empty |
-| `CONFIG_SDK_NOT_INITIALIZED` | `getInstance()`, and so any call, before `initialize` |
+| `CONFIG_SDK_NOT_INITIALIZED` | `getInstance()`, and so any call, before `initialize`; `GopaySDK.isWalletAvailable()` included |
+| `CONFIG_MISSING_CONTEXT` | A call that needs the Context and names no Activity, after the SDK was initialized through the deprecated `initialize(config)` only |
 | `CONFIG_INVALID_BASE_URL` | A `DEVELOPMENT` URL that is empty, not `http(s)`, or one the HTTP client refuses at `initialize` |
 | `INTERNAL_UNEXPECTED_ERROR` | The card encryption failed after the key was fetched; the platform's exception is the `cause` |
 
@@ -1225,7 +1259,7 @@ raw body stays in `httpContext.responseBody`.
 
 ```kotlin
 try {
-    session.chargeWithWallet(activity)
+    session.chargeWithWallet()
 } catch (e: GopaySDKException) {
     when (e.code) {
         GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS -> Unit // a sheet is already open
@@ -1316,11 +1350,11 @@ is what the platform decides:
 
 | Shared name | On Android | What it is |
 | --- | --- | --- |
-| `session.chargeWithCardToken(cardToken, browserData, challengePreference?)` | variant: `chargeWithCardToken(activity, …)` derives `browserData` from the activity | a card token charge in one call; without an `activity` Android requires `browserData`, iOS derives it from the device default |
-| `session.chargeWithEncryptedCard(payload, browserData, challengePreference?)` | variant: `chargeWithEncryptedCard(activity, …)` derives `browserData` from the activity | a JWE charge in one call; without an `activity` Android requires `browserData`, iOS derives it from the device default |
-| `GopaySDK.isWalletAvailable(activity, info?)` | variant without an instance: `GopaySDK.isWalletAvailable(context, environment, info?)` | can the device pay with the platform wallet |
+| `session.chargeWithCardToken(cardToken, browserData?, challengePreference?)` | optional `activity` to read the browser data from | a card token charge in one call |
+| `session.chargeWithEncryptedCard(payload, browserData?, challengePreference?)` | optional `activity` to read the browser data from | a JWE charge in one call |
+| `GopaySDK.isWalletAvailable()` | optional `info`, the wallet configuration of a payment | can the device pay with the platform wallet |
 | `session.getWalletInfo()` | returns `GooglePayInfoResponse` | the wallet configuration for the payment |
-| `session.chargeWithWallet(activity, browserData?, challengePreference?)` | takes the `activity` the sheet starts from | the managed wallet sheet and charge |
+| `session.chargeWithWallet(browserData?, challengePreference?)` | optional `activity` to open the sheet from, first | the managed wallet sheet and charge |
 | `PaymentCardForm(formId)` + `submitCardForm(formId)` + `clearCardFormData(formId)` | — | the card form model |
 | `PaymentCardForm(validation)` with `HIDDEN`, `LIVE`, `ON_SUBMIT` | iOS: `.hidden`, `.live`, `.onSubmit` | the validation display modes |
 | `PaymentCardForm(submitAttempted, onSubmitAttemptedChange)` | iOS: the `submitAttempted` binding | the flag of the "on submit" mode, which the host can raise and lower |
@@ -1329,11 +1363,11 @@ is what the platform decides:
 | `PaymentSessionApi` | an interface; a protocol on iOS | what an app replaces the session with in its tests |
 | `GopaySDKException.code`, `httpStatus` | the type is `GopaySDKError` on iOS | the error's code and the HTTP status behind it |
 
-A variant takes an `activity` instead of `browserData` and derives the latter from it. The
-response types of the wallet stay platform-specific (`GooglePayInfoResponse` here,
-`GopayApplePayAppInfoResponse` on iOS), and so do the UI arguments: Android takes an `activity`
-where the wallet, the 3DS screen and the automatic polling need one, iOS finds the presenting
-view controller itself. Units follow the platform too: `AwaitChargeOptions` and
+The response types of the wallet stay platform-specific (`GooglePayInfoResponse` here,
+`GopayApplePayAppInfoResponse` on iOS). Neither platform needs the screen named: Android opens
+from the Activity in front, iOS from the topmost view controller, and both let a call name it,
+`activity` here and `presenting` there. What Android asks for on top is the Context, once, in
+`GopaySDK.initialize(context, config)`. Units follow the platform too: `AwaitChargeOptions` and
 `requestTimeoutMs` count milliseconds here, the iOS options and `requestTimeout` seconds, and
 `handle3dsVerification` takes the redirect as a `String` here and as a `URL` on iOS. The errors
 are the shared code contract above, with one rule for `errorCallback` on both.
@@ -1347,7 +1381,7 @@ of either. The full list, the same for both SDKs, is in
 [Migrating to 3.0](#migrating-to-30).
 
 - **One set of names.** The config, the environment, the card form and its theme, the card data,
-  the QR recipient and the return address have the same name on both platforms. A name that 2.x
+  the QR models and the return address have the same name on both platforms. A name that 2.x
   documented stays as a deprecated alias that points at the new one, so an integration written
   against 2.7 builds with warnings.
 - **One shape of data.** Which fields of `PaymentDetails`, `QrPaymentDetails` and
@@ -1358,6 +1392,9 @@ of either. The full list, the same for both SDKs, is in
   `submitAttempted` flag on the form that the host can raise or lower itself.
 - **`PaymentSessionApi`**, which `PaymentSession` implements, and public initializers of the
   response models, so an app can replace the session in its tests.
+- **No Activity on every call.** `GopaySDK.initialize(context, config)` takes the Context once and
+  the SDK follows the current Activity itself; in the calls that took an Activity it is optional
+  now, as `presenting` is on iOS.
 - The platform names of the wallet, `isGooglePayAvailable(...)`, `getGooglePayInfo()` and
   `chargeWithGooglePay(...)`, are deprecated in favour of `isWalletAvailable()`, `getWalletInfo()`
   and `chargeWithWallet(...)`.
@@ -1455,8 +1492,18 @@ The old names are deprecated aliases: they do exactly what the new names do. The
 
 The platform names of the wallet, in favour of the names both SDKs share since 2.2:
 `GopaySDK.isGooglePayAvailable(activity, info)`, `PaymentSession.getGooglePayInfo()` and
-`chargeWithGooglePay(activity, browserData, challengePreference)`; use `isWalletAvailable(...)`,
-`getWalletInfo()` and `chargeWithWallet(...)`.
+`chargeWithGooglePay(activity, browserData, challengePreference)`; use `isWalletAvailable()`,
+`getWalletInfo()` and `chargeWithWallet(browserData, challengePreference)`.
+
+`GopaySDK.initialize(config)`; use `initialize(context, config)`, in `Application.onCreate`. With
+it the Activity in `chargeWithWallet`, `chargeWithCardToken`, `chargeWithEncryptedCard`,
+`handle3dsVerification`, `BrowserData.deviceDefault` and `AwaitChargeOptions` is optional, and
+the calls of 2.7 that pass one keep compiling and keep using it. Without it, a call that names
+no Activity fails with `CONFIG_004`.
+
+The two forms of the wallet check of 2.x, `isWalletAvailable(activity, info)` on the instance and
+`GopaySDK.isWalletAvailable(context, environment, info)`; use the static
+`GopaySDK.isWalletAvailable(info)`, which takes neither.
 
 ### Removed
 
@@ -1471,7 +1518,7 @@ where one is named.
 | `onEncryptionComplete`, `onFormReady`, `onValidationError`, `CardEncryptionResult`, `CardValidator.CardValidationResult` | `GopaySDK.submitCardForm(formId)` and `clearCardFormData(formId)`; the codes `VALIDATION_008` and `VALIDATION_007` instead of the message constants |
 | `NetworkConfig`, `GopaySDK.sslSocketFactory` / `trustManager` / `certificatePinner` | Nothing: an app could not set them |
 | `JsonUtils`, `Base64Utils`, `JwtUtils`, `UrlUtils`, the validators and visual transformations of the card form, `HelperText`, `formatExpirationDate` | Nothing: only the SDK used them |
-| The deprecated `GopayErrorCodes` constants | Nothing: the SDK never threw them |
+| The deprecated `GopayErrorCodes` constants, except `CONFIG_MISSING_CONTEXT` (`CONFIG_004`), which the SDK throws from 3.0 on | Nothing: the SDK never threw them |
 | `PaymentCreateRequest`, `PaymentCallback`, `AdditionalParam`, `CardFormUrl`, `InputFieldConfig.hasError` | Nothing: the SDK neither read nor sent them |
 | `ApplePayHeader`, `PaymentCardInput.applePay` | Nothing: Apple Pay is paid through the iOS SDK |
 | The `GopaySDKException` constructor of 2.0.0 and the `PaymentCardForm` signatures of 2.1.0 and 2.4.0, kept in the bytecode for hosts built against an older 2.x | Build the app against 3.0 |
@@ -1621,10 +1668,9 @@ repo root, then run the app from Android Studio or with `./gradlew :app:installD
 - Network: both built-in environments are HTTPS. The SDK sets no cleartext policy of its own, so
   your manifest decides it; a `DEVELOPMENT` gateway on `http://` needs cleartext allowed there.
   The SDK declares the `INTERNET` permission itself.
-- Certificate pinning is plumbed all the way through `NetworkManager`/`NetworkModule`, but is
-  **not reachable from the public API today**: the `CertificatePinner` is a parameter of
-  `GopaySDK`'s private constructor and `GopaySDK.initialize(config)` never passes one.
-  `GopayConfig` has no pinning field. Exposing it needs a small API change.
+- Certificate pinning is **not available from the public API**: `GopayConfig` has no pinning
+  field, and the unused parameters that could have carried one inside the SDK left in 3.0.
+  Exposing it needs an API change.
 
 ### What your app must do
 
@@ -1678,9 +1724,10 @@ whether the device can pay with Google Pay. Every event carries the SDK version,
 payment method and flow it belongs to, the id of the payment being paid, your `clientId`, a random
 id for the app process, the event's position among those the app process sent, and your app's
 package name. The position runs across every `initialize` in the process, where the browser SDK
-numbers the events of a browser tab. The package name is known from the first time the SDK is
-handed a `Context` (the card form, its own activities or an activity you pass in), so the
-initialization event, which has none, carries it empty.
+numbers the events of a browser tab. The package name is known from `initialize(context, config)`
+on, so the initialization event carries it too; after the deprecated `initialize(config)` it is
+known only from the first time the SDK is handed a `Context` (the card form or an activity you
+pass in), and the initialization event carries it empty.
 
 Every event also carries the time on the device's own clock (`client_time`), so a report that
 arrives late can be told from one that happened late. And when a report fails to leave the

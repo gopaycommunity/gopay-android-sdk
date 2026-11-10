@@ -1,6 +1,5 @@
 package com.gopay.example
 
-import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -154,7 +153,7 @@ fun SDKTestScreen() {
      * not ask the gateway a second time.
      */
     suspend fun browserDataForCharge(s: PaymentSession): BrowserData {
-        val data = s.completeBrowserData(BrowserData.deviceDefault(context as Activity))
+        val data = s.completeBrowserData(BrowserData.deviceDefault())
         log("// browser_data sent with this charge\nuser_agent: ${data.userAgent}\nlanguage: ${data.language}, timezone: ${data.timezone}\nscreen: ${data.screenWidth}x${data.screenHeight}, color_depth: ${data.colorDepth}\nip: ${maskIp(data.ip)}\naccept_header: ${data.acceptHeader}")
         return data
     }
@@ -352,11 +351,10 @@ fun SDKTestScreen() {
                         // The names shared with iOS; the Google Pay names are deprecated aliases
                         // of the same calls. Without info, isWalletAvailable asks for the gateway's
                         // default methods in the environment the SDK config implies.
-                        val sdk = GopaySDK.getInstance()
-                        val defaultAvailable = sdk.isWalletAvailable(context as Activity)
+                        val defaultAvailable = GopaySDK.isWalletAvailable()
                         val resp = s.getWalletInfo()
-                        val available = sdk.isWalletAvailable(context as Activity, resp)
-                        log("// isWalletAvailable(activity) -> $defaultAvailable\n// getWalletInfo() -> GooglePayInfoResponse\nEnvironment: ${resp.environment}\nMerchant: ${resp.paymentDataRequest.merchantInfo.merchantName}\nCurrency: ${resp.paymentDataRequest.transactionInfo.currencyCode}\nAmount: ${resp.paymentDataRequest.transactionInfo.totalPrice}\n// isWalletAvailable(activity, info) -> $available")
+                        val available = GopaySDK.isWalletAvailable(resp)
+                        log("// isWalletAvailable() -> $defaultAvailable\n// getWalletInfo() -> GooglePayInfoResponse\nEnvironment: ${resp.environment}\nMerchant: ${resp.paymentDataRequest.merchantInfo.merchantName}\nCurrency: ${resp.paymentDataRequest.transactionInfo.currencyCode}\nAmount: ${resp.paymentDataRequest.transactionInfo.totalPrice}\n// isWalletAvailable(info) -> $available")
                     }
                 }
 
@@ -364,7 +362,6 @@ fun SDKTestScreen() {
                     run("Charge with wallet") {
                         chargeAndReport("chargeWithWallet()", s) {
                             s.chargeWithWallet(
-                                activity = context as Activity,
                                 browserData = browserDataForCharge(s)
                             )
                         }
@@ -399,7 +396,6 @@ fun SDKTestScreen() {
                     enabled = !isBusy && cardToken.isNotBlank()
                 ) {
                     run("Charge payment") {
-                        // The console has the browser data, so the overload without an activity.
                         chargeAndReport("chargeWithCardToken()", s) {
                             s.chargeWithCardToken(
                                 cardToken = cardToken.trim(),
@@ -430,7 +426,6 @@ fun SDKTestScreen() {
                         pending3dsUrl = null
                         val resp = s.awaitChargeState(
                             AwaitChargeOptions(
-                                activity = context as Activity,
                                 returnUrl = returnUrl.trim().ifEmpty { null },
                                 onStateChange = { log("// awaitChargeState poll -> ${it.state}") },
                                 onActionRequired = { log("// 3DS required, the SDK opens it: $it") }
@@ -451,7 +446,6 @@ fun SDKTestScreen() {
                         // tried again, which the SDK describes as the right answer to a
                         // challenge that never opened.
                         s.handle3dsVerification(
-                            context as Activity,
                             url,
                             returnUrl.trim().ifEmpty { null }
                         )

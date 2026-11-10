@@ -1,6 +1,5 @@
 package com.gopay.example.checkout
 
-import android.app.Activity
 import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.session.PaymentSession
 import kotlinx.coroutines.test.runTest
@@ -23,7 +22,6 @@ import org.mockito.Mockito.verifyNoInteractions
 class CheckoutControllerBusyTest {
 
     private val controller = CheckoutController()
-    private val activity: Activity = mock(Activity::class.java)
 
     @Test
     fun `pay while busy returns at once for every method`() = runTest {
@@ -33,7 +31,7 @@ class CheckoutControllerBusyTest {
             controller.banner = "Earlier banner"
             controller.cardFormError = "Earlier card error"
 
-            controller.pay(activity)
+            controller.pay()
 
             assertEquals("$method keeps the lock", HELD, controller.busyLabel)
             assertEquals("$method leaves the banner", "Earlier banner", controller.banner)
@@ -42,7 +40,6 @@ class CheckoutControllerBusyTest {
             assertNull("$method creates no payment", controller.paymentId)
             assertNull("$method fetches no transfer details", controller.qrDetails)
         }
-        verifyNoInteractions(activity)
     }
 
     @Test
@@ -54,11 +51,11 @@ class CheckoutControllerBusyTest {
         controller.outcome = pending
         controller.busyLabel = HELD
 
-        controller.refreshChargeState(activity)
+        controller.refreshChargeState()
 
         assertEquals(HELD, controller.busyLabel)
         assertSame(pending, controller.outcome)
-        verifyNoInteractions(session, activity)
+        verifyNoInteractions(session)
     }
 
     private companion object {
