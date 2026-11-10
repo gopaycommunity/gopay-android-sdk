@@ -21,7 +21,8 @@ fun interface ErrorCallback {
  * The rule, the same on iOS: every error the SDK throws reaches the callback once, where it
  * leaves the SDK, except [GopayErrorCodes.PAYMENT_CANCELLED] and
  * [GopayErrorCodes.PAYMENT_TIMEOUT], which are not errors, and a coroutine cancellation, which
- * is not a [GopaySDKException]. An error wrapped into another on the way out, the gateway's 401 behind `AUTH_010` say, is reported as the one the host gets, not
+ * is not a [GopaySDKException]. An error wrapped into another on the way out, the gateway's 401
+ * behind `AUTH_010` say, is reported as the one the host gets, not
  * as both. Building a [GopaySDKException] reports nothing: a host constructing one for itself
  * does not hear about it.
  *

@@ -20,7 +20,7 @@ internal enum class CardField { CARD_NUMBER, EXPIRATION, CVV }
 internal enum class CardFieldAutofill { NONE, CARD_NUMBER, EXPIRATION_DATE }
 
 /**
- * What the card form tells the system about each field, mirroring the iOS `GopayCardForm`.
+ * What the card form tells the system about each field, mirroring the iOS `PaymentCardForm`.
  *
  * Autofill is off unless the host passes `allowsAutofill = true`. Off, every field is declared
  * unfillable to autofill services, with no hints. On, the card number and the expiry are announced

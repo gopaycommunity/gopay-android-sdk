@@ -45,7 +45,8 @@ sealed class GopayEnvironment(
      * Development environment - use for local development with custom endpoint.
      *
      * An empty [baseUrl], one that is not an `http(s)` address, or one that carries credentials
-     * (`https://user:secret@host/`), is [GopayErrorCodes.CONFIG_INVALID_BASE_URL], the code the iOS SDK reports for a base URL it
+     * (`https://user:secret@host/`), is [GopayErrorCodes.CONFIG_INVALID_BASE_URL], the code the iOS
+     * SDK reports for a base URL it
      * cannot use. A well-formed address the HTTP client still refuses, say one with a space in
      * the host, is the same code from `GopaySDK.initialize`. Thrown by the constructor, before
      * `initialize`, so it is not reported through `errorCallback`; from `initialize` it is.

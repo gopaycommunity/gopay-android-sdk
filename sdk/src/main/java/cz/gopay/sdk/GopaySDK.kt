@@ -325,7 +325,7 @@ class GopaySDK private constructor(val config: GopayConfig) {
          * your backend has to pass it as the payment's `callback.return_url`; the gateway
          * accepts only an absolute `http(s)` address there. The 3DS WebView intercepts any
          * navigation that starts with the address it watches for and never loads it.
-         * `GopaySDK.chargeReturnURL` on iOS is the same address.
+         * `GopaySDK.chargeReturnUrl` on iOS is the same address.
          */
         const val chargeReturnUrl: String = "https://gopay.com/sdk/charge-return"
 

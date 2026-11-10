@@ -9,7 +9,10 @@ enum class QrCodeFormat {
     SVG
 }
 
-/** The recipient's account as the local banks write it. Every field is always present. `QrLocalBankAccount` on iOS too; 2.x called it `BankAccountLocalDetails` here. */
+/**
+ * The recipient's account as the local banks write it. Every field is always present.
+ * `QrLocalBankAccount` on iOS too; 2.x called it `BankAccountLocalDetails` here.
+ */
 data class QrLocalBankAccount(
     val prefix: String,
     @Json(name = "account_number")
@@ -20,20 +23,29 @@ data class QrLocalBankAccount(
     val variableSymbol: String
 )
 
-/** The recipient's account in its international form. `QrInternationalBankAccount` on iOS too; 2.x called it `BankAccountInternationalDetails` here. */
+/**
+ * The recipient's account in its international form. `QrInternationalBankAccount` on iOS too; 2.x
+ * called it `BankAccountInternationalDetails` here.
+ */
 data class QrInternationalBankAccount(
     val bic: String? = null,
     val iban: String? = null,
     val reference: String? = null
 )
 
-/** The account of a QR payment's recipient, local and international. `QrRecipientBankAccount` on iOS too; 2.x called it `RecipientBankAccount` here. */
+/**
+ * The account of a QR payment's recipient, local and international. `QrRecipientBankAccount` on
+ * iOS too; 2.x called it `RecipientBankAccount` here.
+ */
 data class QrRecipientBankAccount(
     val local: QrLocalBankAccount? = null,
     val international: QrInternationalBankAccount? = null
 )
 
-/** The postal address of a QR payment's recipient. `QrRecipientAddress` on iOS too; 2.x called it `RecipientAddress` here. */
+/**
+ * The postal address of a QR payment's recipient. `QrRecipientAddress` on iOS too; 2.x called it
+ * `RecipientAddress` here.
+ */
 data class QrRecipientAddress(
     val street: String? = null,
     val city: String? = null,
@@ -42,7 +54,10 @@ data class QrRecipientAddress(
     val country: String? = null
 )
 
-/** Who a QR payment, a bank transfer, is paid to. `QrRecipient` on iOS too; 2.x called it `BankTransferRecipient` here. */
+/**
+ * Who a QR payment, a bank transfer, is paid to. `QrRecipient` on iOS too; 2.x called it
+ * `BankTransferRecipient` here.
+ */
 data class QrRecipient(
     val name: String? = null,
     @Json(name = "bank_account")

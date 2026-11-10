@@ -18,7 +18,7 @@ import cz.gopay.sdk.modules.network.NetworkModule
  *
  * Usage:
  * 1. Call [buildPaymentDataRequestJson] with the result of
- *    [cz.gopay.sdk.session.PaymentSession.getGooglePayInfo] to get a JSON string for
+ *    [cz.gopay.sdk.session.PaymentSession.getWalletInfo] to get a JSON string for
  *    `PaymentDataRequest.fromJson()` in the Google Pay SDK.
  * 2. After the user approves, call [parseGooglePayToken] with `PaymentData.toJson()` to get a
  *    [PaymentCardInput] you can wrap in [cz.gopay.sdk.model.ChargePaymentRequest.googlePay].

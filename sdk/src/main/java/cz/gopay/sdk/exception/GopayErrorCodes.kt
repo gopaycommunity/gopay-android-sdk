@@ -68,7 +68,11 @@ object GopayErrorCodes {
     // PAYMENT ERRORS (PAYMENT_XXX)
     // ========================================
 
-    /** Payment processing failed */
+    /**
+     * Payment processing failed: the wallet sheet failed, or returned no data or a token the SDK
+     * cannot read. Also `chargeWithWallet` with no screen in front to open the sheet from, and a
+     * sheet that was started and did not appear within 30 seconds. Nothing was charged.
+     */
     const val PAYMENT_PROCESSING_FAILED = "PAYMENT_003"
 
     /** Payment method not available */
@@ -101,8 +105,9 @@ object GopayErrorCodes {
 
     /**
      * The 3DS challenge never reached the user: the page could not be loaded, e.g. the redirect
-     * URL is dead or is not a web address, or no app on the device took the hand-off the
-     * challenge asked for.
+     * URL is dead or is not a web address, no app on the device took the hand-off the
+     * challenge asked for, or the challenge screen was started and did not appear within 30
+     * seconds.
      */
     const val PAYMENT_VERIFICATION_UNREACHABLE = "PAYMENT_010"
 
