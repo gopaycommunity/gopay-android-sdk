@@ -23,7 +23,10 @@ import cz.gopay.sdk.model.QrPaymentDetails
  *
  * Each member is documented on [PaymentSession], where it is implemented. The deprecated names
  * of 2.x, `getGooglePayInfo` and `chargeWithGooglePay`, are not part of the interface.
-
+ *
+ * An implementation writes the members without a body and inherits the rest, the forms of 2.x
+ * with the Activity first; a Java class does too, since those are JVM default methods. In Java
+ * a `suspend` member takes a `Continuation` as its last parameter, as every Kotlin one does.
  */
 interface PaymentSessionApi {
 
@@ -81,7 +84,9 @@ interface PaymentSessionApi {
     suspend fun handle3dsVerification(redirectUrl: String, returnUrl: String? = null, activity: Activity? = null)
 
     // The forms of 2.x with the activity first. Each is the call above with the activity named,
-    // implemented here, so an implementation of the interface has nothing to add for them.
+    // implemented here, so an implementation of the interface has nothing to add for them, in
+    // Kotlin or in Java: the module is compiled with -Xjvm-default=all, which makes each body a
+    // JVM default method of the interface.
 
     /** [chargeWithWallet] with the [activity] first, as 2.x had it. */
     suspend fun chargeWithWallet(

@@ -12,7 +12,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import kotlinx.coroutines.runBlocking
 import org.junit.Test
+import org.mockito.kotlin.mock
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 
@@ -59,22 +61,25 @@ class PaymentSessionApiTest {
     }
 
     @Test
-    fun `the interface has nothing the session does not implement itself`() {
+    fun `the interface has nothing the session does not implement itself, but the bodies it inherits`() {
         val session = publicMethods(PaymentSession::class.java).map { it.signature() }.toSet()
+        val withoutBody = PaymentSessionApi::class.java.declaredMethods.filterNot { it.isDefault || it.isSynthetic }
 
         assertEquals(
             emptyList<Any>(),
-            publicMethods(PaymentSessionApi::class.java).map { it.signature() }.filterNot { it in session }
+            withoutBody.filter { Modifier.isPublic(it.modifiers) }.map { it.signature() }.filterNot { it in session }
         )
     }
 
     @Test
-    fun `the 2_7 forms with the Activity first have their bodies in the interface`() {
-        // Kotlin keeps the bodies of an interface in its DefaultImpls; what is there, an
-        // implementation does not have to write. The demo's FakePaymentSessionTest implements
-        // the interface without them.
-        val bodies = Class.forName(PaymentSessionApi::class.java.name + "\$DefaultImpls").declaredMethods
-            .filter { !it.isSynthetic && it.parameterTypes.getOrNull(1) == Activity::class.java }
+    fun `the 2_x forms with the Activity first have their bodies in the interface, for Java too`() {
+        // Compiled with -Xjvm-default=all, a body in the interface is a JVM default method: an
+        // implementation does not have to write it, in Kotlin or in Java. The demo's
+        // FakePaymentSessionTest implements the interface without them in Kotlin,
+        // JavaPaymentSession next to this test in Java.
+        val bodies = PaymentSessionApi::class.java.declaredMethods
+            .filter { it.isDefault && !it.isSynthetic }
+            .onEach { assertEquals("${it.name} takes the Activity first", Activity::class.java, it.parameterTypes[0]) }
             .map { it.name }
             .toSet()
 
@@ -82,6 +87,20 @@ class PaymentSessionApiTest {
             setOf("chargeWithWallet", "chargeWithCardToken", "chargeWithEncryptedCard", "handle3dsVerification"),
             bodies
         )
+        assertTrue(
+            "no DefaultImpls: the bodies are on the interface itself",
+            runCatching { Class.forName(PaymentSessionApi::class.java.name + "\$DefaultImpls") }.isFailure
+        )
+    }
+
+    @Test
+    fun `a session written in Java implements only the members without a body`() = runBlocking {
+        val session: PaymentSessionApi = JavaPaymentSession()
+
+        assertEquals("pay-java", session.paymentId)
+        // The 2.x form is inherited from the interface and lands in the Java implementation.
+        session.handle3dsVerification(mock<Activity>(), "https://acs/1")
+        assertEquals("https://acs/1", (session as JavaPaymentSession).verified)
     }
 
     private fun payment(charge: ChargePaymentResponse?) = PaymentDetails(

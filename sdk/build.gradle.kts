@@ -36,6 +36,12 @@ android {
     }
     kotlinOptions {
         jvmTarget = "1.8"
+        // Interface members with a body, the 2.x call forms on PaymentSessionApi above all, are
+        // compiled as JVM default methods. A Java implementation then writes only the members
+        // without a body, as a Kotlin one does, and a member added later with a body does not
+        // break the implementations that exist. Set before 3.0 ships: it decides the binary
+        // shape of the interface.
+        freeCompilerArgs = freeCompilerArgs + "-Xjvm-default=all"
     }
     buildFeatures {
         compose = true
