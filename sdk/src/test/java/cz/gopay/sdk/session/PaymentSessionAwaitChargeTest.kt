@@ -10,6 +10,7 @@ import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.TokenResponse
+import cz.gopay.sdk.ui.ForegroundScreen
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -17,6 +18,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
@@ -32,15 +34,30 @@ import retrofit2.Response
 class PaymentSessionAwaitChargeTest {
 
     @Test
-    fun `automatic mode without an activity is refused before the first read`() {
+    fun `automatic mode without an activity and without the Context is CONFIG_004 before the first read`() {
+        // The SDK was initialized without a Context, or not at all: it has no screen to follow.
+        ForegroundScreen.reset()
         val api = mock<PaymentApi>()
 
         val e = assertThrows(GopaySDKException::class.java) {
             runBlocking { session(api).awaitChargeState() }
         }
 
-        assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, e.code)
+        assertEquals(GopayErrorCodes.CONFIG_MISSING_CONTEXT, e.code)
+        assertEquals("CONFIG_004", e.code)
         verifyNoInteractions(api)
+    }
+
+    @Test
+    fun `manual mode needs neither an activity nor the Context`() = runTest {
+        ForegroundScreen.reset()
+        val api = mock<PaymentApi> {
+            onBlocking { getChargeState(any()) }.thenReturn(Response.success(charge(ChargeState.SUCCEEDED)))
+        }
+
+        val state = session(api).awaitChargeState(AwaitChargeOptions(threeDSMode = ThreeDSMode.MANUAL))
+
+        assertEquals(ChargeState.SUCCEEDED, state.state)
     }
 
     @Test
@@ -110,7 +127,7 @@ class PaymentSessionAwaitChargeTest {
                 )
             )
         }
-        val activity = mock<Activity>()
+        val activity = mock<Activity> { on { hasWindowFocus() }.thenReturn(true) }
         val events = mutableListOf<String>()
 
         val e = assertThrows(GopaySDKException::class.java) {
@@ -129,7 +146,7 @@ class PaymentSessionAwaitChargeTest {
         assertEquals(listOf("state:ACTION_REQUIRED", "action:intent://x"), events)
         runBlocking { verify(api, times(1)).getChargeState("pay-1") }
         verifyNoMoreInteractions(api)
-        verifyNoInteractions(activity)
+        verify(activity, never()).startActivity(any())
     }
 
     private fun charge(state: ChargeState) = ChargePaymentResponse(id = "ch-1", state = state)

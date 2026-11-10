@@ -27,6 +27,9 @@ internal class PaymentVerificationActivity : ComponentActivity() {
     companion object {
         const val EXTRA_REDIRECT_URL = "redirect_url"
         const val EXTRA_RETURN_URL = "return_url"
+        /** [PaymentVerificationBridge.Owner.id] of the verification this challenge was started for. */
+        const val EXTRA_OWNER_ID = "owner_id"
+        private const val NO_OWNER = -1L
 
         /** The navigation bar scrim `enableEdgeToEdge` uses where dark icons are not possible. */
         private const val DARK_NAVIGATION_SCRIM = 0x801b1b1b.toInt()
@@ -126,10 +129,13 @@ internal class PaymentVerificationActivity : ComponentActivity() {
         // clear of the bars and the keyboard, and applySystemBars makes the bars see-through.
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        // Which verification this activity belongs to. Nothing to serve means the caller is
-        // already done with it, typically a system recreation after the verification ended, and
-        // there is nobody left to report to.
-        owner = PaymentVerificationBridge.currentOwner() ?: run {
+        // The verification this challenge was started for, named in its intent, which a
+        // recreation and a process restart both keep. Nothing to serve means the caller is
+        // already done with it: a system recreation after the verification ended, or a challenge
+        // that appeared only after its call had given up waiting for it. A later verification may
+        // hold the bridge by then, and it is not this challenge's to answer.
+        val ownerId = intent.getLongExtra(EXTRA_OWNER_ID, NO_OWNER)
+        owner = PaymentVerificationBridge.currentOwner(ownerId).takeIf { ownerId != NO_OWNER } ?: run {
             finish()
             return
         }
@@ -151,7 +157,7 @@ internal class PaymentVerificationActivity : ComponentActivity() {
             return
         }
 
-        // Optional: without it the policy watches for GopaySDK.CHARGE_RETURN_URL.
+        // Optional: without it the policy watches for GopaySDK.chargeReturnUrl.
         val returnUrl = intent.getStringExtra(EXTRA_RETURN_URL)
 
         val progressBar = ProgressBar(this).apply {

@@ -2,7 +2,6 @@ package cz.gopay.sdk.ui
 
 import android.app.Activity
 import android.app.Application
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.VisibleForTesting
@@ -188,9 +187,6 @@ internal object CardFormStore {
     private val registrations = HashMap<String, Registration>()
     private val parked = HashMap<String, ParkedCard>()
 
-    /** Watches the activities while something is parked; null when nothing is. */
-    private var parkingWatch: Pair<Application, Application.ActivityLifecycleCallbacks>? = null
-
     /**
      * The ids a replaced form was warned about syncing under, once each, until a form registers
      * under the id again. Under [lock].
@@ -310,13 +306,14 @@ internal object CardFormStore {
     fun park(formId: String, owner: Any, formData: CardFormData, flags: CardFormFlags, activity: Activity) =
         park(formId, owner, ParkedForm(formData, flags), Screen.of(activity), activity.application)
 
-    /** [park] for [screen]; [application] is watched until the card is taken or dropped. */
+    /** [park] for [screen]; the activities of [application] are watched from here on. */
     fun park(formId: String, owner: Any, form: ParkedForm, screen: Screen, application: Application) {
         if (form.data.isEmpty) return
         synchronized(lock) {
             if (registrations[formId]?.owner !== owner || data[formId] == null) return
             parked[formId] = ParkedCard(form, screen)
-            watchActivities(application)
+            // The SDK's one registration of lifecycle callbacks; see ActivityWatch.
+            ActivityWatch.ensure(application)
         }
     }
 
@@ -338,46 +335,39 @@ internal object CardFormStore {
         parkedChanged()
     }
 
-    /** The recreated [screen] is up: what is parked for it waits [PARK_TIMEOUT_MS] at most. */
-    private fun screenResumed(screen: Screen) = synchronized(lock) {
+    // What ActivityWatch tells the store. A parked card is not dropped at the recreated screen's
+    // first frame: a form in a bottom sheet or a dialog composes in a window of its own, a frame
+    // or more after the activity. The card waits up to ten seconds for it, or until the user
+    // leaves the screen. The activity the card was parked by has paused already, so only the
+    // recreated one ends the wait.
+
+    /** The recreated screen is up: what is parked for it waits [PARK_TIMEOUT_MS] at most. */
+    fun activityResumed(activity: Activity) = synchronized(lock) {
+        if (parked.isEmpty()) return@synchronized
+        val screen = Screen.of(activity)
         if (screen in timeouts || parked.values.none { it.screen == screen }) return@synchronized
         timeouts[screen] = timer.schedule(PARK_TIMEOUT_MS) { dropParked(screen) }
     }
 
-    private fun watchActivities(application: Application) {
-        if (parkingWatch != null) return
-        val callbacks = object : Application.ActivityLifecycleCallbacks {
-            // Not dropped at the recreated screen's first frame: a form in a bottom sheet or a
-            // dialog composes in a window of its own, a frame or more after the activity. The
-            // card waits up to ten seconds for it, or until the user leaves the screen. The activity
-            // the card was parked by has paused already, so only the recreated one ends the wait.
-            override fun onActivityResumed(activity: Activity) = screenResumed(Screen.of(activity))
+    /** The user left the screen: what is parked for it goes. */
+    fun activityPaused(activity: Activity) {
+        if (synchronized(lock) { parked.isEmpty() }) return
+        dropParked(Screen.of(activity))
+    }
 
-            override fun onActivityPaused(activity: Activity) = dropParked(Screen.of(activity))
-
-            override fun onActivityDestroyed(activity: Activity) {
-                if (!activity.isChangingConfigurations) dropParked(Screen.of(activity))
-            }
-
-            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
-            override fun onActivityStarted(activity: Activity) = Unit
-            override fun onActivityStopped(activity: Activity) = Unit
-            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
-        }
-        application.registerActivityLifecycleCallbacks(callbacks)
-        parkingWatch = application to callbacks
+    /** The screen is gone for good, not for a configuration change: what is parked for it goes. */
+    fun activityDestroyed(activity: Activity) {
+        if (synchronized(lock) { parked.isEmpty() } || activity.isChangingConfigurations) return
+        dropParked(Screen.of(activity))
     }
 
     /**
      * After a card was taken or dropped, under the lock: cancels the timeout of a screen with
-     * nothing left waiting, and stops watching the activities once nothing is parked.
+     * nothing left waiting.
      */
     private fun parkedChanged() {
         timeouts.keys.filter { screen -> parked.values.none { it.screen == screen } }
             .forEach { timeouts.remove(it)?.invoke() }
-        if (parked.isNotEmpty()) return
-        parkingWatch?.let { (application, callbacks) -> application.unregisterActivityLifecycleCallbacks(callbacks) }
-        parkingWatch = null
     }
 
     /** Which forms hold data, in order of last sync. */

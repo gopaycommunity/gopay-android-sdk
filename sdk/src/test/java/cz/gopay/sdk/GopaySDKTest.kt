@@ -12,7 +12,15 @@ import cz.gopay.sdk.ui.INVALID_CARD_FORM_DATA_MESSAGE
 import cz.gopay.sdk.ui.NO_CARD_DATA_MESSAGE
 import cz.gopay.sdk.ui.CardFormData
 import cz.gopay.sdk.ui.CardFormHandlers
+import android.app.Application
+import android.content.Context
+import cz.gopay.sdk.telemetry.Telemetry
 import cz.gopay.sdk.ui.CardFormStore
+import cz.gopay.sdk.ui.ForegroundScreen
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -21,6 +29,8 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Before
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -57,11 +67,87 @@ class GopaySDKTest {
         TelemetryCapture.reset()
         CardFormStore.unregister("form-1", formOwner)
         CardFormStore.unregister("form-2", formOwner)
+        ForegroundScreen.reset()
         Dispatchers.resetMain()
     }
 
     /** Every error the SDK reported to the callback a config here registered. */
     private val reported = mutableListOf<GopaySDKException>()
+
+    // ---- initialize(context, config), the 3.0 way
+
+    private val application = mock<Application>()
+    private val context = mock<Context> {
+        on { applicationContext }.thenReturn(application)
+        on { packageName }.thenReturn("com.example.shop")
+    }
+
+    @Test
+    fun `initialize with a Context keeps its application Context and starts following the screens`() {
+        GopaySDK.initialize(context, GopayConfig(environment = GopayEnvironment.SANDBOX))
+
+        assertTrue(GopaySDK.isInitialized())
+        assertSame("the application Context, not the one handed in", application, ForegroundScreen.appContext)
+        verify(application, times(1)).registerActivityLifecycleCallbacks(any())
+    }
+
+    @Test
+    fun `initialize with a Context tells the operational data the app's origin at once`() {
+        GopaySDK.initialize(context, GopayConfig(environment = GopayEnvironment.SANDBOX))
+
+        assertEquals("com.example.shop", Telemetry.origin)
+    }
+
+    @Test
+    fun `initializing twice with a Context registers the callbacks once`() {
+        GopaySDK.initialize(context, GopayConfig(environment = GopayEnvironment.SANDBOX))
+        GopaySDK.initialize(context, GopayConfig(environment = GopayEnvironment.PRODUCTION))
+
+        verify(application, times(1)).registerActivityLifecycleCallbacks(any())
+        assertEquals(GopayEnvironment.PRODUCTION, GopaySDK.getInstance().config.environment)
+    }
+
+    @Test
+    fun `a config the SDK cannot use leaves the Context of an earlier initialize in place`() {
+        GopaySDK.initialize(context, GopayConfig(environment = GopayEnvironment.SANDBOX))
+        val other = mock<Context> { on { applicationContext }.thenReturn(mock<Application>()) }
+
+        assertThrows(GopaySDKException::class.java) {
+            GopaySDK.initialize(other, GopayConfig(environment = GopayEnvironment.DEVELOPMENT("https://bad host/")))
+        }
+
+        assertSame(application, ForegroundScreen.appContext)
+    }
+
+    @Test
+    @Suppress("DEPRECATION") // the deprecated initialize is what is tested
+    fun `the deprecated initialize without a Context leaves the SDK without one`() {
+        GopaySDK.initialize(context, GopayConfig(environment = GopayEnvironment.SANDBOX))
+
+        GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.SANDBOX))
+
+        assertTrue(GopaySDK.isInitialized())
+        assertNull(ForegroundScreen.appContext)
+    }
+
+    @Test
+    fun `isWalletAvailable before any initialize is CONFIG_001`() {
+        val e = assertThrows(GopaySDKException::class.java) { runBlocking { GopaySDK.isWalletAvailable() } }
+
+        assertEquals(GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED, e.code)
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `isWalletAvailable after an initialize without a Context is CONFIG_004, reported once`() {
+        GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.SANDBOX, errorCallback = { reported.add(it) }))
+
+        val e = assertThrows(GopaySDKException::class.java) { runBlocking { GopaySDK.isWalletAvailable() } }
+
+        assertEquals(GopayErrorCodes.CONFIG_MISSING_CONTEXT, e.code)
+        assertEquals("CONFIG_004", e.code)
+        assertEquals(listOf(e), reported)
+    }
 
     @Test
     fun testInitialization() {

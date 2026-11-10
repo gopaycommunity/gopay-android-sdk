@@ -5,6 +5,16 @@ import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.wallet.AutoResolveHelper
 import cz.gopay.sdk.exception.GopayErrorCodes
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.runBlocking
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.async
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -15,7 +25,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The bridge between `chargeWithGooglePay` and its launcher activity: one request at a time, and
+ * The bridge between `chargeWithWallet` and its launcher activity: one request at a time, and
  * no report from a request that is already over can reach the one after it.
  */
 class GooglePayBridgeTest {
@@ -73,6 +83,98 @@ class GooglePayBridgeTest {
         // A launcher started for the first payment, arriving late, must not take the second.
         assertNull(GooglePayBridge.currentOwner(first.id))
         assertSame(second, GooglePayBridge.currentOwner(second.id))
+    }
+
+    @Test
+    fun `a launcher that never appears is given up on after 30 seconds`() = runTest {
+        val owner = GooglePayBridge.register(CompletableDeferred())!!
+        val shown = async { GooglePayBridge.awaitShown(owner) }
+
+        advanceTimeBy(29_999)
+        runCurrent()
+        assertFalse(shown.isCompleted)
+        advanceTimeBy(1)
+        runCurrent()
+
+        assertFalse("it never appeared", shown.await())
+        assertNull("given up on in the same step", GooglePayBridge.currentOwner(owner.id))
+        assertFalse("a launcher that turns up late closes itself", GooglePayBridge.attach(owner) {})
+    }
+
+    @Test
+    fun `a launcher that takes the request over in the instant the limit runs out counts as shown`() = runTest {
+        val owner = register(CompletableDeferred())!!
+        var closed = false
+        // Scheduled first, so at the 30th second the launcher attaches before the limit fires.
+        launch {
+            delay(30_000)
+            assertTrue(GooglePayBridge.attach(owner) { closed = true })
+        }
+        val shown = async { GooglePayBridge.awaitShown(owner) }
+
+        advanceTimeBy(30_000)
+        runCurrent()
+
+        assertTrue("the sheet is on its way up, the call must go on", shown.await())
+        assertFalse(closed)
+        assertSame(owner, GooglePayBridge.currentOwner(owner.id))
+    }
+
+    @Test
+    fun `a launcher that attaches while the call gives up on it is closed, never left with no caller`() {
+        // Two real threads, the limit cut to a millisecond so the two keep crossing. Whatever
+        // the order, a call that gave up must not leave a launcher that was told it may stay
+        // and was not closed: that one would go on to show a sheet nobody waits for.
+        val limit = SdkScreens.showTimeoutMs
+        SdkScreens.showTimeoutMs = 1
+        var gaveUp = 0
+        try {
+            repeat(3_000) { round ->
+                val owner = GooglePayBridge.register(CompletableDeferred())!!
+                val closed = AtomicBoolean(false)
+                val mayStay = AtomicBoolean(false)
+                val launcher = Thread {
+                    // About when the limit runs out, a little earlier or later each round.
+                    val until = System.nanoTime() + 900_000 + (round % 7) * 40_000
+                    while (System.nanoTime() < until) Thread.onSpinWait()
+                    mayStay.set(GooglePayBridge.attach(owner) { closed.set(true) })
+                }
+                launcher.start()
+                val shown = runBlocking { GooglePayBridge.awaitShown(owner) }
+                launcher.join()
+
+                if (!shown) {
+                    gaveUp++
+                    assertTrue("round $round: left on screen with no caller", !mayStay.get() || closed.get())
+                    assertNull(GooglePayBridge.currentOwner(owner.id))
+                } else {
+                    assertFalse("round $round: closed under a caller that goes on", closed.get())
+                }
+                GooglePayBridge.clear(owner)
+            }
+        } finally {
+            SdkScreens.showTimeoutMs = limit
+        }
+        assertTrue("the limit did run out in some rounds", gaveUp > 0)
+    }
+
+    @Test
+    fun `a launcher that appeared, or a request that ended, is not waited for`() = runTest {
+        val attached = GooglePayBridge.register(CompletableDeferred())!!
+        val shown = async { GooglePayBridge.awaitShown(attached) }
+        runCurrent()
+        assertTrue(GooglePayBridge.attach(attached) {})
+        assertTrue(shown.await())
+        // The sheet may then stay up for as long as the user takes.
+        advanceTimeBy(600_000)
+        GooglePayBridge.clear(attached)
+
+        val reported = GooglePayBridge.register(CompletableDeferred())!!
+        val ended = async { GooglePayBridge.awaitShown(reported) }
+        runCurrent()
+        GooglePayBridge.report(reported, GooglePayBridge.dismissed())
+        assertTrue(ended.await())
+        assertEquals("no virtual time was waited out for either", 600_000L, currentTime)
     }
 
     @Test

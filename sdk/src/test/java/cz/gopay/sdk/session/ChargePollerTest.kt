@@ -7,9 +7,11 @@ import cz.gopay.sdk.model.ChargeActionType
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.ChargeState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
@@ -390,6 +392,205 @@ class ChargePollerTest {
             return e
         }
         throw AssertionError("expected a GopaySDKException")
+    }
+
+    // ---- no screen to open the challenge on: the loop waits for one and keeps reading
+
+    /** How many times the wait for a screen was let go of, by the screen coming or by the loop. */
+    private var screenWaitsEnded = 0
+
+    /** A poller in automatic mode with no screen in front until [screen] completes. */
+    private fun TestScope.withoutScreen(
+        gateway: Gateway,
+        screen: CompletableDeferred<Unit>,
+        options: AwaitChargeOptions = options(),
+        read: suspend () -> ChargePaymentResponse = gateway.read
+    ) = ChargePoller(
+        options,
+        read,
+        verify,
+        screenReady = { screen.isCompleted },
+        awaitScreen = { try { screen.await() } finally { screenWaitsEnded++ } }
+    ) { currentTime }
+
+    /** The screen comes to the front at [atMs] of virtual time. */
+    private fun TestScope.screenAt(atMs: Long) = CompletableDeferred<Unit>().also { screen ->
+        backgroundScope.launch { delay(atMs); screen.complete(Unit) }
+    }
+
+    @Test
+    fun `without a screen the charge is read while the challenge waits, and opens when the screen comes`() = runTest {
+        val gateway = Gateway(
+            this, actionRequired("https://acs/1"), actionRequired("https://acs/1"), actionRequired("https://acs/1"),
+            state(ChargeState.SUCCEEDED)
+        )
+
+        val result = withoutScreen(gateway, screenAt(2_500)).run()
+
+        assertEquals(ChargeState.SUCCEEDED, result.state)
+        assertEquals(
+            listOf(
+                "state:ACTION_REQUIRED", "action:https://acs/1", "state:ACTION_REQUIRED", "state:ACTION_REQUIRED",
+                "verify:https://acs/1", "state:SUCCEEDED"
+            ),
+            events
+        )
+        assertEquals("read every interval while waiting, then an interval after the challenge", listOf(0L, 1_000L, 2_000L, 3_500L), gateway.readTimes)
+    }
+
+    @Test
+    fun `a screen that goes as the challenge is about to open sends the loop back to waiting, still reading`() = runTest {
+        val gateway = Gateway(
+            this, actionRequired("https://acs/1"), actionRequired("https://acs/1"), actionRequired("https://acs/1"),
+            state(ChargeState.SUCCEEDED)
+        )
+        // In front when the loop looks, gone when the challenge is to open, back at 2.5 s.
+        val back = screenAt(2_500)
+        var attempts = 0
+        val poller = ChargePoller(
+            options(),
+            gateway.read,
+            verify = { url ->
+                attempts++
+                if (!back.isCompleted) throw ChargePoller.ScreenWentAway()
+                events.add("verify:$url")
+            },
+            screenReady = { true },
+            awaitScreen = { back.await() }
+        ) { currentTime }
+
+        val result = poller.run()
+
+        assertEquals(ChargeState.SUCCEEDED, result.state)
+        assertEquals("tried at once, and again when the screen was back", 2, attempts)
+        assertEquals("the address is reported once", listOf("action:https://acs/1"), actions)
+        assertEquals(listOf("verify:https://acs/1"), verifications)
+        assertEquals("read every interval while it waited again", listOf(0L, 1_000L, 2_000L, 3_500L), gateway.readTimes)
+    }
+
+    @Test
+    fun `a charge decided after the screen went is returned without a challenge`() = runTest {
+        val gateway = Gateway(this, actionRequired("https://acs/1"), actionRequired("https://acs/1"), state(ChargeState.SUCCEEDED))
+        val poller = ChargePoller(
+            options(),
+            gateway.read,
+            verify = { throw ChargePoller.ScreenWentAway() },
+            screenReady = { true },
+            awaitScreen = { CompletableDeferred<Unit>().await() }
+        ) { currentTime }
+
+        val result = poller.run()
+
+        assertEquals(ChargeState.SUCCEEDED, result.state)
+        assertEquals(listOf(0L, 1_000L, 2_000L), gateway.readTimes)
+    }
+
+    @Test
+    fun `a charge that succeeds while the challenge waits for a screen is returned without a challenge`() = runTest {
+        val gateway = Gateway(this, actionRequired("https://acs/1"), actionRequired("https://acs/1"), state(ChargeState.SUCCEEDED))
+
+        val result = withoutScreen(gateway, CompletableDeferred()).run()
+
+        assertEquals(ChargeState.SUCCEEDED, result.state)
+        assertTrue("no challenge was opened", verifications.isEmpty())
+        assertEquals(listOf(0L, 1_000L, 2_000L), gateway.readTimes)
+        assertEquals("the wait for a screen was let go of", 1, screenWaitsEnded)
+    }
+
+    @Test
+    fun `a charge that fails while the challenge waits for a screen throws PAYMENT_006`() = runTest {
+        val gateway = Gateway(this, actionRequired("https://acs/1"), state(ChargeState.FAILED, failReason = "PAYMENT_FAILED"))
+
+        val e = failure { withoutScreen(gateway, CompletableDeferred()).run() }
+
+        assertEquals(GopayErrorCodes.PAYMENT_DECLINED, e.code)
+        assertEquals(ChargeState.FAILED, e.chargeState?.state)
+        assertTrue(verifications.isEmpty())
+    }
+
+    @Test
+    fun `a challenge the loop waited with and did not open is opened when the gateway asks again`() = runTest {
+        val gateway = Gateway(
+            this, actionRequired("https://acs/1"), state(ChargeState.PROCESSING), actionRequired("https://acs/1"),
+            state(ChargeState.SUCCEEDED)
+        )
+
+        val result = withoutScreen(gateway, screenAt(1_500)).run()
+
+        assertEquals(ChargeState.SUCCEEDED, result.state)
+        assertEquals("the host hears of an address once", listOf("action:https://acs/1"), actions)
+        assertEquals(listOf("verify:https://acs/1"), verifications)
+        assertEquals(listOf(0L, 1_000L, 2_000L, 3_000L), gateway.readTimes)
+    }
+
+    @Test
+    fun `a new address while waiting for a screen replaces the old challenge`() = runTest {
+        val gateway = Gateway(this, actionRequired("https://acs/1"), actionRequired("https://acs/2"), state(ChargeState.SUCCEEDED))
+
+        withoutScreen(gateway, screenAt(1_500)).run()
+
+        assertEquals(listOf("action:https://acs/1", "action:https://acs/2"), actions)
+        assertEquals("only the address the gateway asks for now", listOf("verify:https://acs/2"), verifications)
+    }
+
+    @Test
+    fun `the timeout does not run while the challenge waits for a screen`() = runTest {
+        // 45 s in the background, past the 30 s timeout, then the user comes back.
+        val waiting = Array(45) { actionRequired("https://acs/1") }
+        val gateway = Gateway(this, *waiting, state(ChargeState.SUCCEEDED))
+
+        val result = withoutScreen(gateway, screenAt(44_500)).run()
+
+        assertEquals(ChargeState.SUCCEEDED, result.state)
+        assertEquals(listOf("verify:https://acs/1"), verifications)
+        assertEquals(45_500L, gateway.readTimes.last())
+    }
+
+    @Test
+    fun `the timeout starts over from the state the charge moved to while waiting`() = runTest {
+        val processing = Array(31) { state(ChargeState.PROCESSING) }
+        val gateway = Gateway(this, actionRequired("https://acs/1"), *processing)
+
+        val e = failure { withoutScreen(gateway, CompletableDeferred()).run() }
+
+        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, e.code)
+        assertEquals("30 s from the read that found it moved, at 1 s", 31_000L, gateway.readTimes.last())
+        assertTrue(verifications.isEmpty())
+    }
+
+    @Test
+    fun `cancelling the call ends the wait for a screen and the reads`() = runTest {
+        val gateway = Gateway(this, *Array(10) { actionRequired("https://acs/1") })
+        val call = async { withoutScreen(gateway, CompletableDeferred()).run() }
+
+        advanceTimeBy(2_500)
+        call.cancel()
+        advanceTimeBy(60_000)
+
+        assertTrue(call.isCancelled)
+        assertEquals("no read after the cancellation", listOf(0L, 1_000L, 2_000L), gateway.readTimes)
+        assertEquals(1, screenWaitsEnded)
+        assertTrue(verifications.isEmpty())
+    }
+
+    @Test
+    fun `an error of a read while waiting for a screen ends the call with it, as a closed session does`() = runTest {
+        val closed = GopaySDKException(code = GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, message = "closed")
+        val gateway = Gateway(this, actionRequired("https://acs/1"))
+        var reads = 0
+        val read: suspend () -> ChargePaymentResponse = { if (reads++ == 0) gateway.read() else throw closed }
+
+        val e = failure { withoutScreen(gateway, CompletableDeferred(), read = read).run() }
+
+        assertSame(closed, e)
+        assertEquals(1, screenWaitsEnded)
+    }
+
+    private suspend fun failure(block: suspend () -> Unit): GopaySDKException = try {
+        block()
+        throw AssertionError("expected a GopaySDKException")
+    } catch (e: GopaySDKException) {
+        e
     }
 
     private fun state(state: ChargeState, failReason: String? = null) =

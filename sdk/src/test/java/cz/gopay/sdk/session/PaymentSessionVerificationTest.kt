@@ -25,7 +25,7 @@ import retrofit2.Response
  */
 class PaymentSessionVerificationTest {
 
-    private val activity = mock<Activity>()
+    private val activity = mock<Activity> { on { hasWindowFocus() }.thenReturn(true) }
 
     @Test
     fun `a non-web redirect URL is refused as unreachable before the bridge is consulted`() =

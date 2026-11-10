@@ -164,7 +164,7 @@ class TelemetryFlowTest {
         GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.SANDBOX, clientId = "client-2"))
         // The challenge is reported before it opens; opening it needs an Android runtime.
         runCatching {
-            runBlocking { session.handle3dsVerification(mock<Activity>(), "https://acs.example-bank.com/challenge?creq=SECRET") }
+            runBlocking { session.handle3dsVerification(mock<Activity> { on { hasWindowFocus() }.thenReturn(true) }, "https://acs.example-bank.com/challenge?creq=SECRET") }
         }
         session.close()
 

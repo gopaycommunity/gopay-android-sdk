@@ -1,16 +1,22 @@
 package cz.gopay.sdk.model
 
 import android.app.Activity
+import android.content.Context
 import android.os.Build
 import android.webkit.WebSettings
 import androidx.annotation.VisibleForTesting
+import cz.gopay.sdk.exception.GopayErrorCodes
+import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.exception.reportErrors
+import cz.gopay.sdk.ui.ForegroundScreen
 import cz.gopay.sdk.util.SdkLog
 import java.util.Locale
 import java.util.TimeZone
 
 /**
- * Best-effort [BrowserData] derived from an [activity]'s configuration. Mirrors the iOS
- * `BrowserData.deviceDefault()`.
+ * Best-effort [BrowserData] derived from the device, as the iOS `BrowserData.deviceDefault()`
+ * is. Read from [activity] when one is named and still alive, otherwise from the screen in
+ * front, otherwise from the application Context `GopaySDK.initialize(context, config)` was given.
  *
  * A top-level extension on the empty companion rather than a companion member, and the only
  * `android.*` import in `model/`: the price of the call reading `BrowserData.deviceDefault(...)`
@@ -30,9 +36,21 @@ import java.util.TimeZone
  *
  * Every field can be overridden by constructing [BrowserData] directly if you collected more
  * accurate values elsewhere.
+ *
+ * @param activity optional, as `presenting` is on iOS: the screen to read the configuration of.
+ * @throws GopaySDKException [GopayErrorCodes.CONFIG_MISSING_CONTEXT] when there is no Context
+ *         to read from: no [activity], no screen in front, and the SDK was initialized through
+ *         the deprecated `initialize(config)`.
  */
-fun BrowserData.Companion.deviceDefault(activity: Activity): BrowserData {
-    val resources = activity.resources
+fun BrowserData.Companion.deviceDefault(activity: Activity? = null): BrowserData = reportErrors {
+    val context: Context = ForegroundScreen.screenFor(activity)
+        ?: ForegroundScreen.appContext
+        ?: throw ForegroundScreen.missingContext("BrowserData.deviceDefault()")
+    deviceDefault(context)
+}
+
+private fun deviceDefault(context: Context): BrowserData {
+    val resources = context.resources
     // An empty LocaleList is rare but legal, and indexing it throws. A charge is not worth
     // losing over the language field.
     val locales = resources.configuration.locales
@@ -48,7 +66,7 @@ fun BrowserData.Companion.deviceDefault(activity: Activity): BrowserData {
         screenWidth = metrics.widthPixels,
         screenHeight = metrics.heightPixels,
         colorDepth = 24,
-        userAgent = webViewUserAgent(activity),
+        userAgent = webViewUserAgent(context),
         javascriptEnabled = true
     )
 }
@@ -73,8 +91,8 @@ internal fun jsTimezoneOffsetMinutes(offsetMillis: Int): Int = -(offsetMillis / 
  * the WebView package disabled or a unit-test JVM, [syntheticUserAgent] stands in, and the
  * omission is logged because the value going to the issuer is then a reconstruction.
  */
-private fun webViewUserAgent(activity: Activity): String =
-    runCatching { WebSettings.getDefaultUserAgent(activity) }
+private fun webViewUserAgent(context: Context): String =
+    runCatching { WebSettings.getDefaultUserAgent(context) }
         .getOrNull()
         ?: syntheticUserAgent().also {
             SdkLog.w(

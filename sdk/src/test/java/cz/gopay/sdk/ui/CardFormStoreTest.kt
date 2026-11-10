@@ -49,6 +49,7 @@ class CardFormStoreTest {
         Dispatchers.setMain(Dispatchers.Unconfined)
         CardFormStore.timer = timer
         CardFormStore.clear(null)
+        ForegroundScreen.reset()
     }
 
     @After
@@ -58,6 +59,7 @@ class CardFormStoreTest {
         CardFormStore.unregister("b", owner)
         CardFormStore.clear(null)
         CardFormStore.timer = defaultTimer
+        ForegroundScreen.reset()
         Dispatchers.resetMain()
     }
 
@@ -276,22 +278,23 @@ class CardFormStoreTest {
 
         CardFormStore.clear(null)
         assertNull(CardFormStore.takeParked("b", checkout))
-        verify(application).unregisterActivityLifecycleCallbacks(any())
     }
 
     @Test
-    fun `the activities are watched only while a card is parked`() {
+    fun `the activities are watched through the SDK's one registration, which stays`() {
         registerWithCard("a", a)
         registerWithCard("b", b)
         park("a", a)
         park("b", b)
-        val callbacks = argumentCaptor<Application.ActivityLifecycleCallbacks>()
-        verify(application, times(1)).registerActivityLifecycleCallbacks(callbacks.capture())
+        verify(application, times(1)).registerActivityLifecycleCallbacks(any())
 
+        // Nothing parked any more, and parked again: still the one registration, shared with
+        // the screen the SDK follows, and never taken back.
         CardFormStore.takeParked("a", checkout)
-        verify(application, never()).unregisterActivityLifecycleCallbacks(any())
         CardFormStore.dropParked(checkout)
-        verify(application).unregisterActivityLifecycleCallbacks(callbacks.firstValue)
+        park("a", a)
+        verify(application, times(1)).registerActivityLifecycleCallbacks(any())
+        verify(application, never()).unregisterActivityLifecycleCallbacks(any())
     }
 
     @Test
@@ -313,10 +316,9 @@ class CardFormStoreTest {
         watch.onActivityPaused(activity(checkout.taskId))
         assertTrue("the user left the screen", CardFormStore.parkedFormIds().isEmpty())
 
-        // Parked again: watched by a callback registered anew.
+        // Parked again: watched by the same callbacks.
         park("a", a)
-        verify(application, times(2)).registerActivityLifecycleCallbacks(callbacks.capture())
-        callbacks.secondValue.onActivityDestroyed(activity(checkout.taskId, changingConfigurations = false))
+        watch.onActivityDestroyed(activity(checkout.taskId, changingConfigurations = false))
         assertTrue("the screen is gone for good", CardFormStore.parkedFormIds().isEmpty())
     }
 
@@ -337,8 +339,7 @@ class CardFormStoreTest {
 
         // Taken in time: the timeout is called off.
         park("b", b)
-        verify(application, times(2)).registerActivityLifecycleCallbacks(callbacks.capture())
-        callbacks.secondValue.onActivityResumed(activity(checkout.taskId))
+        callbacks.firstValue.onActivityResumed(activity(checkout.taskId))
         assertEquals(ParkedForm(b, CardFormFlags()), CardFormStore.takeParked("b", checkout))
         assertEquals(1, timer.cancelled)
     }

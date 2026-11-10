@@ -4,8 +4,14 @@ import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -24,6 +30,7 @@ import org.junit.Test
  * loaded is distinguishable from a user who dismissed one, and that a report belonging to a
  * verification that is already over cannot end the one running now.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class PaymentVerificationBridgeTest {
 
     private lateinit var owner: PaymentVerificationBridge.Owner
@@ -209,6 +216,158 @@ class PaymentVerificationBridgeTest {
 
         assertEquals(0, closed)
         assertSame(second, PaymentVerificationBridge.currentOwner())
+    }
+
+    @Test
+    fun `a challenge screen that never appears ends as PAYMENT_010 after 30 seconds`() = runTest {
+        val deferred = CompletableDeferred<Boolean>()
+        val token = register(deferred)!!
+        val caller = async { runCatching { PaymentVerificationBridge.await(token, deferred) } }
+
+        advanceTimeBy(29_999)
+        runCurrent()
+        assertFalse("still within the limit", caller.isCompleted)
+        advanceTimeBy(1)
+        runCurrent()
+
+        val e = caller.await().exceptionOrNull() as GopaySDKException
+        assertEquals(GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE, e.code)
+        assertTrue(e.message!!.contains("did not appear within 30 s"))
+        assertNull("the next verification can start", PaymentVerificationBridge.currentOwner())
+        assertFalse("a screen that turns up late has nothing to serve", PaymentVerificationBridge.attach(token) {})
+    }
+
+    @Test
+    fun `a challenge screen that appeared is waited for as long as the user takes`() = runTest {
+        val deferred = CompletableDeferred<Boolean>()
+        val token = register(deferred)!!
+        val caller = async { PaymentVerificationBridge.await(token, deferred) }
+
+        advanceTimeBy(10_000)
+        PaymentVerificationBridge.attach(token) {}
+        advanceTimeBy(600_000)
+        runCurrent()
+        assertFalse("ten minutes in the bank's app is not a timeout", caller.isCompleted)
+
+        PaymentVerificationBridge.complete(token)
+        caller.await()
+    }
+
+    @Test
+    fun `a screen recreated after it appeared does not start the limit again`() = runTest {
+        val deferred = CompletableDeferred<Boolean>()
+        val token = register(deferred)!!
+        val caller = async { PaymentVerificationBridge.await(token, deferred) }
+        PaymentVerificationBridge.attach(token) {}
+
+        // A rotation: the recreated activity attaches again.
+        advanceTimeBy(45_000)
+        assertTrue(PaymentVerificationBridge.attach(token) {})
+        advanceTimeBy(45_000)
+        runCurrent()
+
+        assertFalse(caller.isCompleted)
+        PaymentVerificationBridge.complete(token)
+        caller.await()
+    }
+
+    @Test
+    fun `a report that comes before the screen attached ends the wait at once`() = runTest {
+        val deferred = CompletableDeferred<Boolean>()
+        val token = register(deferred)!!
+        val caller = async { runCatching { PaymentVerificationBridge.await(token, deferred) } }
+        runCurrent()
+
+        PaymentVerificationBridge.failInternally(token, "no redirect URL was supplied")
+        runCurrent()
+
+        assertEquals(0L, currentTime)
+        assertEquals(
+            GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR,
+            (caller.await().exceptionOrNull() as GopaySDKException).code
+        )
+    }
+
+    @Test
+    fun `a screen that takes the verification over in the instant the limit runs out counts as shown`() = runTest {
+        val deferred = CompletableDeferred<Boolean>()
+        val token = register(deferred)!!
+        var closed = false
+        // Scheduled first, so at the 30th second the screen attaches before the limit fires:
+        // the wait for the screen is cut off by the limit although the screen is there.
+        launch {
+            delay(30_000)
+            assertTrue(PaymentVerificationBridge.attach(token) { closed = true })
+        }
+        val caller = async { runCatching { PaymentVerificationBridge.await(token, deferred) } }
+
+        advanceTimeBy(30_000)
+        runCurrent()
+
+        assertFalse("the user is looking at the challenge, the call must go on", caller.isCompleted)
+        assertFalse(closed)
+        assertSame(token, PaymentVerificationBridge.currentOwner())
+        PaymentVerificationBridge.complete(token)
+        caller.await().getOrThrow()
+    }
+
+    @Test
+    fun `a screen that attaches while the limit gives up is closed, never left without a caller`() = runTest {
+        val deferred = CompletableDeferred<Boolean>()
+        val token = register(deferred)!!
+        val caller = async { runCatching { PaymentVerificationBridge.await(token, deferred) } }
+        advanceTimeBy(30_000)
+        runCurrent()
+        assertEquals(
+            GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE,
+            (caller.await().exceptionOrNull() as GopaySDKException).code
+        )
+
+        // The screen turning up now is told to close itself.
+        assertFalse(PaymentVerificationBridge.attach(token) { fail("attach already says so") })
+    }
+
+    @Test
+    fun `a challenge finds only the verification its intent names`() {
+        val first = register(CompletableDeferred())!!
+        PaymentVerificationBridge.dismiss(first)
+        val second = register(CompletableDeferred())!!
+
+        // What a challenge started for the first one, and appearing only now, looks up.
+        assertNull(PaymentVerificationBridge.currentOwner(first.id))
+        assertSame(second, PaymentVerificationBridge.currentOwner(second.id))
+        assertFalse("ids are never reused", first.id == second.id)
+    }
+
+    @Test
+    fun `a verification whose challenge is not on screen yet can be ended, and the bridge is free`() = runTest {
+        val deferred = CompletableDeferred<Boolean>()
+        val token = register(deferred)!!
+        val caller = async { runCatching { PaymentVerificationBridge.await(token, deferred) } }
+        runCurrent()
+        val cause = GopaySDKException(code = GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, message = "closed")
+
+        assertTrue(PaymentVerificationBridge.releaseUnshown(token, cause))
+        runCurrent()
+
+        assertSame(cause, caller.await().exceptionOrNull())
+        assertEquals("ended at once, not at the limit", 0L, currentTime)
+        assertNull(PaymentVerificationBridge.currentOwner())
+        assertFalse("its challenge, turning up later, closes itself", PaymentVerificationBridge.attach(token) {})
+    }
+
+    @Test
+    fun `a challenge the user already sees is not ended that way`() {
+        val deferred = CompletableDeferred<Boolean>()
+        val token = register(deferred)!!
+        var closed = false
+        PaymentVerificationBridge.attach(token) { closed = true }
+
+        assertFalse(PaymentVerificationBridge.releaseUnshown(token, IllegalStateException()))
+
+        assertFalse("the challenge stays", closed)
+        assertFalse(deferred.isCompleted)
+        assertSame(token, PaymentVerificationBridge.currentOwner())
     }
 
     @Test

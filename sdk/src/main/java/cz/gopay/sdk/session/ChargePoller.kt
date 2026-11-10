@@ -4,8 +4,11 @@ import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.ChargeState
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -29,15 +32,30 @@ import kotlin.coroutines.coroutineContext
  * afterwards is not polled forever; without one the host owns the challenge, so the first
  * address disarms the timeout for good.
  *
+ * A challenge needs a screen to open on. When there is none at the moment the gateway asks for
+ * one, the app is in the background or its activity is being recreated, the loop waits for the
+ * screen and keeps reading the charge meanwhile, each read [AwaitChargeOptions.intervalMs] after
+ * the last: the screen coming up opens the challenge, and a charge that left that
+ * `ACTION_REQUIRED` in the meantime, answered in the bank's app say, is handled as the state it
+ * moved to, with the timeout started over. The timeout does not run while the loop waits for a
+ * screen, as it does not during the challenge. A screen that goes in the moment the challenge
+ * is about to open sends the loop back into the same wait, still reading. Nothing limits that
+ * wait: the reads go on until the charge moves or the caller cancels the call.
+ *
  * @param read one `GET /payments/{id}/charge`; its errors end the loop unchanged.
  * @param verify runs the 3DS challenge for a redirect URL, null when the host runs it itself
- *        ([ThreeDSMode.MANUAL]); its errors end the loop unchanged.
+ *        ([ThreeDSMode.MANUAL]); its errors end the loop unchanged, except [ScreenWentAway],
+ *        which it throws when there was no screen to open the challenge on after all.
+ * @param screenReady whether [verify] has a screen to open the challenge on right now.
+ * @param awaitScreen suspends until it has one.
  * @param now a clock in milliseconds; only differences are read. Tests pass virtual time.
  */
 internal class ChargePoller(
     private val options: AwaitChargeOptions,
     private val read: suspend () -> ChargePaymentResponse,
     private val verify: (suspend (redirectUrl: String) -> Unit)?,
+    private val screenReady: () -> Boolean = { true },
+    private val awaitScreen: suspend () -> Unit = {},
     private val now: () -> Long = { System.nanoTime() / 1_000_000 }
 ) {
 
@@ -46,11 +64,16 @@ internal class ChargePoller(
         // Every address the gateway has asked a challenge for: a gateway that keeps echoing the
         // same action must not send the user through the same challenge twice.
         val handled = HashSet<String>()
+        // Every address reported to the host; one the loop waited for a screen with and did not
+        // get to open is reported once and may still be opened later.
+        val reported = HashSet<String>()
+        // A state read while waiting for a screen, which the loop takes up instead of reading.
+        var carried: ChargePaymentResponse? = null
 
         while (true) {
             coroutineContext.ensureActive()
-            val state = read()
-            options.onStateChange?.invoke(state)
+            val state = carried ?: read().also { options.onStateChange?.invoke(it) }
+            carried = null
 
             when (state.state) {
                 ChargeState.SUCCEEDED -> return state
@@ -61,13 +84,19 @@ internal class ChargePoller(
                 )
                 ChargeState.ACTION_REQUIRED -> {
                     val redirectUrl = state.action?.redirectUrl?.takeIf { it.isNotEmpty() }
-                    if (redirectUrl != null && handled.add(redirectUrl)) {
-                        options.onActionRequired?.invoke(redirectUrl)
-                        deadline = if (verify != null) {
-                            verify.invoke(redirectUrl)
-                            now() + options.initialTimeoutMs
+                    if (redirectUrl != null && redirectUrl !in handled) {
+                        if (reported.add(redirectUrl)) options.onActionRequired?.invoke(redirectUrl)
+                        if (verify == null) {
+                            handled.add(redirectUrl)
+                            deadline = null
                         } else {
-                            null
+                            val moved = verifyOnAScreen(redirectUrl, verify)
+                            deadline = now() + options.initialTimeoutMs
+                            if (moved != null) {
+                                carried = moved
+                                continue
+                            }
+                            handled.add(redirectUrl)
                         }
                     }
                 }
@@ -93,6 +122,58 @@ internal class ChargePoller(
             delay(wait)
         }
     }
+
+    /**
+     * Runs the challenge for [redirectUrl] once there is a screen for it, reading the charge
+     * while there is none. The screen can go between the moment it is seen and the moment the
+     * challenge opens on it; [verify] then says so, and the wait starts again, with its reads,
+     * rather than going on inside [verify] where nothing reads the charge.
+     *
+     * @return null once the challenge has run, or the state the charge moved to meanwhile.
+     */
+    private suspend fun verifyOnAScreen(
+        redirectUrl: String,
+        verify: suspend (redirectUrl: String) -> Unit
+    ): ChargePaymentResponse? {
+        var screenWent = false
+        while (true) {
+            if (screenWent || !screenReady()) readUntilScreen(redirectUrl)?.let { return it }
+            try {
+                verify(redirectUrl)
+                return null
+            } catch (e: ScreenWentAway) {
+                screenWent = true
+            }
+        }
+    }
+
+    /**
+     * Waits for a screen to open the challenge for [redirectUrl] on, reading the charge every
+     * [AwaitChargeOptions.intervalMs] meanwhile.
+     *
+     * @return null once a screen is there, or the first state read that is no longer that
+     *         `ACTION_REQUIRED` with [redirectUrl], already handed to `onStateChange`.
+     */
+    private suspend fun readUntilScreen(redirectUrl: String): ChargePaymentResponse? = coroutineScope {
+        val screen = async { awaitScreen() }
+        var moved: ChargePaymentResponse? = null
+        try {
+            // Each round waits one interval for the screen; without it, reads the charge.
+            while (moved == null && withTimeoutOrNull(options.intervalMs) { screen.await() } == null) {
+                val state = read()
+                options.onStateChange?.invoke(state)
+                val sameChallenge = state.state == ChargeState.ACTION_REQUIRED &&
+                    state.action?.redirectUrl == redirectUrl
+                if (!sameChallenge) moved = state
+            }
+        } finally {
+            screen.cancel()
+        }
+        moved
+    }
+
+    /** Thrown by `verify` when the screen it was to open the challenge on is gone. */
+    internal class ScreenWentAway : Exception("no screen to open the 3DS challenge on")
 
     /** `30000` as `30`, `2500` as `2.5`: the same figure the iOS SDK's message shows. */
     private fun formatSeconds(ms: Long): String =

@@ -42,8 +42,10 @@ enum class ThreeDSMode {
  * @param returnUrl for [ThreeDSMode.AUTOMATIC]: the `callback.return_url` your backend created
  *        the payment with, passed to [PaymentSession.handle3dsVerification] as its `returnUrl`,
  *        with the same meaning and the same fallback when it is null.
- * @param activity for [ThreeDSMode.AUTOMATIC]: the activity the 3DS challenge is started from,
- *        as [PaymentSession.handle3dsVerification] takes it. Required in that mode, unused in
+ * @param activity for [ThreeDSMode.AUTOMATIC], optional as `presenting` is on iOS: the activity
+ *        the 3DS challenge is started from, as [PaymentSession.handle3dsVerification] takes it.
+ *        Without one, or once it is finishing or destroyed, the challenge starts from the screen
+ *        in front, which the SDK follows since `GopaySDK.initialize(context, config)`. Unused in
  *        [ThreeDSMode.MANUAL]. The SDK keeps it only for the duration of the call: nothing stores
  *        it, and cancelling the calling coroutine, which a `lifecycleScope` does when the activity
  *        goes away, ends the call and releases it.

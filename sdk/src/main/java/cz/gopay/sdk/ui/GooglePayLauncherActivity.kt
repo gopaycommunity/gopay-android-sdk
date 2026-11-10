@@ -40,6 +40,13 @@ internal class GooglePayLauncherActivity : ComponentActivity() {
             return
         }
 
+        // The caller stops waiting for the launcher to appear; one that gave up on it in this
+        // very moment has nobody left to show a sheet for.
+        if (!GooglePayBridge.attach(owner) { runOnUiThread { finish() } }) {
+            finish()
+            return
+        }
+
         // Back reaches the launcher only while no sheet covers it, before Google Pay shows one.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {

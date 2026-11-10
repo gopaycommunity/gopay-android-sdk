@@ -1,5 +1,6 @@
 package cz.gopay.sdk.session
 
+import android.app.Activity
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.model.Currency
@@ -65,6 +66,19 @@ class PaymentSessionApiTest {
             emptyList<Any>(),
             publicMethods(PaymentSessionApi::class.java).map { it.signature() }.filterNot { it in session }
         )
+    }
+
+    @Test
+    fun `the 2_7 forms with the Activity first have their bodies in the interface`() {
+        // Kotlin keeps the bodies of an interface in its DefaultImpls; what is there, an
+        // implementation does not have to write. The demo's FakePaymentSessionTest implements
+        // the interface without them.
+        val bodies = Class.forName(PaymentSessionApi::class.java.name + "\$DefaultImpls").declaredMethods
+            .filter { !it.isSynthetic && it.parameterTypes.getOrNull(1) == Activity::class.java }
+            .map { it.name }
+            .toSet()
+
+        assertEquals(setOf("chargeWithCardToken", "chargeWithEncryptedCard", "handle3dsVerification"), bodies)
     }
 
     private fun payment(charge: ChargePaymentResponse?) = PaymentDetails(

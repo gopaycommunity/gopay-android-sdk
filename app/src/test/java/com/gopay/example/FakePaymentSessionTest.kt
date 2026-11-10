@@ -57,21 +57,15 @@ class FakePaymentSessionTest {
         override suspend fun getQrPaymentInfo(format: QrCodeFormat?): QrPaymentDetails = notCalled()
         override suspend fun getWalletInfo(): GooglePayInfoResponse = notCalled()
         override suspend fun chargeWithWallet(
-            activity: Activity, browserData: BrowserData?, challengePreference: ChallengePreference?
+            activity: Activity?, browserData: BrowserData?, challengePreference: ChallengePreference?
         ): ChargePaymentResponse = notCalled()
         override suspend fun chargeWithCardToken(
-            activity: Activity, cardToken: String, browserData: BrowserData?, challengePreference: ChallengePreference?
-        ): ChargePaymentResponse = notCalled()
-        override suspend fun chargeWithCardToken(
-            cardToken: String, browserData: BrowserData, challengePreference: ChallengePreference?
+            cardToken: String, browserData: BrowserData?, challengePreference: ChallengePreference?, activity: Activity?
         ): ChargePaymentResponse = notCalled()
         override suspend fun chargeWithEncryptedCard(
-            activity: Activity, payload: String, browserData: BrowserData?, challengePreference: ChallengePreference?
+            payload: String, browserData: BrowserData?, challengePreference: ChallengePreference?, activity: Activity?
         ): ChargePaymentResponse = notCalled()
-        override suspend fun chargeWithEncryptedCard(
-            payload: String, browserData: BrowserData, challengePreference: ChallengePreference?
-        ): ChargePaymentResponse = notCalled()
-        override suspend fun handle3dsVerification(activity: Activity, redirectUrl: String, returnUrl: String?) = Unit
+        override suspend fun handle3dsVerification(redirectUrl: String, returnUrl: String?, activity: Activity?) = Unit
         override fun close() = Unit
 
         private fun notCalled(): Nothing = throw AssertionError("the test does not make this call")

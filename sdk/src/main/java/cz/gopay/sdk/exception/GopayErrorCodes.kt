@@ -54,6 +54,13 @@ object GopayErrorCodes {
     /** SDK has not been initialized */
     const val CONFIG_SDK_NOT_INITIALIZED = "CONFIG_001"
 
+    /**
+     * A call needed the application Context and the SDK was not given one: it was initialized
+     * through the deprecated `GopaySDK.initialize(config)` only, and the call named no Activity.
+     * Thrown before anything is sent. Android only: the iOS SDK needs no Context.
+     */
+    const val CONFIG_MISSING_CONTEXT = "CONFIG_004"
+
     /** Invalid API base URL */
     const val CONFIG_INVALID_BASE_URL = "CONFIG_006"
 

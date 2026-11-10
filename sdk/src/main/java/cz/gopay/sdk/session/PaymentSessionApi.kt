@@ -55,43 +55,52 @@ interface PaymentSessionApi {
 
     /** See [PaymentSession.chargeWithWallet]. */
     suspend fun chargeWithWallet(
-        activity: Activity,
+        activity: Activity? = null,
         browserData: BrowserData? = null,
         challengePreference: ChallengePreference? = null
     ): ChargePaymentResponse
 
-    /** See [PaymentSession.chargeWithCardToken], the form that derives the browser data. */
-    suspend fun chargeWithCardToken(
-        activity: Activity,
-        cardToken: String,
-        browserData: BrowserData? = null,
-        challengePreference: ChallengePreference? = null
-    ): ChargePaymentResponse
-
-    /** See [PaymentSession.chargeWithCardToken], the form that takes the browser data. */
+    /** See [PaymentSession.chargeWithCardToken]. */
     suspend fun chargeWithCardToken(
         cardToken: String,
-        browserData: BrowserData,
-        challengePreference: ChallengePreference? = null
+        browserData: BrowserData? = null,
+        challengePreference: ChallengePreference? = null,
+        activity: Activity? = null
     ): ChargePaymentResponse
 
-    /** See [PaymentSession.chargeWithEncryptedCard], the form that derives the browser data. */
+    /** See [PaymentSession.chargeWithEncryptedCard]. */
     suspend fun chargeWithEncryptedCard(
-        activity: Activity,
         payload: String,
         browserData: BrowserData? = null,
-        challengePreference: ChallengePreference? = null
-    ): ChargePaymentResponse
-
-    /** See [PaymentSession.chargeWithEncryptedCard], the form that takes the browser data. */
-    suspend fun chargeWithEncryptedCard(
-        payload: String,
-        browserData: BrowserData,
-        challengePreference: ChallengePreference? = null
+        challengePreference: ChallengePreference? = null,
+        activity: Activity? = null
     ): ChargePaymentResponse
 
     /** See [PaymentSession.handle3dsVerification]. */
-    suspend fun handle3dsVerification(activity: Activity, redirectUrl: String, returnUrl: String? = null)
+    suspend fun handle3dsVerification(redirectUrl: String, returnUrl: String? = null, activity: Activity? = null)
+
+    // The forms of 2.x with the activity first. Each is the call above with the activity named,
+    // implemented here, so an implementation of the interface has nothing to add for them.
+
+    /** [chargeWithCardToken] with the [activity] first, as 2.x had it. */
+    suspend fun chargeWithCardToken(
+        activity: Activity,
+        cardToken: String,
+        browserData: BrowserData? = null,
+        challengePreference: ChallengePreference? = null
+    ): ChargePaymentResponse = chargeWithCardToken(cardToken, browserData, challengePreference, activity)
+
+    /** [chargeWithEncryptedCard] with the [activity] first, as 2.x had it. */
+    suspend fun chargeWithEncryptedCard(
+        activity: Activity,
+        payload: String,
+        browserData: BrowserData? = null,
+        challengePreference: ChallengePreference? = null
+    ): ChargePaymentResponse = chargeWithEncryptedCard(payload, browserData, challengePreference, activity)
+
+    /** [handle3dsVerification] with the [activity] first, as 2.x had it. */
+    suspend fun handle3dsVerification(activity: Activity, redirectUrl: String, returnUrl: String? = null) =
+        handle3dsVerification(redirectUrl, returnUrl, activity)
 
     /** See [PaymentSession.close]. */
     fun close()

@@ -22,6 +22,7 @@ import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.telemetry.GwLoggerTelemetry
 import cz.gopay.sdk.telemetry.Telemetry
 import cz.gopay.sdk.ui.CardFormStore
+import cz.gopay.sdk.ui.ForegroundScreen
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -30,7 +31,8 @@ import kotlin.coroutines.suspendCoroutine
  * Main entry point for the Gopay SDK.
  *
  * Usage:
- * 1. `GopaySDK.initialize(GopayConfig(environment, clientId, shareableKey))` once on app start.
+ * 1. `GopaySDK.initialize(context, GopayConfig(environment, clientId, shareableKey))` once on
+ *    app start, in `Application.onCreate`.
  * 2. Merchant backend creates a payment and returns `payment_id` + `payment_secret` to the device.
  * 3. `GopaySDK.getInstance().startPaymentSession(paymentId, paymentSecret)` — returns a
  *    [PaymentSession] scoped to that single payment.
@@ -44,7 +46,9 @@ import kotlin.coroutines.suspendCoroutine
  *
  * The names shared with the iOS SDK are the main ones: [isWalletAvailable], [submitCardForm],
  * [clearCardFormData], and on the session `getWalletInfo`, `chargeWithWallet` and the card
- * helpers without an activity. The Google Pay names are deprecated aliases of the same bodies.
+ * helpers. None of them needs an Activity: the SDK follows the screen in front since
+ * [initialize] took the Context, and a call may still name the Activity to open from. The Google
+ * Pay names are deprecated aliases of the same bodies.
  */
 class GopaySDK private constructor(val config: GopayConfig) {
 
@@ -279,22 +283,23 @@ class GopaySDK private constructor(val config: GopayConfig) {
      * `PRODUCTION` for the production gateway, `TEST` otherwise. A `false` from Google Play
      * services is returned as such; the check never throws an SDK error.
      *
-     * The same check runs without an instance as `GopaySDK.isWalletAvailable(context,
-     * environment, info)`, for an app that decides what to show before it initializes the SDK.
-     *
      * @param activity The current Activity (used to create a PaymentsClient).
      * @param info The [GooglePayInfoResponse] from [PaymentSession.getWalletInfo], or null.
      */
+    @Deprecated(
+        "Use GopaySDK.isWalletAvailable(info), which needs no Activity",
+        ReplaceWith("GopaySDK.isWalletAvailable(info)")
+    )
     suspend fun isWalletAvailable(activity: Activity, info: GooglePayInfoResponse? = null): Boolean =
         checkWalletReady(activity, config.environment, info, telemetry)
 
     /** The platform name of [isWalletAvailable], the same call. */
     @Deprecated(
         "Use isWalletAvailable(), the name shared with the iOS SDK",
-        ReplaceWith("isWalletAvailable(activity, info)")
+        ReplaceWith("GopaySDK.isWalletAvailable(info)")
     )
     suspend fun isGooglePayAvailable(activity: Activity, info: GooglePayInfoResponse): Boolean =
-        isWalletAvailable(activity, info)
+        checkWalletReady(activity, config.environment, info, telemetry)
 
     companion object {
         @Volatile
@@ -323,16 +328,47 @@ class GopaySDK private constructor(val config: GopayConfig) {
         const val CHARGE_RETURN_URL: String = "https://gopay.com/sdk/charge-return"
 
         /**
-         * Initialize the SDK with the given configuration. Must be called before any other SDK
-         * operation. The SDK no longer requires an Android `Context` — all credentials live in
-         * memory inside [GopayConfig] and per-payment [PaymentSession] instances.
+         * Initialize the SDK with the given configuration and the app's [context]. Must be
+         * called before any other SDK operation; call it in `Application.onCreate`.
          *
+         * The SDK keeps the application Context of [context], never [context] itself, and from
+         * here on follows the screen in front on its own, so the calls that open the 3DS
+         * challenge or the Google Pay sheet need no Activity: they open from the Activity that
+         * is resumed, held by a weak reference. Credentials still live in memory only, inside
+         * [GopayConfig] and the per-payment [PaymentSession] instances.
+         *
+         * Called later than `Application.onCreate`, with a screen already up, the SDK learns
+         * that screen only at its next `onResume`, unless [context] is that very Activity: one
+         * that is resumed is used at once, and one that calls this from its own `onResume` as
+         * soon as that `onResume` has returned. A debug build says in Logcat when the screen in
+         * front was missed.
+         *
+         * @param context any Context of the app; an Activity is fine, only its application
+         *        Context is kept.
          * @throws GopaySDKException [GopayErrorCodes.CONFIG_INVALID_BASE_URL] for a base URL the
          *         HTTP client refuses, reported once to [GopayConfig.errorCallback] of [config];
          *         the SDK then stays as an earlier `initialize` left it, callback included.
          */
         @JvmStatic
+        fun initialize(context: Context, config: GopayConfig) {
+            install(config, context)
+        }
+
+        /**
+         * Initializes the SDK without a Context, as 2.x did. Every call then has to name its
+         * Activity: one that needs the Context and names none fails with
+         * [GopayErrorCodes.CONFIG_MISSING_CONTEXT].
+         */
+        @Deprecated(
+            "Pass the Context, so the SDK can follow the screen in front itself",
+            ReplaceWith("GopaySDK.initialize(context, config)")
+        )
+        @JvmStatic
         fun initialize(config: GopayConfig) {
+            install(config, context = null)
+        }
+
+        private fun install(config: GopayConfig, context: Context?) {
             // Built first, so a config the SDK cannot use changes nothing: the instance, the
             // callback and the locales of an earlier initialize all stay.
             val sdk = try {
@@ -345,6 +381,10 @@ class GopaySDK private constructor(val config: GopayConfig) {
             GopayLocales.registerAll(config.customLocales)
             GopayLocales.setDefaultLocale(config.locale)
             instance = sdk
+            // The Context of the latest initialize is the one that counts, like its config.
+            if (context != null) ForegroundScreen.install(context) else ForegroundScreen.uninstall()
+            // Before the first event, so `init` already carries the app's package name.
+            Telemetry.noteOrigin(context)
             Telemetry.current = sdk.telemetry
             sdk.telemetry?.init()
         }
@@ -359,7 +399,7 @@ class GopaySDK private constructor(val config: GopayConfig) {
         @JvmStatic
         fun getInstance(): GopaySDK = instance ?: throw GopaySDKException(
             code = GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED,
-            message = "GopaySDK has not been initialized. Call GopaySDK.initialize(config) first."
+            message = "GopaySDK has not been initialized. Call GopaySDK.initialize(context, config) first."
         )
 
         /** Check if the SDK has been initialized. */
@@ -367,20 +407,46 @@ class GopaySDK private constructor(val config: GopayConfig) {
         fun isInitialized(): Boolean = instance != null
 
         /**
-         * Whether the device's wallet, Google Pay, can pay, without an SDK instance: the check
-         * [GopaySDK.isWalletAvailable] runs, which needs only a [Context] and the environment
-         * the app will initialize the SDK for, so an app can decide what to show before
-         * [initialize]. On iOS `isWalletAvailable` is static the same way.
+         * Whether the device's wallet, Google Pay, can pay: the name and the shape shared with
+         * the iOS SDK, where it asks Apple Pay. A static call that takes no Activity, Context or
+         * environment: it uses the Context and the environment the SDK was initialized with.
+         * Call it before showing a Google Pay button.
          *
          * With [info], the readiness check uses the card networks and auth methods the gateway
-         * allows for that payment, in the environment it names; without one, the gateway's
-         * defaults in the environment [environment] implies. A `false` from Google Play services
-         * is returned as such; the check never throws an SDK error.
+         * allows for that payment, in the environment it names. Whether the user has a card
+         * saved in Google Pay is not checked: the sheet lets them add one. Without [info],
+         * before a payment exists, it asks for `PAN_ONLY` and `CRYPTOGRAM_3DS` with Visa and
+         * Mastercard, which is what the gateway allows, in the environment
+         * [GopayConfig.environment] implies: `PRODUCTION` for the production gateway, `TEST`
+         * otherwise. A `false` from Google Play services is returned as such.
+         *
+         * @param info The [GooglePayInfoResponse] from [PaymentSession.getWalletInfo], or null.
+         * @throws GopaySDKException [GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED] before
+         *         `initialize`, and [GopayErrorCodes.CONFIG_MISSING_CONTEXT] when the SDK was
+         *         initialized without a Context.
+         */
+        @JvmStatic
+        suspend fun isWalletAvailable(info: GooglePayInfoResponse? = null): Boolean {
+            val sdk = getInstance()
+            return reportErrors {
+                val context = ForegroundScreen.appContext
+                    ?: throw ForegroundScreen.missingContext("isWalletAvailable()")
+                checkWalletReady(context, sdk.config.environment, info, sdk.telemetry)
+            }
+        }
+
+        /**
+         * The check of [isWalletAvailable] with a [Context] and an environment of the caller's
+         * own, the static form of 2.5.
          *
          * @param context Any Context, used to create a PaymentsClient.
          * @param environment The environment the app pays in, [GopayConfig.environment].
          * @param info The [GooglePayInfoResponse] from [PaymentSession.getWalletInfo], or null.
          */
+        @Deprecated(
+            "Use GopaySDK.isWalletAvailable(info) after GopaySDK.initialize(context, config)",
+            ReplaceWith("GopaySDK.isWalletAvailable(info)")
+        )
         @JvmStatic
         suspend fun isWalletAvailable(
             context: Context,

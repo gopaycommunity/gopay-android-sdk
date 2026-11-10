@@ -6,12 +6,13 @@ import com.google.android.gms.wallet.AutoResolveHelper
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.random.Random
 
 /**
- * Carries the Google Pay token from [GooglePayLauncherActivity] back to the `chargeWithGooglePay`
+ * Carries the Google Pay token from [GooglePayLauncherActivity] back to the `chargeWithWallet`
  * call that started it.
  *
  * Every report names the request it belongs to, as in [PaymentVerificationBridge]. A launcher can
@@ -29,7 +30,13 @@ internal object GooglePayBridge {
      */
     internal class Owner(val id: Long)
 
-    private class Pending(val owner: Owner, val deferred: CompletableDeferred<Result<String>>)
+    private class Pending(val owner: Owner, val deferred: CompletableDeferred<Result<String>>) {
+        /** Closes the launcher serving this request; set by [attach]. */
+        @Volatile var close: (() -> Unit)? = null
+
+        /** Completed once the launcher took the request over, or the request ended. */
+        val shown = CompletableDeferred<Unit>()
+    }
 
     private val pending = AtomicReference<Pending?>()
     /**
@@ -52,11 +59,51 @@ internal object GooglePayBridge {
     /** The request with [id], while it still holds the bridge; null once it is over. */
     fun currentOwner(id: Long): Owner? = pending.get()?.owner?.takeIf { it.id == id }
 
+    /**
+     * The launcher serving [owner] is up; [close] takes it off the screen. A recreated launcher
+     * attaches again and replaces the one before it.
+     *
+     * @return false when [owner] no longer holds the bridge, the caller having given up between
+     *         the launcher starting and attaching; the launcher then has nobody to serve and
+     *         closes itself before it asks for a sheet.
+     */
+    fun attach(owner: Owner, close: () -> Unit): Boolean {
+        val current = pending.get()?.takeIf { it.owner === owner } ?: return false
+        current.close = close
+        current.shown.complete(Unit)
+        // awaitShown can release the bridge between the read above and the completion.
+        return pending.get() === current
+    }
+
+    /**
+     * Waits until the launcher started for [owner] is up or the request is over.
+     *
+     * A launcher that took the request over in the instant the limit ran out counts as shown:
+     * the two can cross, and the caller must not be told the sheet failed while the user is
+     * looking at it. Otherwise the bridge is released here, in the same step, so a launcher
+     * that turns up afterwards finds nothing to serve and closes itself, and one that attached
+     * while the call was giving up is closed from here, as [PaymentVerificationBridge] closes
+     * its challenge: no sheet is left on screen with nobody waiting for it.
+     *
+     * @return false when neither happened within [SdkScreens.showTimeoutMs]: the launcher never
+     *         appeared.
+     */
+    suspend fun awaitShown(owner: Owner): Boolean {
+        val current = pending.get()?.takeIf { it.owner === owner } ?: return true
+        if (withTimeoutOrNull(SdkScreens.showTimeoutMs) { current.shown.await() } != null) return true
+        if (current.shown.isCompleted || !pending.compareAndSet(current, null)) return true
+        current.close?.invoke()
+        return false
+    }
+
     /** Hands [result] to [owner]'s caller; the first report wins and a stale one reaches nothing. */
     fun report(owner: Owner, result: Result<String>) {
         val current = pending.get() ?: return
         if (current.owner !== owner) return
-        if (pending.compareAndSet(current, null)) current.deferred.complete(result)
+        if (pending.compareAndSet(current, null)) {
+            current.shown.complete(Unit)
+            current.deferred.complete(result)
+        }
     }
 
     /**
@@ -118,7 +165,7 @@ internal object GooglePayBridge {
     fun isUnavailable(statusCode: Int?): Boolean = statusCode in UNAVAILABLE_STATUS_CODES
 
     /**
-     * What `chargeWithGooglePay` throws for a sheet that did not produce a token:
+     * What `chargeWithWallet` throws for a sheet that did not produce a token:
      * - the user closing it is [GopayErrorCodes.PAYMENT_CANCELLED];
      * - Google Pay unable to show it is [GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE];
      * - any other failure is [GopayErrorCodes.PAYMENT_PROCESSING_FAILED], with [cause] kept.

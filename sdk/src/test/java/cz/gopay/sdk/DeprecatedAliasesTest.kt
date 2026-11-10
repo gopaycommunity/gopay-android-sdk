@@ -1,6 +1,7 @@
 package cz.gopay.sdk
 
 import android.app.Activity
+import android.content.Context
 import cz.gopay.sdk.config.Environment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.config.GopayEnvironment
@@ -10,6 +11,9 @@ import cz.gopay.sdk.exception.HttpErrorContext
 import cz.gopay.sdk.model.BankAccountInternationalDetails
 import cz.gopay.sdk.model.BankAccountLocalDetails
 import cz.gopay.sdk.model.BankTransferRecipient
+import cz.gopay.sdk.model.BrowserData
+import cz.gopay.sdk.model.ChallengePreference
+import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.Currency
 import cz.gopay.sdk.model.GooglePayInfoResponse
@@ -27,6 +31,9 @@ import cz.gopay.sdk.model.QrRecipientAddress
 import cz.gopay.sdk.model.QrRecipientBankAccount
 import cz.gopay.sdk.model.RecipientAddress
 import cz.gopay.sdk.model.RecipientBankAccount
+import cz.gopay.sdk.model.deviceDefault
+import cz.gopay.sdk.session.AwaitChargeOptions
+import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.modules.network.NetworkModule
 import cz.gopay.sdk.ui.CardFormValidationDisplay
 import cz.gopay.sdk.ui.PaymentCardFormValidationDisplay
@@ -214,6 +221,45 @@ class DeprecatedAliasesTest {
         val details = QrPaymentDetails(amount = 100, currency = Currency.CZK, recipient = recipient, qrCode = QrCodeList())
         val readLocal: BankAccountLocalDetails? = details.recipient.bankAccount?.local
         assertEquals("2600000001", readLocal?.accountNumber)
+    }
+
+    @Test
+    fun `the calls of 2_7 that name their Activity first still compile`() {
+        // Compiled, not run: each is a call shape 2.7 documented. None of them is deprecated,
+        // the Activity became optional.
+        val wallet: suspend PaymentSession.(Activity) -> ChargePaymentResponse = { chargeWithWallet(it) }
+        val walletFull: suspend PaymentSession.(Activity, BrowserData, ChallengePreference) -> ChargePaymentResponse =
+            { activity, browserData, preference -> chargeWithWallet(activity, browserData, preference) }
+        val token: suspend PaymentSession.(Activity) -> ChargePaymentResponse =
+            { chargeWithCardToken(it, "tok", challengePreference = ChallengePreference.AUTO) }
+        val tokenWithData: suspend PaymentSession.(BrowserData) -> ChargePaymentResponse = { chargeWithCardToken("tok", it) }
+        val encrypted: suspend PaymentSession.(Activity) -> ChargePaymentResponse = { chargeWithEncryptedCard(it, "jwe") }
+        val encryptedWithData: suspend PaymentSession.(BrowserData) -> ChargePaymentResponse =
+            { chargeWithEncryptedCard("jwe", it, ChallengePreference.AUTO) }
+        val challenge: suspend PaymentSession.(Activity) -> Unit = { handle3dsVerification(it, "https://acs/1", "https://shop/return") }
+        val challengeShort: suspend PaymentSession.(Activity) -> Unit = { handle3dsVerification(it, "https://acs/1") }
+        val browserData: (Activity) -> BrowserData = { BrowserData.deviceDefault(it) }
+        val options: (Activity) -> AwaitChargeOptions = { AwaitChargeOptions(activity = it, returnUrl = "https://shop/return") }
+
+        assertEquals(
+            10,
+            listOf<Any>(
+                wallet, walletFull, token, tokenWithData, encrypted, encryptedWithData, challenge, challengeShort,
+                browserData, options
+            ).size
+        )
+    }
+
+    @Test
+    fun `initialize without a Context and the wallet checks of 2_x still compile`() {
+        val initialize: (GopayConfig) -> Unit = { GopaySDK.initialize(it) }
+        val onInstance: suspend GopaySDK.(Activity) -> Boolean = { isWalletAvailable(it) }
+        val onInstanceWithInfo: suspend GopaySDK.(Activity, GooglePayInfoResponse) -> Boolean =
+            { activity, info -> isWalletAvailable(activity, info) }
+        val static: suspend (Context) -> Boolean = { GopaySDK.isWalletAvailable(it, GopayEnvironment.SANDBOX) }
+        val googlePay: suspend PaymentSession.(Activity) -> ChargePaymentResponse = { chargeWithGooglePay(it) }
+
+        assertEquals(5, listOf<Any>(initialize, onInstance, onInstanceWithInfo, static, googlePay).size)
     }
 
     @Test

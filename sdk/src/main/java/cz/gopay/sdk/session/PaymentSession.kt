@@ -2,7 +2,6 @@ package cz.gopay.sdk.session
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
-import android.content.Intent
 import androidx.annotation.VisibleForTesting
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopayErrorCodes
@@ -39,17 +38,20 @@ import cz.gopay.sdk.modules.network.transportError
 import cz.gopay.sdk.service.GooglePayHelper
 import cz.gopay.sdk.telemetry.GwLoggerTelemetry
 import cz.gopay.sdk.telemetry.Telemetry
+import cz.gopay.sdk.ui.ForegroundScreen
 import cz.gopay.sdk.ui.GooglePayBridge
-import cz.gopay.sdk.ui.GooglePayLauncherActivity
-import cz.gopay.sdk.ui.PaymentVerificationActivity
 import cz.gopay.sdk.ui.PaymentVerificationBridge
 import cz.gopay.sdk.ui.PaymentVerificationPolicy
+import cz.gopay.sdk.ui.SdkScreens
 import cz.gopay.sdk.util.Base64Utils
 import cz.gopay.sdk.util.JwtUtils
 import cz.gopay.sdk.util.SdkLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -370,7 +372,7 @@ class PaymentSession internal constructor(
             SdkLog.w(
                 "browser_data has no user_agent, filling in a synthesized WebView User-Agent, " +
                     "which the issuer may score differently; build BrowserData with " +
-                    "deviceDefault(activity) to send the WebView's own"
+                    "deviceDefault() to send the WebView's own"
             )
         }
         if (browserData.ip != null && browserData.acceptHeader != null) {
@@ -420,6 +422,16 @@ class PaymentSession internal constructor(
         }
     }
 
+    /** Google Pay asked for with no screen to open its sheet from; nothing was charged. */
+    private fun noScreenForWallet() = GopaySDKException(
+        code = GopayErrorCodes.PAYMENT_PROCESSING_FAILED,
+        message = "Google Pay failed: the app has no screen in the foreground to open the sheet from"
+    )
+
+    /** The verification this session has in flight, for [close]; null when it has none. */
+    @Volatile
+    private var verification: PaymentVerificationBridge.Owner? = null
+
     /** Refuses a call on a closed session before anything goes out. */
     private fun ensureOpen() {
         if (paymentSecret == null) throw sessionClosed()
@@ -461,10 +473,16 @@ class PaymentSession internal constructor(
      *   [getChargeState] or wait for your backend's notification before offering a new payment;
      * - `ACTION_REQUIRED` with a non-empty `redirect_url` not seen before calls
      *   [AwaitChargeOptions.onActionRequired] and, in [ThreeDSMode.AUTOMATIC], runs
-     *   [handle3dsVerification] with [AwaitChargeOptions.activity] and
-     *   [AwaitChargeOptions.returnUrl], then polls on with the initial timeout started over from
-     *   the challenge's return. In [ThreeDSMode.MANUAL] the first reported address cancels the
-     *   timeout for good and the host runs the challenge. The same address is never run or
+     *   [handle3dsVerification] with [AwaitChargeOptions.returnUrl], on
+     *   [AwaitChargeOptions.activity] when one is given and in front, otherwise on the screen
+     *   that is, then polls on with the initial timeout started over from the challenge's
+     *   return. With no screen in front, the app in the background or its activity being
+     *   recreated, the call waits for one and keeps reading the charge meanwhile: the screen
+     *   coming up opens the challenge, and a charge that moved on in the meantime is handled as
+     *   the state it moved to. Neither the timeout nor any other limit runs during that wait:
+     *   the reads go on until the charge moves or the calling coroutine is cancelled. In
+     *   [ThreeDSMode.MANUAL] the first reported address cancels the timeout for good and the
+     *   host runs the challenge. The same address is never run or
      *   reported twice; an `ACTION_REQUIRED` without an address, with an empty one or with one
      *   already reported is waited out like `PROCESSING`, and can end in
      *   [GopayErrorCodes.PAYMENT_TIMEOUT] the same way.
@@ -492,8 +510,9 @@ class PaymentSession internal constructor(
      *
      * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] before anything is
      *         sent when [AwaitChargeOptions.intervalMs] or [AwaitChargeOptions.initialTimeoutMs]
-     *         is not positive, or when [ThreeDSMode.AUTOMATIC] is asked for without an
-     *         [AwaitChargeOptions.activity].
+     *         is not positive; [GopayErrorCodes.CONFIG_MISSING_CONTEXT], also before anything is
+     *         sent, when [ThreeDSMode.AUTOMATIC] is asked for without an
+     *         [AwaitChargeOptions.activity] and the SDK was initialized without a Context.
      */
     override suspend fun awaitChargeState(
         options: AwaitChargeOptions
@@ -509,19 +528,28 @@ class PaymentSession internal constructor(
         // one, and leaves it to the host when it is not.
         val verify: (suspend (String) -> Unit)? = when (options.threeDSMode) {
             ThreeDSMode.AUTOMATIC -> {
-                val activity = options.activity ?: throw GopaySDKException(
-                    code = GopayErrorCodes.VALIDATION_INVALID_INPUT,
-                    message = "awaitChargeState needs an activity to run the 3DS challenge in " +
-                        "ThreeDSMode.AUTOMATIC; pass one or use ThreeDSMode.MANUAL"
-                )
+                // Said now, not when the gateway asks for a challenge minutes into the wait.
+                ForegroundScreen.requireContextOr(options.activity, "awaitChargeState() in ThreeDSMode.AUTOMATIC")
                 val handler: suspend (String) -> Unit = { redirectUrl ->
-                    handle3dsVerification(activity, redirectUrl, options.returnUrl)
+                    // Does not wait for a screen itself: the poller does, and reads meanwhile.
+                    // Nor does it ask for the Context again: that was settled when the call
+                    // began, and an Activity that a rotation has replaced since is followed.
+                    val ran = reportErrors(paymentId) {
+                        verify(redirectUrl, options.returnUrl, options.activity, standalone = false)
+                    }
+                    if (!ran) throw ChargePoller.ScreenWentAway()
                 }
                 handler
             }
             ThreeDSMode.MANUAL -> null
         }
-        ChargePoller(options, read = { getChargeState() }, verify = verify).run()
+        ChargePoller(
+            options,
+            read = { getChargeState() },
+            verify = verify,
+            screenReady = { ForegroundScreen.screenFor(options.activity) != null },
+            awaitScreen = { ForegroundScreen.await(options.activity) }
+        ).run()
     }
 
     /** GET /payments/{payment_id}/qr-payment/info */
@@ -553,7 +581,7 @@ class PaymentSession internal constructor(
         ReplaceWith("chargeWithWallet(activity, browserData, challengePreference)")
     )
     suspend fun chargeWithGooglePay(
-        activity: Activity,
+        activity: Activity? = null,
         browserData: BrowserData? = null,
         challengePreference: ChallengePreference? = null
     ): ChargePaymentResponse = chargeWithWallet(activity, browserData, challengePreference)
@@ -567,6 +595,13 @@ class PaymentSession internal constructor(
      * success — inspect `action.redirectUrl` and call [handle3dsVerification] if 3DS is
      * required, then [getChargeState] for the final result.
      *
+     * The sheet opens from [activity] when one is given and in front, otherwise from the
+     * screen that is, which the SDK follows since `GopaySDK.initialize(context, config)`.
+     * Google Pay does not wait for a screen: with none in front, the app in the background say,
+     * the call fails at once with [GopayErrorCodes.PAYMENT_PROCESSING_FAILED] and nothing is
+     * charged, and so does a sheet that was started and did not appear within 30 seconds.
+     * Without an [activity] and without the Context, [GopayErrorCodes.CONFIG_MISSING_CONTEXT].
+     *
      * Only one Google Pay sheet can be visible per process; if another session has one in
      * progress this throws [GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS], and only then. The
      * user closing the sheet without paying throws [GopayErrorCodes.PAYMENT_CANCELLED]. A
@@ -576,18 +611,22 @@ class PaymentSession internal constructor(
      * other failure of the sheet or of its token throws
      * [GopayErrorCodes.PAYMENT_PROCESSING_FAILED] with the original as the cause.
      *
+     * @param activity Optional, as `presenting` is on iOS: the screen to open the sheet from.
      * @param browserData Optional 3DS browser data. Required by the spec on every card charge;
-     *                    when null, the SDK derives it from the [activity]'s resources. Override
-     *                    if you collected more accurate values elsewhere.
+     *                    when null, the SDK derives it from the device, see
+     *                    [BrowserData.deviceDefault]. Override if you collected more accurate
+     *                    values elsewhere.
      * @param challengePreference 3DS challenge preference forwarded to the gateway.
      */
     override suspend fun chargeWithWallet(
-        activity: Activity,
+        activity: Activity?,
         browserData: BrowserData?,
         challengePreference: ChallengePreference?
     ): ChargePaymentResponse = reportErrors(paymentId) {
         ensureOpen()
-        Telemetry.noteOrigin(activity)
+        ForegroundScreen.requireContextOr(activity, "chargeWithWallet()")
+        // Said before the wallet info is fetched: Google Pay does not wait for a screen.
+        ForegroundScreen.screenFor(activity) ?: throw noScreenForWallet()
         val info = getWalletInfo()
         val paymentRequestJson = GooglePayHelper.buildPaymentDataRequestJson(info)
         val env = GooglePayHelper.walletEnvironment(info)
@@ -603,16 +642,12 @@ class PaymentSession internal constructor(
         try {
             funnel?.begin()
             withContext(Dispatchers.Main) {
+                // Looked up again here: the screen may have gone while the info was on its way.
+                val screen = ForegroundScreen.screenFor(activity)
+                    ?: throw noScreenForWallet().also { funnel?.launchFailed(it) }
+                Telemetry.noteOrigin(screen)
                 try {
-                    activity.startActivity(
-                        Intent(activity, GooglePayLauncherActivity::class.java)
-                            .putExtra(
-                                GooglePayLauncherActivity.EXTRA_PAYMENT_REQUEST_JSON,
-                                paymentRequestJson
-                            )
-                            .putExtra(GooglePayLauncherActivity.EXTRA_ENVIRONMENT, env)
-                            .putExtra(GooglePayLauncherActivity.EXTRA_OWNER_ID, owner.id)
-                    )
+                    SdkScreens.startGooglePay(screen, paymentRequestJson, env, owner.id)
                 } catch (e: ActivityNotFoundException) {
                     // The SDK's own launcher is missing from the merged manifest: an integration
                     // problem, not Google Pay being unavailable, so not the code that hides the
@@ -624,6 +659,14 @@ class PaymentSession internal constructor(
                         cause = e
                     ).also { funnel?.launchFailed(it) }
                 }
+            }
+            // The system can drop the start without a word; nothing was charged, so say so
+            // rather than wait for a sheet that is not coming.
+            if (!GooglePayBridge.awaitShown(owner)) {
+                throw GopaySDKException(
+                    code = GopayErrorCodes.PAYMENT_PROCESSING_FAILED,
+                    message = "Google Pay failed: " + SdkScreens.notShown("the Google Pay screen")
+                ).also { funnel?.launchFailed(it) }
             }
             val tokenJson = deferred.await().getOrElse { cause ->
                 throw GooglePayBridge.failureFor(cause).also { funnel?.sheetFailed(it) }
@@ -662,114 +705,73 @@ class PaymentSession internal constructor(
     }
 
     /**
-     * Charges a previously tokenized card (`POST /cards/tokens`). Convenience wrapper over
-     * [charge] + [ChargePaymentRequest.cardToken] that fills in real device-derived [BrowserData]
-     * when the caller doesn't supply one.
+     * Charges a previously tokenized card (`POST /cards/tokens`), the shape the iOS SDK's
+     * `chargeWithCardToken` has: [charge] + [ChargePaymentRequest.cardToken], with
+     * device-derived [BrowserData] when the caller supplies none.
      *
      * @param browserData Optional 3DS browser data. Required by the spec on every card charge;
-     *                    when null, the SDK derives it from the [activity]'s resources. Override
-     *                    if you collected more accurate values elsewhere.
+     *                    when null, the SDK derives it from the device, see
+     *                    [BrowserData.deviceDefault]. Override if you collected more accurate
+     *                    values elsewhere.
      * @param challengePreference 3DS challenge preference forwarded to the gateway.
+     * @param activity Optional: the screen to derive the browser data from, when [browserData]
+     *                 is null. `chargeWithCardToken(activity, cardToken, …)`, the form of 2.x
+     *                 with the activity first, is the same call.
+     * @throws GopaySDKException [GopayErrorCodes.CONFIG_MISSING_CONTEXT] before anything is sent
+     *         when the browser data has to be derived and there is neither an [activity] nor
+     *         the Context of `GopaySDK.initialize(context, config)`.
      */
     override suspend fun chargeWithCardToken(
-        activity: Activity,
         cardToken: String,
         browserData: BrowserData?,
-        challengePreference: ChallengePreference?
-    ): ChargePaymentResponse = chargeCardToken(
-        cardToken = cardToken,
-        browserData = browserData ?: BrowserData.deviceDefault(activity),
-        challengePreference = challengePreference
-    )
-
-    /**
-     * Charges a previously tokenized card without an activity, the shape the iOS SDK's
-     * `chargeWithCardToken` has: [charge] + [ChargePaymentRequest.cardToken] with the
-     * [browserData] you collected. Unlike on iOS, [browserData] is required here: deriving the
-     * device's browser data needs a `Context`, so pass [BrowserData.deviceDefault] yourself or
-     * use the overload with an activity.
-     *
-     * @param browserData 3DS browser data, required by the spec on every card charge.
-     * @param challengePreference 3DS challenge preference forwarded to the gateway.
-     */
-    override suspend fun chargeWithCardToken(
-        cardToken: String,
-        browserData: BrowserData,
-        challengePreference: ChallengePreference?
-    ): ChargePaymentResponse = chargeCardToken(
-        cardToken = cardToken,
-        browserData = browserData,
-        challengePreference = challengePreference
-    )
-
-    private suspend fun chargeCardToken(
-        cardToken: String,
-        browserData: BrowserData,
-        challengePreference: ChallengePreference?
-    ): ChargePaymentResponse = charge(
-        ChargePaymentRequest.cardToken(
-            cardToken = cardToken,
-            browserData = browserData,
-            challengePreference = challengePreference
+        challengePreference: ChallengePreference?,
+        activity: Activity?
+    ): ChargePaymentResponse = reportErrors(paymentId) {
+        ensureOpen()
+        charge(
+            ChargePaymentRequest.cardToken(
+                cardToken = cardToken,
+                browserData = browserData ?: BrowserData.deviceDefault(activity),
+                challengePreference = challengePreference
+            )
         )
-    )
+    }
 
     /**
      * Charges directly with a JWE-encrypted card, skipping the server-side `POST /cards/tokens`
-     * round-trip. Convenience wrapper over [charge] + [ChargePaymentRequest.encryptedCard] that
-     * fills in real device-derived [BrowserData] when the caller doesn't supply one.
+     * round-trip, the shape the iOS SDK's `chargeWithEncryptedCard` has: [charge] +
+     * [ChargePaymentRequest.encryptedCard], with device-derived [BrowserData] when the caller
+     * supplies none.
      *
      * @param payload The JWE compact string from [cz.gopay.sdk.GopaySDK.encryptCardData] or
      *                [cz.gopay.sdk.GopaySDK.submitCardForm].
      * @param browserData Optional 3DS browser data. Required by the spec on every card charge;
-     *                    when null, the SDK derives it from the [activity]'s resources. Override
-     *                    if you collected more accurate values elsewhere.
+     *                    when null, the SDK derives it from the device, see
+     *                    [BrowserData.deviceDefault]. Override if you collected more accurate
+     *                    values elsewhere.
      * @param challengePreference 3DS challenge preference forwarded to the gateway.
+     * @param activity Optional: the screen to derive the browser data from, when [browserData]
+     *                 is null. `chargeWithEncryptedCard(activity, payload, …)`, the form of 2.x
+     *                 with the activity first, is the same call.
+     * @throws GopaySDKException [GopayErrorCodes.CONFIG_MISSING_CONTEXT] before anything is sent
+     *         when the browser data has to be derived and there is neither an [activity] nor
+     *         the Context of `GopaySDK.initialize(context, config)`.
      */
     override suspend fun chargeWithEncryptedCard(
-        activity: Activity,
         payload: String,
         browserData: BrowserData?,
-        challengePreference: ChallengePreference?
-    ): ChargePaymentResponse = chargeEncryptedCard(
-        payload = payload,
-        browserData = browserData ?: BrowserData.deviceDefault(activity),
-        challengePreference = challengePreference
-    )
-
-    /**
-     * Charges a JWE-encrypted card without an activity, the shape the iOS SDK's
-     * `chargeWithEncryptedCard` has: [charge] + [ChargePaymentRequest.encryptedCard] with the
-     * [browserData] you collected. Unlike on iOS, [browserData] is required here: deriving the
-     * device's browser data needs a `Context`, so pass [BrowserData.deviceDefault] yourself or
-     * use the overload with an activity.
-     *
-     * @param payload The JWE compact string from [cz.gopay.sdk.GopaySDK.encryptCardData] or
-     *                [cz.gopay.sdk.GopaySDK.submitCardForm].
-     * @param browserData 3DS browser data, required by the spec on every card charge.
-     * @param challengePreference 3DS challenge preference forwarded to the gateway.
-     */
-    override suspend fun chargeWithEncryptedCard(
-        payload: String,
-        browserData: BrowserData,
-        challengePreference: ChallengePreference?
-    ): ChargePaymentResponse = chargeEncryptedCard(
-        payload = payload,
-        browserData = browserData,
-        challengePreference = challengePreference
-    )
-
-    private suspend fun chargeEncryptedCard(
-        payload: String,
-        browserData: BrowserData,
-        challengePreference: ChallengePreference?
-    ): ChargePaymentResponse = charge(
-        ChargePaymentRequest.encryptedCard(
-            payload = payload,
-            browserData = browserData,
-            challengePreference = challengePreference
+        challengePreference: ChallengePreference?,
+        activity: Activity?
+    ): ChargePaymentResponse = reportErrors(paymentId) {
+        ensureOpen()
+        charge(
+            ChargePaymentRequest.encryptedCard(
+                payload = payload,
+                browserData = browserData ?: BrowserData.deviceDefault(activity),
+                challengePreference = challengePreference
+            )
         )
-    )
+    }
 
     /**
      * Launches a managed WebView to complete a 3DS challenge and suspends until the user finishes
@@ -777,9 +779,24 @@ class PaymentSession internal constructor(
      * non-null `action.redirectUrl`. After this returns, call [getChargeState] to read the
      * final charge result.
      *
+     * The challenge opens from [activity] when one is given and in front, otherwise from the
+     * screen that is, which the SDK follows since `GopaySDK.initialize(context, config)`. With
+     * no screen in front, the app in the background or its activity being recreated, the call
+     * waits for one: a rotation or a return from the background needs nothing from the app.
+     * Nothing limits that wait. It ends when a screen comes to the front, when the calling
+     * coroutine is cancelled, or when the session is closed, which ends a verification whose
+     * challenge is not on screen yet with [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] and
+     * leaves the next one free to start. A challenge screen that was started and did not
+     * appear within 30 seconds ends the call with
+     * [GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE]. Without an [activity] and without the
+     * Context, the call is refused with [GopayErrorCodes.CONFIG_MISSING_CONTEXT] before anything
+     * opens. `handle3dsVerification(activity, redirectUrl, returnUrl)`, the form of 2.x with the
+     * activity first, is the same call.
+     *
      * Works after [close] too: the challenge runs in the WebView and sends no request on the
-     * session, so a closed session does not stop it, on either platform. Only the
-     * [getChargeState] that follows needs a live session.
+     * session, so a call on a closed session still runs, and a challenge that is on screen when
+     * the session is closed stays, on either platform. Only the [getChargeState] that follows
+     * needs a live session.
      *
      * Only one verification can run per process at a time;
      * [GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS] is thrown if another is in flight.
@@ -804,12 +821,34 @@ class PaymentSession internal constructor(
      *        waits for [cz.gopay.sdk.GopaySDK.CHARGE_RETURN_URL] instead, and then the payment
      *        has to have been created with that address. It should carry no fragment (`#…`):
      *        what the gateway appends lands in front of it, and the address no longer matches.
+     * @param activity optional, as `presenting` is on iOS: the screen to open the challenge from.
      */
     override suspend fun handle3dsVerification(
-        activity: Activity,
         redirectUrl: String,
-        returnUrl: String?
+        returnUrl: String?,
+        activity: Activity?
     ): Unit = reportErrors(paymentId) {
+        verify(redirectUrl, returnUrl, activity, standalone = true)
+    }
+
+    /**
+     * The verification behind [handle3dsVerification].
+     *
+     * @param standalone true for [handle3dsVerification] itself: the call checks that it has a
+     *        Context or an Activity to open from, and waits for a screen. The polling loop of
+     *        [awaitChargeState] passes false. It made that check once, when its call began, and
+     *        an Activity a rotation has replaced since is followed rather than refused; and it
+     *        waits for the screen itself, reading the charge.
+     * @return false only when not [standalone], when there was no screen to open from and
+     *         nothing was opened; true once the challenge was answered.
+     */
+    private suspend fun verify(
+        redirectUrl: String,
+        returnUrl: String?,
+        activity: Activity?,
+        standalone: Boolean
+    ): Boolean {
+        val waitForScreen = standalone
         // Checked here rather than in the activity: the WebView is never asked to decide about
         // the URL it is handed, so a scheme it cannot load would surface only as an error with
         // nothing to attribute it to, and the caller would wait for a challenge that never
@@ -821,25 +860,44 @@ class PaymentSession internal constructor(
                     "http(s) address the challenge WebView can open"
             )
         }
+        // Read before the bridge is claimed, for the check below.
+        val closedBefore = paymentSecret == null
+        if (standalone) ForegroundScreen.requireContextOr(activity, "handle3dsVerification()")
         val deferred = CompletableDeferred<Boolean>()
         val owner = PaymentVerificationBridge.register(deferred)
             ?: throw GopaySDKException(
                 code = GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS,
                 message = "A payment verification is already in progress"
             )
-        // The one departure that is part of a payment, told apart from the session's close.
-        Telemetry.noteOrigin(activity)
-        telemetry?.redirect(paymentId, redirectUrl)
+        // For close(), which ends a verification whose challenge is not on screen yet. A close
+        // that ran between the claim above and this line did not see the verification, so it is
+        // ended here; a session that was closed before the call began keeps running it.
+        verification = owner
+        if (!closedBefore && paymentSecret == null) {
+            PaymentVerificationBridge.releaseUnshown(owner, sessionClosed())
+        }
         try {
-            withContext(Dispatchers.Main) {
-                activity.startActivity(
-                    Intent(activity, PaymentVerificationActivity::class.java)
-                        .putExtra(PaymentVerificationActivity.EXTRA_REDIRECT_URL, redirectUrl)
-                        .putExtra(PaymentVerificationActivity.EXTRA_RETURN_URL, returnUrl)
-                )
+            while (true) {
+                // Waits for a screen to open on, for as long as the caller does; the bridge is
+                // held meanwhile, so a second verification is told one is in progress.
+                if (waitForScreen) awaitScreenUnlessEnded(activity, deferred)
+                val started = withContext(Dispatchers.Main) {
+                    // Taken on the main thread, where a screen cannot pause in between; one
+                    // that went in the hop here is waited for again.
+                    val screen = ForegroundScreen.screenFor(activity) ?: return@withContext false
+                    // The one departure that is part of a payment, told apart from the session's close.
+                    Telemetry.noteOrigin(screen)
+                    telemetry?.redirect(paymentId, redirectUrl)
+                    SdkScreens.startVerification(screen, redirectUrl, returnUrl, owner.id)
+                    true
+                }
+                if (started) break
+                if (!waitForScreen) return false
             }
             PaymentVerificationBridge.await(owner, deferred)
+            return true
         } finally {
+            if (verification === owner) verification = null
             // However the call ends, the challenge must not outlive it: dismiss closes it if it is
             // still up and releases the bridge. Scoped to this verification, so a release landing
             // after the next one has claimed the bridge leaves that one alone.
@@ -848,17 +906,42 @@ class PaymentSession internal constructor(
     }
 
     /**
+     * Waits for a screen to open the challenge from, unless the verification ends first:
+     * [close] ends one that waits here, and the wait then throws what it was ended with.
+     */
+    private suspend fun awaitScreenUnlessEnded(activity: Activity?, deferred: CompletableDeferred<Boolean>) {
+        coroutineScope {
+            val screen = async { ForegroundScreen.await(activity) }
+            try {
+                select<Unit> {
+                    screen.onAwait { }
+                    deferred.onAwait { }
+                }
+            } finally {
+                screen.cancel()
+            }
+        }
+    }
+
+    /**
      * Wipes the in-memory `payment_secret` and JWT, and unregisters this session from the SDK
      * registry. Idempotent. Afterwards every method that sends a request on the session throws
-     * [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] before it sends anything, and so does a call already in flight that needs to re-authenticate: a token that
+     * [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] before it sends anything, and so does a call
+     * already in flight that needs to re-authenticate: a token that
      * arrives after the close is not kept. Only [handle3dsVerification], which sends nothing on
      * the session, still runs. The iOS `PaymentSession` does the same.
+     *
+     * A verification of this session whose challenge is not on screen yet, because the call
+     * still waits for a screen to open it from, ends with
+     * [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] too, so the next payment can start its own.
+     * A challenge the user already sees stays until it is answered or closed.
      */
     override fun close() {
         if (paymentSecret == null) return
         paymentSecret = null
         token = null
         tokenExpiresAt = 0
+        verification?.let { PaymentVerificationBridge.releaseUnshown(it, sessionClosed()) }
         // Nothing waits on it; cancelled by the close, it reports nothing.
         initSession?.cancelForClose()
         onClose(this)
