@@ -32,9 +32,8 @@ import kotlinx.coroutines.CancellationException
  * Each tap of the pay button starts that sequence from the top with a brand-new payment — a
  * payment is single-use, so a retry after a decline needs a new one.
  *
- * Plain Compose state holder rather than an AAC `ViewModel`: the app module has no
- * `lifecycle-viewmodel-compose` dependency, and `SDKTestActivity` uses the same `remember`-scoped
- * pattern. State is therefore lost on configuration change, exactly like the existing console.
+ * A plain state holder. [CheckoutHolder], a `ViewModel` of the checkout Activity, keeps it, so the
+ * state and a payment under way survive a rotation; they do not survive the death of the process.
  */
 @Stable
 class CheckoutController {
@@ -82,6 +81,12 @@ class CheckoutController {
         val isSuccess: Boolean get() = state == ChargeState.SUCCEEDED
         val isFailure: Boolean get() = state == ChargeState.FAILED
         val isPending: Boolean get() = !isSuccess && !isFailure
+
+        /**
+         * The charge went out and its state could not be read, a network error above all: not
+         * the same as a charge the bank has not confirmed yet, and the result screen says so.
+         */
+        val isUnread: Boolean get() = isPending && message != null
     }
 
     val cart = DemoCart.sample
@@ -121,6 +126,19 @@ class CheckoutController {
             Method.GOOGLE_PAY -> "Pay with Google Pay"
             else -> "Pay ${cart.formatted(cart.total)}"
         }
+
+    /**
+     * Picks a payment method. A banner belongs to the attempt with the method before: "Payment
+     * cancelled" after a closed Google Pay sheet says nothing about the card the shopper turns
+     * to next, so it goes when the method changes, and so does the message under the card form.
+     */
+    fun select(method: Method) {
+        if (method != selectedMethod) {
+            banner = null
+            cardFormError = null
+        }
+        selectedMethod = method
+    }
 
     fun dismissQr() {
         qrDetails = null

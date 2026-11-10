@@ -68,17 +68,8 @@ fun CheckoutResultScreen(
         outcome.isFailure -> Icons.Filled.Warning
         else -> Icons.Filled.Schedule
     }
-    val title = when {
-        outcome.isSuccess -> "Payment complete"
-        outcome.isFailure -> "Payment failed"
-        else -> "Payment pending"
-    }
-    val subtitle = when {
-        outcome.isSuccess -> "Thanks! We've emailed your receipt and the order is on its way."
-        outcome.isFailure -> outcome.message ?: "The bank declined the charge. No money was taken."
-        else -> "We polled the gateway and the bank hasn't confirmed yet. A real shop would also " +
-            "get the final state on its notification URL."
-    }
+    val title = resultTitle(outcome)
+    val subtitle = resultSubtitle(outcome)
 
     Column(
         modifier = Modifier
@@ -212,6 +203,24 @@ private fun ReceiptRow(label: String, value: String, valueColor: Color = Checkou
             textAlign = TextAlign.End
         )
     }
+}
+
+/** The heading of the result screen. The iOS demo shows the same texts. */
+internal fun resultTitle(outcome: CheckoutController.Outcome): String = when {
+    outcome.isSuccess -> "Payment complete"
+    outcome.isFailure -> "Payment failed"
+    outcome.isUnread -> "Couldn't check the payment"
+    else -> "Payment pending"
+}
+
+/** The line under the heading. A state that could not be read is not a bank that has not answered. */
+internal fun resultSubtitle(outcome: CheckoutController.Outcome): String = when {
+    outcome.isSuccess -> "Thanks! We've emailed your receipt and the order is on its way."
+    outcome.isFailure -> outcome.message ?: "The bank declined the charge. No money was taken."
+    outcome.isUnread -> "The payment was sent, but we couldn't read its state, so we don't know " +
+        "yet whether it went through. Refresh before paying again."
+    else -> "We polled the gateway and the bank hasn't confirmed yet. A real shop would also " +
+        "get the final state on its notification URL."
 }
 
 private fun friendlyInputType(raw: String): String = when (raw) {

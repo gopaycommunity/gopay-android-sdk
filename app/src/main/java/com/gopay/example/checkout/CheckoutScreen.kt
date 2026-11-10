@@ -39,7 +39,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,9 +58,11 @@ import kotlinx.coroutines.launch
  * drives the actual SDK call (see [CheckoutController]).
  */
 @Composable
-fun CheckoutScreen(onClose: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    val model = remember { CheckoutController() }
+fun CheckoutScreen(holder: CheckoutHolder, onClose: () -> Unit) {
+    // Both from the holder, not from the composition: a rotation recomposes this screen in a new
+    // Activity, and the payment under way and its result have to be there when it does.
+    val scope = holder.scope
+    val model = holder.controller
 
     val outcome = model.outcome
     if (outcome != null) {
@@ -286,7 +287,7 @@ private fun PaymentMethods(model: CheckoutController) {
                 method = method,
                 isSelected = model.selectedMethod == method,
                 enabled = !model.isBusy,
-                onSelect = { model.selectedMethod = method }
+                onSelect = { model.select(method) }
             ) {
                 if (method == CheckoutController.Method.CARD) {
                     Row(modifier = Modifier.fillMaxWidth()) {
