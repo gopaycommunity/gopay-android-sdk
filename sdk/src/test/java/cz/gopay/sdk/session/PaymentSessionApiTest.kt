@@ -74,7 +74,7 @@ class PaymentSessionApiTest {
         amount = 100,
         currency = Currency.CZK,
         customer = PaymentCustomer(email = "a@b.cz"),
-        gwUrl = "https://gw.example/1",
+        gatewayUrl = "https://gw.example/1",
         charge = charge
     )
 

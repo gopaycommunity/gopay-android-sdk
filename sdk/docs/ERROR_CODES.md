@@ -2,8 +2,6 @@
 
 This document provides a comprehensive reference for all error codes used in the Gopay SDK. Each error code follows the pattern `DOMAIN_XXX` where `DOMAIN` represents the functional area and `XXX` is a unique 3-digit identifier.
 
-3.0 removed the codes the SDK never threw; the codes below are the whole contract, the same on both platforms.
-
 The codes are a **shared cross-platform contract**: they mirror the iOS SDK's `GopaySDKError.Code`
 so both platforms report the same code for the same condition. Never add, rename, or repurpose a
 code on one platform alone.
@@ -12,7 +10,8 @@ Every code the SDK throws also says whether **a charge may exist** on the gatewa
 whether the call is **safe to retry**. A charge is created by `charge` and the `chargeWith*` calls;
 `awaitChargeState`, `handle3dsVerification` and the reads come after one. Where the answer is "read
 the charge state first", ask your backend or `getChargeState()` before charging again, because the
-gateway may have created the charge even though the answer never reached the device.
+gateway may have created the charge even though the answer never reached the device. 3.0 removed
+the codes the SDK never threw.
 
 ## The `errorCallback` rule
 

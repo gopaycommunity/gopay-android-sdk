@@ -42,7 +42,7 @@ class ResponseShapeTest {
         val payment = payments.fromJson(payment())!!
 
         assertEquals("o-1", payment.orderNumber)
-        assertEquals("https://gw.sandbox.gopay.com/gw/v3/x", payment.gwUrl)
+        assertEquals("https://gw.sandbox.gopay.com/gw/v3/x", payment.gatewayUrl)
         assertEquals("a@b.cz", payment.customer.email)
         assertNull(payment.charge)
         assertNull(payment.paymentSecret)

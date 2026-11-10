@@ -31,12 +31,12 @@ class FakePaymentSessionTest {
 
     /** What an app does with a session: reads the outcome and says what to show. */
     class Checkout(private val session: PaymentSessionApi) {
-        suspend fun resultMessage(): String = try {
+        suspend fun resultText(): String = try {
             when (session.getPaymentOutcome().outcome) {
                 PaymentOutcome.Outcome.PAID -> "Paid"
                 PaymentOutcome.Outcome.DECLINED -> "Declined"
                 PaymentOutcome.Outcome.NOT_CHARGED -> "Not charged"
-                PaymentOutcome.Outcome.UNDECIDED -> "Still processing"
+                PaymentOutcome.Outcome.UNDECIDED -> "Waiting"
             }
         } catch (e: GopaySDKException) {
             if (e.code == GopayErrorCodes.PAYMENT_NOT_FOUND) "No such payment" else "Try again"
@@ -84,15 +84,15 @@ class FakePaymentSessionTest {
         amount = 100,
         currency = Currency.CZK,
         customer = PaymentCustomer(email = "customer@example.com"),
-        gwUrl = "https://gw.sandbox.gopay.com/gw/v3/3310782449",
+        gatewayUrl = "https://gw.sandbox.gopay.com/gw/v3/3310782449",
         charge = charge?.let { ChargePaymentResponse(id = "charge-1", state = it) }
     )
 
     @Test
-    fun `a paid payment shows as paid`() = runBlocking {
+    fun `a paid payment reads as paid`() = runBlocking {
         val paid = PaymentOutcome(PaymentOutcome.Outcome.PAID, payment(PaymentState.PAID, ChargeState.SUCCEEDED))
 
-        assertEquals("Paid", Checkout(FakeSession { paid }).resultMessage())
+        assertEquals("Paid", Checkout(FakeSession { paid }).resultText())
         assertEquals("the charge is the payment's own", ChargeState.SUCCEEDED, paid.charge?.state)
     }
 
@@ -100,7 +100,7 @@ class FakePaymentSessionTest {
     fun `a declined payment shows as declined`() = runBlocking {
         val declined = PaymentOutcome(PaymentOutcome.Outcome.DECLINED, payment(PaymentState.CANCELED, ChargeState.FAILED))
 
-        assertEquals("Declined", Checkout(FakeSession { declined }).resultMessage())
+        assertEquals("Declined", Checkout(FakeSession { declined }).resultText())
     }
 
     @Test
@@ -109,6 +109,6 @@ class FakePaymentSessionTest {
             throw GopaySDKException(code = GopayErrorCodes.PAYMENT_NOT_FOUND, message = "HTTP 404")
         }
 
-        assertEquals("No such payment", Checkout(session).resultMessage())
+        assertEquals("No such payment", Checkout(session).resultText())
     }
 }

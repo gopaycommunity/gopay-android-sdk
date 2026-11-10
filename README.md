@@ -1441,6 +1441,7 @@ the new symbol, so the renames are fix-its.
 | `getHttpStatusCode()` | `httpStatus` |
 | `CardFormValidationDisplay` | `PaymentCardFormValidationDisplay` |
 | `PaymentCreateResponse` | `PaymentDetails` |
+| `gwUrl` of the payment | `gatewayUrl` |
 
 The old names are deprecated aliases: they do exactly what the new names do. They leave in 4.0.
 
@@ -1473,10 +1474,11 @@ where one is named.
 
 What has to change before the app builds:
 
-- `Environment` is `GopayEnvironment`; an alias cannot cover `Environment.SANDBOX`.
+- `Environment` is `GopayEnvironment`; an alias cannot cover `Environment.SANDBOX`,
+  `Environment.PRODUCTION` or `Environment.DEVELOPMENT(url)`.
 - `QrPaymentDetails.recipient` is no longer optional.
-- Three forms an alias cannot reach: `GopayConfig.copy(debug = …)`, `GopayConfig(…)` with `debug`
-  named after more than the environment was passed by position, and
+- Three more shapes an alias cannot cover: `GopayConfig.copy(debug = …)`, `debug` named after
+  more than one positional argument of the `GopayConfig` constructor, and
   `DEVELOPMENT(customUrl = …)` with the argument named. Use the new names.
 - Code that tells an empty card form from an invalid one by the error's message: compare the
   code. An empty form is `VALIDATION_008`, an invalid one `VALIDATION_007`.
@@ -1760,46 +1762,43 @@ return any answer; `PaymentOutcome` takes the `outcome` and the `payment`, and i
 still the one in the payment.
 
 ```kotlin
-// Your code takes the interface; in the app it gets the session startPaymentSession returned.
+// The app's code knows the session only as the interface.
 class Checkout(private val session: PaymentSessionApi) {
-    suspend fun resultMessage(): String = when (session.getPaymentOutcome().outcome) {
+    suspend fun resultText(): String = when (session.getPaymentOutcome().outcome) {
         PaymentOutcome.Outcome.PAID -> "Paid"
         PaymentOutcome.Outcome.DECLINED -> "Declined"
         PaymentOutcome.Outcome.NOT_CHARGED -> "Not charged"
-        PaymentOutcome.Outcome.UNDECIDED -> "Still processing"
+        PaymentOutcome.Outcome.UNDECIDED -> "Waiting"
     }
 }
 
-// In a test it gets a session of your own.
-class FakeSession(private val outcome: PaymentOutcome) : PaymentSessionApi {
-    override val paymentId = outcome.payment.id
-    override suspend fun getPaymentOutcome() = outcome
-    override suspend fun getStatus() = outcome.payment
-    // … the other members, each one line; throw from the ones the test does not call
+// In the app:  Checkout(GopaySDK.getInstance().startPaymentSession(...))
+// In a test:   Checkout(FakeSession())
+class FakeSession : PaymentSessionApi {
+    override val paymentId = "p1"
+
+    override suspend fun getPaymentOutcome() = PaymentOutcome(
+        outcome = PaymentOutcome.Outcome.PAID,
+        payment = PaymentDetails(
+            id = paymentId, orderNumber = "ORD-1", state = PaymentState.PAID, amount = 1000,
+            currency = Currency.CZK, customer = PaymentCustomer(email = "jan@example.com"),
+            gatewayUrl = "https://gw.example/p1",
+            charge = ChargePaymentResponse(id = "ch1", state = ChargeState.SUCCEEDED)
+        )
+    )
+
+    // …the other calls of the interface, each returning what the test needs.
 }
 
 @Test
-fun `a paid payment shows as paid`() = runBlocking {
-    val payment = PaymentDetails(
-        id = "3310782449",
-        orderNumber = "order-1",
-        state = PaymentState.PAID,
-        amount = 100,
-        currency = Currency.CZK,
-        customer = PaymentCustomer(email = "customer@example.com"),
-        gwUrl = "https://gw.sandbox.gopay.com/gw/v3/3310782449",
-        charge = ChargePaymentResponse(id = "charge-1", state = ChargeState.SUCCEEDED)
-    )
-    val session = FakeSession(PaymentOutcome(PaymentOutcome.Outcome.PAID, payment))
-
-    assertEquals("Paid", Checkout(session).resultMessage())
+fun `a paid payment reads as paid`() = runBlocking {
+    assertEquals("Paid", Checkout(FakeSession()).resultText())
 }
 ```
 
-A fake throws what the session throws by constructing the exception,
-`GopaySDKException(code = GopayErrorCodes.PAYMENT_NOT_FOUND, message = "HTTP 404")`. The demo
-app's `FakePaymentSessionTest` is this example in full, with every member of the interface. A
-mocking library works on the interface as well.
+The SDK's own tests do the same in
+`app/src/test/java/com/gopay/example/FakePaymentSessionTest.kt`, with a fake that implements the
+whole interface.
 
 ## Releasing
 

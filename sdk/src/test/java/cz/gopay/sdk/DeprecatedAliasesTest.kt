@@ -13,6 +13,7 @@ import cz.gopay.sdk.model.PaymentCreateResponse
 import cz.gopay.sdk.model.PaymentCustomer
 import cz.gopay.sdk.model.PaymentDetails
 import cz.gopay.sdk.model.PaymentState
+import cz.gopay.sdk.modules.network.NetworkModule
 import cz.gopay.sdk.ui.CardFormValidationDisplay
 import cz.gopay.sdk.ui.PaymentCardFormValidationDisplay
 import org.junit.Assert.assertEquals
@@ -29,7 +30,8 @@ import org.junit.Test
  * What an alias cannot cover is not here, because it does not compile: `Environment.SANDBOX`
  * and `Environment.DEVELOPMENT(…)` (Kotlin does not reach nested classes through a type alias),
  * `GopayConfig.copy(debug = …)`, `GopayConfig(environment, clientId, shareableKey, debug = …)`
- * with more than the environment given by position, and `DEVELOPMENT(customUrl = …)`.
+ * with more than the environment given by position, `DEVELOPMENT(customUrl = …)`, and
+ * `gwUrl = …` as a named argument of the `PaymentDetails` constructor or of its `copy`.
  */
 @Suppress("DEPRECATION")
 class DeprecatedAliasesTest {
@@ -139,11 +141,31 @@ class DeprecatedAliasesTest {
             amount = 100,
             currency = Currency.CZK,
             customer = PaymentCustomer(email = "a@b.cz"),
-            gwUrl = "https://gw.example/1"
+            gatewayUrl = "https://gw.example/1"
         )
 
         val new: PaymentDetails = old
         assertEquals(new, old)
+    }
+
+    @Test
+    fun `gwUrl is gatewayUrl`() {
+        val payment = PaymentDetails(
+            id = "1",
+            orderNumber = "o-1",
+            state = PaymentState.CREATED,
+            amount = 100,
+            currency = Currency.CZK,
+            customer = PaymentCustomer(email = "a@b.cz"),
+            gatewayUrl = "https://gw.example/1"
+        )
+
+        assertEquals("https://gw.example/1", payment.gwUrl)
+        assertEquals(payment.gatewayUrl, payment.gwUrl)
+        // The alias is not a second field: the JSON still has the one `gw_url`.
+        val json = NetworkModule.moshi.adapter(PaymentDetails::class.java).toJson(payment)
+        assertTrue(json, "\"gw_url\":\"https://gw.example/1\"" in json)
+        assertTrue(json, "gwUrl" !in json && "gatewayUrl" !in json)
     }
 
     @Test

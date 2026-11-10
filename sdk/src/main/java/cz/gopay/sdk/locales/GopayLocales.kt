@@ -353,7 +353,8 @@ object GopayLocales {
     private var defaultLocaleCode: String? = null
 
     /**
-     * Registers (or overrides) a locale under [code]. A registered locale shadows any built-in of
+     * Registers (or overrides) a locale under [code]: the code first, then the strings, as
+     * `register(_:strings:)` on iOS takes them. A registered locale shadows any built-in of
      * the same code. Codes are matched case-insensitively on the language part only.
      */
     fun register(code: String, strings: GopayLocaleStrings) {

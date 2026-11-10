@@ -94,12 +94,17 @@ data class PaymentDetails(
     val amount: Long,
     val currency: Currency,
     val customer: PaymentCustomer,
+    /** The address of the payment on the GoPay gateway, `gw_url`; `gatewayUrl` on iOS too. */
     @Json(name = "gw_url")
-    val gwUrl: String,
+    val gatewayUrl: String,
     val charge: ChargePaymentResponse? = null,
     @Json(name = "payment_secret")
     val paymentSecret: String? = null
-)
+) {
+    /** The 2.x name of [gatewayUrl]. */
+    @Deprecated("Renamed to gatewayUrl, the name the iOS SDK uses", ReplaceWith("gatewayUrl"))
+    val gwUrl: String get() = gatewayUrl
+}
 
 /** The 2.x name of [PaymentDetails]. */
 @Deprecated("Renamed to PaymentDetails, the name the iOS SDK uses", ReplaceWith("PaymentDetails"))
