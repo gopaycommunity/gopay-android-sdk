@@ -30,6 +30,7 @@ sealed class GopayEnvironment(
      */
     object PRODUCTION : GopayEnvironment("https://gate.gopay.com/gp-gw/api/4.0/") {
         override val telemetryUrl: String = "https://lx.gopay.com/events"
+        override fun toString(): String = "PRODUCTION"
     }
 
     /**
@@ -39,6 +40,7 @@ sealed class GopayEnvironment(
      */
     object SANDBOX : GopayEnvironment("https://gw.sandbox.gopay.com/gp-gw/api/4.0/") {
         override val telemetryUrl: String = "https://lx.sandbox.gopay.com/events"
+        override fun toString(): String = "SANDBOX"
     }
 
     /**
@@ -56,6 +58,9 @@ sealed class GopayEnvironment(
      *         empty, does not start with `http://` or `https://`, or carries credentials.
      */
     class DEVELOPMENT(baseUrl: String) : GopayEnvironment(validated(baseUrl)) {
+        /** The name and the address, which the constructor has refused credentials in. */
+        override fun toString(): String = "DEVELOPMENT($baseUrl)"
+
         companion object {
             /**
              * Creates a DEVELOPMENT environment with a custom endpoint URL.

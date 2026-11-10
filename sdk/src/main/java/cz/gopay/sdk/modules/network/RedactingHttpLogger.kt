@@ -17,7 +17,10 @@ import okhttp3.logging.HttpLoggingInterceptor
  * - `payload`, the card JWE, which the GoPay guide says must not be logged
  *   (Security and credentials, Card data encryption);
  * - `signedMessage`, the encrypted Google Pay payment data, which the GoPay guide calls single
- *   use like the JWE (Google Pay).
+ *   use like the JWE (Google Pay);
+ * - `email` and `phone_number`, the customer's contacts in the answer of
+ *   `GET /payments/{payment_id}`: nobody can charge with them, but they are a person's data and
+ *   a debug log gets copied into tickets.
  */
 internal class RedactingHttpLogger(
     private val sink: HttpLoggingInterceptor.Logger = HttpLoggingInterceptor.Logger.DEFAULT
@@ -34,7 +37,8 @@ internal class RedactingHttpLogger(
         private val SECRET_JSON_VALUE =
             // Possessive, so a long escaped value cannot make the matcher backtrack.
             Regex(
-                "(\"(?:payment_secret|access_token|card_token|payload|signedMessage)\"\\s*+:\\s*+)" +
+                "(\"(?:payment_secret|access_token|card_token|payload|signedMessage|email|phone_number)\"" +
+                    "\\s*+:\\s*+)" +
                     "\"(?:[^\"\\\\]++|\\\\.)*+\""
             )
 

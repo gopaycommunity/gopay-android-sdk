@@ -1,5 +1,8 @@
 package cz.gopay.sdk.ui
 
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -15,6 +18,20 @@ import cz.gopay.sdk.ui.utils.ExpirationDateInputValidator
 
 /** The three inputs of the card form. */
 internal enum class CardField { CARD_NUMBER, EXPIRATION, CVV }
+
+/**
+ * The keyboard of a card form field. All three are numeric. The confirm key of the keyboard
+ * moves on to the next field from the card number and from the expiry, the order they are filled
+ * in, and closes the keyboard from the CVV, the last one; the text field acts on each of these
+ * actions on its own. The CVV asks for `NumberPassword`: the same layout, and it tells the
+ * keyboard not to cache or learn what is typed, which a keyboard may do with plain `Number`.
+ */
+internal fun CardField.keyboardOptions(): KeyboardOptions = when (this) {
+    CardField.CARD_NUMBER, CardField.EXPIRATION ->
+        KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next)
+    CardField.CVV ->
+        KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done)
+}
 
 /** What the autofill framework is told a card form field holds. */
 internal enum class CardFieldAutofill { NONE, CARD_NUMBER, EXPIRATION_DATE }

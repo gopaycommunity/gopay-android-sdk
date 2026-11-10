@@ -1,5 +1,6 @@
 package cz.gopay.sdk.config
 
+
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
@@ -108,5 +109,17 @@ class GopayEnvironmentTest {
         val env = GopayEnvironment.DEVELOPMENT("https://gw.example.com/api/v@1")
 
         assertEquals("https://gw.example.com/api/v@1/", env.baseUrl)
+    }
+
+    @Test
+    fun `an environment prints its name, and a development one its address`() {
+        assertEquals("SANDBOX", GopayEnvironment.SANDBOX.toString())
+        assertEquals("PRODUCTION", GopayEnvironment.PRODUCTION.toString())
+        assertEquals(
+            "DEVELOPMENT(https://localhost:8443/api/)",
+            GopayEnvironment.DEVELOPMENT("https://localhost:8443/api").toString()
+        )
+        // What a host logs: the config names its environment rather than an object's hash.
+        assertTrue(GopayConfig(GopayEnvironment.SANDBOX).toString().contains("environment=SANDBOX,"))
     }
 }

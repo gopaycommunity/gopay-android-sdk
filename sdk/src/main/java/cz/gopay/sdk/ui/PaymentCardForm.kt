@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -22,7 +21,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import cz.gopay.sdk.GopaySDK
@@ -382,7 +380,7 @@ fun PaymentCardForm(
                 error = errors.cardNumber ?: fields.cardNumber.errorText,
                 helperText = fields.cardNumber.helperText,
                 placeholder = fields.cardNumber.placeholder,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = CardField.CARD_NUMBER.keyboardOptions(),
                 visualTransformation = if (!isCardNumberFocused && isCardNumberValid) CardNumberMaskedVisualTransformation() else CardNumberVisualTransformation(),
                 textFieldModifier = Modifier
                     .cardFieldSemantics(CardField.CARD_NUMBER, allowsAutofill)
@@ -429,7 +427,7 @@ fun PaymentCardForm(
                         error = errors.expiration ?: fields.expirationDate.errorText,
                         helperText = fields.expirationDate.helperText,
                         placeholder = fields.expirationDate.placeholder,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = CardField.EXPIRATION.keyboardOptions(),
                         visualTransformation = ExpirationDateVisualTransformation(),
                         textFieldModifier = Modifier
                             .cardFieldSemantics(CardField.EXPIRATION, allowsAutofill)
@@ -461,9 +459,7 @@ fun PaymentCardForm(
                         error = errors.cvv ?: fields.cvv.errorText,
                         helperText = fields.cvv.helperText,
                         placeholder = fields.cvv.placeholder,
-                        // NumberPassword: same numeric layout, but tells the IME not to cache or
-                        // learn the CVV (keyboards may retain plain Number input for suggestions).
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        keyboardOptions = CardField.CVV.keyboardOptions(),
                         visualTransformation = if (isCvvFocused) VisualTransformation.None else CvvMaskedVisualTransformation(),
                         textFieldModifier = Modifier
                             .cardFieldSemantics(CardField.CVV, allowsAutofill)

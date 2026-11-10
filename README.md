@@ -1681,7 +1681,8 @@ repo root, then run the app from Android Studio or with `./gradlew :app:installD
 - The merchant public key is not cached: it is fetched for every encryption and never stored.
 - With `GopayConfig.debugLoggingEnabled` on, the SDK logs its HTTP traffic, bodies included, to Logcat under
   the `okhttp.OkHttpClient` tag. The `Authorization` header, `payment_secret`, the JWT, card
-  tokens, the card JWE and the Google Pay payment data are masked. Keep `debugLoggingEnabled` off in release
+  tokens, the card JWE, the Google Pay payment data and the customer's e-mail and phone number
+  are masked. Keep `debugLoggingEnabled` off in release
   builds.
 - `PaymentCardForm` sets `FLAG_SECURE` on the window it is drawn in, a dialog or a Material3
   `ModalBottomSheet` included, to block screenshots and screen recording of card data; the same

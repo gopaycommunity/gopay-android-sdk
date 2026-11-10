@@ -1,5 +1,7 @@
 package cz.gopay.sdk.ui
 
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -63,5 +65,19 @@ class CardFieldPrivacyTest {
         assertEquals("", ExpiryEntry.digits("ab"))
         // A year first is not a date the form knows: it keeps the first four digits.
         assertEquals("2027", ExpiryEntry.digits("2027-12"))
+    }
+
+    @Test
+    fun `the confirm key of the keyboard moves on from the card number and the expiry, and ends at the CVV`() {
+        assertEquals(ImeAction.Next, CardField.CARD_NUMBER.keyboardOptions().imeAction)
+        assertEquals(ImeAction.Next, CardField.EXPIRATION.keyboardOptions().imeAction)
+        assertEquals(ImeAction.Done, CardField.CVV.keyboardOptions().imeAction)
+    }
+
+    @Test
+    fun `every field keeps its numeric keyboard, the CVV the one that is not learnt from`() {
+        assertEquals(KeyboardType.Number, CardField.CARD_NUMBER.keyboardOptions().keyboardType)
+        assertEquals(KeyboardType.Number, CardField.EXPIRATION.keyboardOptions().keyboardType)
+        assertEquals(KeyboardType.NumberPassword, CardField.CVV.keyboardOptions().keyboardType)
     }
 }
