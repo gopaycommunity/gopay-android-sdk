@@ -230,6 +230,11 @@ class DeprecatedAliasesTest {
         val wallet: suspend PaymentSession.(Activity) -> ChargePaymentResponse = { chargeWithWallet(it) }
         val walletFull: suspend PaymentSession.(Activity, BrowserData, ChallengePreference) -> ChargePaymentResponse =
             { activity, browserData, preference -> chargeWithWallet(activity, browserData, preference) }
+        // The shape shared with iOS: the data first, positionally, and the Activity last.
+        val walletShared: suspend PaymentSession.(BrowserData, ChallengePreference) -> ChargePaymentResponse =
+            { browserData, preference -> chargeWithWallet(browserData, preference) }
+        val walletSharedNamed: suspend PaymentSession.(BrowserData, Activity?) -> ChargePaymentResponse =
+            { browserData, activity -> chargeWithWallet(browserData, activity = activity) }
         val token: suspend PaymentSession.(Activity) -> ChargePaymentResponse =
             { chargeWithCardToken(it, "tok", challengePreference = ChallengePreference.AUTO) }
         val tokenWithData: suspend PaymentSession.(BrowserData) -> ChargePaymentResponse = { chargeWithCardToken("tok", it) }
@@ -242,10 +247,10 @@ class DeprecatedAliasesTest {
         val options: (Activity) -> AwaitChargeOptions = { AwaitChargeOptions(activity = it, returnUrl = "https://shop/return") }
 
         assertEquals(
-            10,
+            12,
             listOf<Any>(
-                wallet, walletFull, token, tokenWithData, encrypted, encryptedWithData, challenge, challengeShort,
-                browserData, options
+                wallet, walletFull, walletShared, walletSharedNamed, token, tokenWithData, encrypted,
+                encryptedWithData, challenge, challengeShort, browserData, options
             ).size
         )
     }
@@ -260,6 +265,12 @@ class DeprecatedAliasesTest {
         val googlePay: suspend PaymentSession.(Activity) -> ChargePaymentResponse = { chargeWithGooglePay(it) }
 
         assertEquals(5, listOf<Any>(initialize, onInstance, onInstanceWithInfo, static, googlePay).size)
+    }
+
+    @Test
+    fun `CHARGE_RETURN_URL still reads the address chargeReturnUrl names`() {
+        assertEquals("https://gopay.com/sdk/charge-return", GopaySDK.chargeReturnUrl)
+        assertEquals(GopaySDK.chargeReturnUrl, GopaySDK.CHARGE_RETURN_URL)
     }
 
     @Test

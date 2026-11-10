@@ -17,6 +17,7 @@ import android.content.Context
 import cz.gopay.sdk.telemetry.Telemetry
 import cz.gopay.sdk.ui.CardFormStore
 import cz.gopay.sdk.ui.ForegroundScreen
+import cz.gopay.sdk.util.SdkLog
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
@@ -130,23 +131,53 @@ class GopaySDKTest {
         assertNull(ForegroundScreen.appContext)
     }
 
-    @Test
-    fun `isWalletAvailable before any initialize is CONFIG_001`() {
-        val e = assertThrows(GopaySDKException::class.java) { runBlocking { GopaySDK.isWalletAvailable() } }
+    /** The warnings of a block, as the debug log would show them. */
+    private fun warningsOf(block: () -> Unit): List<String> {
+        val sink = SdkLog.warnSink
+        val warnings = mutableListOf<String>()
+        SdkLog.warnSink = { warnings.add(it) }
+        try {
+            block()
+        } finally {
+            SdkLog.warnSink = sink
+        }
+        return warnings
+    }
 
-        assertEquals(GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED, e.code)
+    @Test
+    fun `isWalletAvailable before any initialize answers false and says why, it does not throw`() {
+        var available: Boolean? = null
+
+        val warnings = warningsOf { available = runBlocking { GopaySDK.isWalletAvailable() } }
+
+        assertEquals(false, available)
+        assertEquals(1, warnings.size)
+        assertTrue(warnings.single(), warnings.single().contains("not initialized"))
     }
 
     @Test
     @Suppress("DEPRECATION")
-    fun `isWalletAvailable after an initialize without a Context is CONFIG_004, reported once`() {
-        GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.SANDBOX, errorCallback = { reported.add(it) }))
+    fun `isWalletAvailable after an initialize without a Context answers false and says why, it does not throw`() {
+        GopaySDK.initialize(
+            GopayConfig(environment = GopayEnvironment.SANDBOX, debugLoggingEnabled = true, errorCallback = { reported.add(it) })
+        )
+        var available: Boolean? = null
 
-        val e = assertThrows(GopaySDKException::class.java) { runBlocking { GopaySDK.isWalletAvailable() } }
+        val warnings = warningsOf { available = runBlocking { GopaySDK.isWalletAvailable() } }
 
-        assertEquals(GopayErrorCodes.CONFIG_MISSING_CONTEXT, e.code)
-        assertEquals("CONFIG_004", e.code)
-        assertEquals(listOf(e), reported)
+        assertEquals(false, available)
+        assertTrue(warnings.single(), warnings.single().contains("without a Context"))
+        assertTrue("nothing failed, so nothing is reported", reported.isEmpty())
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `the answer false without a Context is quiet when the debug log is off`() {
+        GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.SANDBOX))
+
+        val warnings = warningsOf { assertEquals(false, runBlocking { GopaySDK.isWalletAvailable() }) }
+
+        assertTrue(warnings.isEmpty())
     }
 
     @Test

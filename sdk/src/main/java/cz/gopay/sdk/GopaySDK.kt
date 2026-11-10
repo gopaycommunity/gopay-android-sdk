@@ -23,6 +23,8 @@ import cz.gopay.sdk.telemetry.GwLoggerTelemetry
 import cz.gopay.sdk.telemetry.Telemetry
 import cz.gopay.sdk.ui.CardFormStore
 import cz.gopay.sdk.ui.ForegroundScreen
+import cz.gopay.sdk.util.SdkLog
+import kotlinx.coroutines.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -322,10 +324,14 @@ class GopaySDK private constructor(val config: GopayConfig) {
          * response. Only without a usable one does it wait for this address instead, and then
          * your backend has to pass it as the payment's `callback.return_url`; the gateway
          * accepts only an absolute `http(s)` address there. The 3DS WebView intercepts any
-         * navigation that starts with the address it watches for and never loads it. Mirrors
-         * `GopaySDK.chargeReturnURL` on iOS.
+         * navigation that starts with the address it watches for and never loads it.
+         * `GopaySDK.chargeReturnURL` on iOS is the same address.
          */
-        const val CHARGE_RETURN_URL: String = "https://gopay.com/sdk/charge-return"
+        const val chargeReturnUrl: String = "https://gopay.com/sdk/charge-return"
+
+        /** The 2.x name of [chargeReturnUrl]. */
+        @Deprecated("Renamed to chargeReturnUrl, the name the iOS SDK uses", ReplaceWith("chargeReturnUrl"))
+        const val CHARGE_RETURN_URL: String = chargeReturnUrl
 
         /**
          * Initialize the SDK with the given configuration and the app's [context]. Must be
@@ -420,19 +426,33 @@ class GopaySDK private constructor(val config: GopayConfig) {
          * [GopayConfig.environment] implies: `PRODUCTION` for the production gateway, `TEST`
          * otherwise. A `false` from Google Play services is returned as such.
          *
+         * The call never throws, on either platform. Where the SDK cannot tell, before
+         * `initialize` or after the deprecated `initialize(config)`, which leaves it without a
+         * Context, the answer is `false`, with a warning in the debug log saying which it was.
+         *
          * @param info The [GooglePayInfoResponse] from [PaymentSession.getWalletInfo], or null.
-         * @throws GopaySDKException [GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED] before
-         *         `initialize`, and [GopayErrorCodes.CONFIG_MISSING_CONTEXT] when the SDK was
-         *         initialized without a Context.
          */
         @JvmStatic
         suspend fun isWalletAvailable(info: GooglePayInfoResponse? = null): Boolean {
-            val sdk = getInstance()
-            return reportErrors {
-                val context = ForegroundScreen.appContext
-                    ?: throw ForegroundScreen.missingContext("isWalletAvailable()")
+            val sdk = instance ?: return walletUnknown(
+                "the SDK is not initialized; call GopaySDK.initialize(context, config) first"
+            )
+            val context = ForegroundScreen.appContext ?: return walletUnknown(
+                "the SDK was initialized without a Context; call GopaySDK.initialize(context, config)"
+            )
+            return try {
                 checkWalletReady(context, sdk.config.environment, info, sdk.telemetry)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                walletUnknown("Google Play services could not be asked: ${e.message}")
             }
+        }
+
+        /** The answer of [isWalletAvailable] where it cannot tell, with the reason in the debug log. */
+        private fun walletUnknown(reason: String): Boolean {
+            SdkLog.w("GopaySDK.isWalletAvailable() answers false: $reason.")
+            return false
         }
 
         /**

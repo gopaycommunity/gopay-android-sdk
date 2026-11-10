@@ -578,13 +578,13 @@ class PaymentSession internal constructor(
     /** The platform name of [chargeWithWallet], the same call. */
     @Deprecated(
         "Use chargeWithWallet(), the name shared with the iOS SDK",
-        ReplaceWith("chargeWithWallet(activity, browserData, challengePreference)")
+        ReplaceWith("chargeWithWallet(browserData, challengePreference, activity)")
     )
     suspend fun chargeWithGooglePay(
         activity: Activity? = null,
         browserData: BrowserData? = null,
         challengePreference: ChallengePreference? = null
-    ): ChargePaymentResponse = chargeWithWallet(activity, browserData, challengePreference)
+    ): ChargePaymentResponse = chargeWithWallet(browserData, challengePreference, activity)
 
     /**
      * Pays with the device's wallet, Google Pay: the name shared with the iOS SDK, where it runs
@@ -601,6 +601,8 @@ class PaymentSession internal constructor(
      * the call fails at once with [GopayErrorCodes.PAYMENT_PROCESSING_FAILED] and nothing is
      * charged, and so does a sheet that was started and did not appear within 30 seconds.
      * Without an [activity] and without the Context, [GopayErrorCodes.CONFIG_MISSING_CONTEXT].
+     * `chargeWithWallet(activity, browserData, challengePreference)`, the form of 2.x with the
+     * activity first, is the same call.
      *
      * Only one Google Pay sheet can be visible per process; if another session has one in
      * progress this throws [GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS], and only then. The
@@ -611,17 +613,17 @@ class PaymentSession internal constructor(
      * other failure of the sheet or of its token throws
      * [GopayErrorCodes.PAYMENT_PROCESSING_FAILED] with the original as the cause.
      *
-     * @param activity Optional, as `presenting` is on iOS: the screen to open the sheet from.
      * @param browserData Optional 3DS browser data. Required by the spec on every card charge;
      *                    when null, the SDK derives it from the device, see
      *                    [BrowserData.deviceDefault]. Override if you collected more accurate
      *                    values elsewhere.
      * @param challengePreference 3DS challenge preference forwarded to the gateway.
+     * @param activity Optional, as `presenting` is on iOS: the screen to open the sheet from.
      */
     override suspend fun chargeWithWallet(
-        activity: Activity?,
         browserData: BrowserData?,
-        challengePreference: ChallengePreference?
+        challengePreference: ChallengePreference?,
+        activity: Activity?
     ): ChargePaymentResponse = reportErrors(paymentId) {
         ensureOpen()
         ForegroundScreen.requireContextOr(activity, "chargeWithWallet()")
@@ -818,7 +820,7 @@ class PaymentSession internal constructor(
      *        and `payment_secret`. GoPay is removing `return_url` from the charge response, so do
      *        not rely on it there. The challenge counts as answered once the WebView navigates to
      *        an address starting with it. When it is null, blank or not an `http(s)` address with a host, the SDK
-     *        waits for [cz.gopay.sdk.GopaySDK.CHARGE_RETURN_URL] instead, and then the payment
+     *        waits for [cz.gopay.sdk.GopaySDK.chargeReturnUrl] instead, and then the payment
      *        has to have been created with that address. It should carry no fragment (`#…`):
      *        what the gateway appends lands in front of it, and the address no longer matches.
      * @param activity optional, as `presenting` is on iOS: the screen to open the challenge from.

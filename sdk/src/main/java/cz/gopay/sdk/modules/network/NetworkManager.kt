@@ -93,19 +93,20 @@ internal class NetworkManager(
 
     internal companion object {
         /**
-         * The timeout the HTTP client reads and writes with: [GopayConfig.requestTimeoutMs], or
-         * the default when the HTTP client cannot use it. OkHttp throws on a negative timeout
-         * and on one past `Int.MAX_VALUE` milliseconds, and reads zero as "no timeout at all",
-         * none of which a host asking for a short or a long one means.
+         * The timeout the HTTP client reads and writes with, [GopayConfig.requestTimeoutMs].
+         * The config has already replaced a value the HTTP client cannot use with the default:
+         * OkHttp throws on a negative timeout and on one past `Int.MAX_VALUE` milliseconds, and
+         * reads zero as "no timeout at all", none of which a host asking for a short or a long
+         * one means. Here the debug log says that it did.
          */
         fun requestTimeoutMs(config: GopayConfig): Long {
-            val asked = config.requestTimeoutMs
-            if (asked in 1..Int.MAX_VALUE) return asked
-            SdkLog.w(
-                "requestTimeoutMs = $asked is not a number of milliseconds the HTTP client can " +
-                    "use, using the default ${GopayConfig.DEFAULT_REQUEST_TIMEOUT_MS} ms"
-            )
-            return GopayConfig.DEFAULT_REQUEST_TIMEOUT_MS
+            config.replacedRequestTimeoutMs?.let { asked ->
+                SdkLog.w(
+                    "requestTimeoutMs = $asked is not a number of milliseconds the HTTP client can " +
+                        "use, using the default ${GopayConfig.DEFAULT_REQUEST_TIMEOUT_MS} ms"
+                )
+            }
+            return config.requestTimeoutMs
         }
 
         /**

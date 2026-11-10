@@ -57,7 +57,7 @@ class FakePaymentSessionTest {
         override suspend fun getQrPaymentInfo(format: QrCodeFormat?): QrPaymentDetails = notCalled()
         override suspend fun getWalletInfo(): GooglePayInfoResponse = notCalled()
         override suspend fun chargeWithWallet(
-            activity: Activity?, browserData: BrowserData?, challengePreference: ChallengePreference?
+            browserData: BrowserData?, challengePreference: ChallengePreference?, activity: Activity?
         ): ChargePaymentResponse = notCalled()
         override suspend fun chargeWithCardToken(
             cardToken: String, browserData: BrowserData?, challengePreference: ChallengePreference?, activity: Activity?

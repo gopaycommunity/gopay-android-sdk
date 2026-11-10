@@ -23,6 +23,7 @@ import cz.gopay.sdk.model.QrPaymentDetails
  *
  * Each member is documented on [PaymentSession], where it is implemented. The deprecated names
  * of 2.x, `getGooglePayInfo` and `chargeWithGooglePay`, are not part of the interface.
+
  */
 interface PaymentSessionApi {
 
@@ -55,9 +56,9 @@ interface PaymentSessionApi {
 
     /** See [PaymentSession.chargeWithWallet]. */
     suspend fun chargeWithWallet(
-        activity: Activity? = null,
         browserData: BrowserData? = null,
-        challengePreference: ChallengePreference? = null
+        challengePreference: ChallengePreference? = null,
+        activity: Activity? = null
     ): ChargePaymentResponse
 
     /** See [PaymentSession.chargeWithCardToken]. */
@@ -81,6 +82,13 @@ interface PaymentSessionApi {
 
     // The forms of 2.x with the activity first. Each is the call above with the activity named,
     // implemented here, so an implementation of the interface has nothing to add for them.
+
+    /** [chargeWithWallet] with the [activity] first, as 2.x had it. */
+    suspend fun chargeWithWallet(
+        activity: Activity,
+        browserData: BrowserData? = null,
+        challengePreference: ChallengePreference? = null
+    ): ChargePaymentResponse = chargeWithWallet(browserData, challengePreference, activity)
 
     /** [chargeWithCardToken] with the [activity] first, as 2.x had it. */
     suspend fun chargeWithCardToken(

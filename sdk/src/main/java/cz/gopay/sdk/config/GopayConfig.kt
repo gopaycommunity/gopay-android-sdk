@@ -6,8 +6,13 @@ import cz.gopay.sdk.locales.GopayLocaleStrings
 /**
  * Configuration class for the Gopay SDK.
  * Holds all environment-specific constants and settings.
+ *
+ * It reads and behaves as the data class it was in 2.x, `copy`, the components, equality and
+ * `toString` included, and is written out by hand for one reason: [requestTimeoutMs] is put
+ * right when the config is built, which a data class cannot do, so the value read back is the
+ * one the SDK uses.
  */
-data class GopayConfig(
+class GopayConfig(
     /**
      * The environment to use for the SDK.
      */
@@ -32,15 +37,18 @@ data class GopayConfig(
     val shareableKey: String? = null,
 
     /**
-     * Timeout for API requests in milliseconds: how long a request waits for data from the
-     * gateway; connecting may take half of it. A value that is not positive, or is past
-     * `Int.MAX_VALUE`, is replaced by the default, [DEFAULT_REQUEST_TIMEOUT_MS], as the iOS SDK does with its `requestTimeout`,
-     * which is in seconds there.
+     * Timeout for API requests in milliseconds; connecting may take half of it. It is how long
+     * a request waits for the next data, on both platforms; neither limits the whole call. A
+     * value that is not positive, or is past
+     * `Int.MAX_VALUE`, is replaced by the default, [DEFAULT_REQUEST_TIMEOUT_MS], here, when the
+     * config is built, so [requestTimeoutMs] reads back the value in use. The iOS SDK does the
+     * same with its `requestTimeout`, which is in seconds there.
      */
-    val requestTimeoutMs: Long = DEFAULT_REQUEST_TIMEOUT_MS,
+    requestTimeoutMs: Long = DEFAULT_REQUEST_TIMEOUT_MS,
 
     /**
-     * Whether the debug log is on (`debugLoggingEnabled` on iOS too; 2.x called it `debug`): SDK warnings and the HTTP traffic, bodies included, go to
+     * Whether the debug log is on (`debugLoggingEnabled` on iOS too; 2.x called it `debug`): SDK
+     * warnings and the HTTP traffic, bodies included, go to
      * Logcat. The `Authorization` header, `payment_secret`, the JWT, card tokens, the card JWE and
      * the Google Pay payment data are masked in that log. Keep it off in release builds.
      */
@@ -71,6 +79,14 @@ data class GopayConfig(
      */
     val customLocales: Map<String, GopayLocaleStrings> = emptyMap()
 ) {
+    /** The request timeout in use, in milliseconds; see the constructor parameter. */
+    val requestTimeoutMs: Long =
+        if (requestTimeoutMs in 1..Int.MAX_VALUE) requestTimeoutMs else DEFAULT_REQUEST_TIMEOUT_MS
+
+    /** The timeout that was asked for and replaced by the default, for the debug log; else null. */
+    internal val replacedRequestTimeoutMs: Long? =
+        requestTimeoutMs.takeIf { it != this.requestTimeoutMs }
+
     /**
      * The 2.x constructor, with `debug` for [debugLoggingEnabled]. A call that names `debug`
      * lands here and is told the new name. `debug` sits second, where the primary constructor
@@ -121,6 +137,56 @@ data class GopayConfig(
     )
     val debug: Boolean
         get() = debugLoggingEnabled
+
+    /** A copy with the named values replaced, as the data class of 2.x had it. */
+    fun copy(
+        environment: GopayEnvironment = this.environment,
+        clientId: String? = this.clientId,
+        shareableKey: String? = this.shareableKey,
+        requestTimeoutMs: Long = this.requestTimeoutMs,
+        debugLoggingEnabled: Boolean = this.debugLoggingEnabled,
+        errorCallback: ErrorCallback? = this.errorCallback,
+        locale: String? = this.locale,
+        customLocales: Map<String, GopayLocaleStrings> = this.customLocales
+    ): GopayConfig = GopayConfig(
+        environment = environment,
+        clientId = clientId,
+        shareableKey = shareableKey,
+        requestTimeoutMs = requestTimeoutMs,
+        debugLoggingEnabled = debugLoggingEnabled,
+        errorCallback = errorCallback,
+        locale = locale,
+        customLocales = customLocales
+    )
+
+    operator fun component1(): GopayEnvironment = environment
+    operator fun component2(): String? = clientId
+    operator fun component3(): String? = shareableKey
+    operator fun component4(): Long = requestTimeoutMs
+    operator fun component5(): Boolean = debugLoggingEnabled
+    operator fun component6(): ErrorCallback? = errorCallback
+    operator fun component7(): String? = locale
+    operator fun component8(): Map<String, GopayLocaleStrings> = customLocales
+
+    override fun equals(other: Any?): Boolean = this === other || other is GopayConfig &&
+        environment == other.environment &&
+        clientId == other.clientId &&
+        shareableKey == other.shareableKey &&
+        requestTimeoutMs == other.requestTimeoutMs &&
+        debugLoggingEnabled == other.debugLoggingEnabled &&
+        errorCallback == other.errorCallback &&
+        locale == other.locale &&
+        customLocales == other.customLocales
+
+    override fun hashCode(): Int = listOf(
+        environment, clientId, shareableKey, requestTimeoutMs, debugLoggingEnabled, errorCallback, locale,
+        customLocales
+    ).hashCode()
+
+    override fun toString(): String = "GopayConfig(environment=$environment, clientId=$clientId, " +
+        "shareableKey=$shareableKey, requestTimeoutMs=$requestTimeoutMs, " +
+        "debugLoggingEnabled=$debugLoggingEnabled, errorCallback=$errorCallback, locale=$locale, " +
+        "customLocales=$customLocales)"
 
     companion object {
         /** The [requestTimeoutMs] the SDK uses when none, or one it cannot use, is given. */

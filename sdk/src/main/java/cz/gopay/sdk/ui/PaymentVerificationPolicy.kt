@@ -58,7 +58,7 @@ internal object PaymentVerificationPolicy {
 
     /**
      * The address whose arrival ends the challenge: [returnUrl] in its canonical form when it is
-     * usable, otherwise [GopaySDK.CHARGE_RETURN_URL].
+     * usable, otherwise [GopaySDK.chargeReturnUrl].
      *
      * Usable means an `http(s)` address that still has a host once parsed. Anything less is no
      * answer at all: a blank one, a bare `https://` or one like `https://user@/r` would match
@@ -75,7 +75,7 @@ internal object PaymentVerificationPolicy {
         returnUrl?.toHttpUrlOrNull()
             ?.takeIf { it.host.isNotEmpty() }
             ?.toString()
-            ?: GopaySDK.CHARGE_RETURN_URL
+            ?: GopaySDK.chargeReturnUrl
 
     /**
      * @param url the navigation as a string. A navigation that starts with the completion URL
@@ -91,7 +91,7 @@ internal object PaymentVerificationPolicy {
      *        load.
      * @param returnUrl the address the backend created the payment with (`callback.return_url`),
      *        as the caller passed it. Null, or one [completionUrlFor] cannot use, falls back to
-     *        [GopaySDK.CHARGE_RETURN_URL].
+     *        [GopaySDK.chargeReturnUrl].
      */
     fun navigationFor(
         url: String,

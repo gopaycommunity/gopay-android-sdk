@@ -32,7 +32,7 @@ class PaymentVerificationPolicyTest {
         assertEquals(
             Navigation.COMPLETE,
             PaymentVerificationPolicy.navigationFor(
-                url = GopaySDK.CHARGE_RETURN_URL,
+                url = GopaySDK.chargeReturnUrl,
                 scheme = "https",
                 isForMainFrame = true
             )
@@ -43,7 +43,7 @@ class PaymentVerificationPolicyTest {
     fun `the return URL is an https address and still never loads as a page`() {
         // The return URL is https because the gateway accepts nothing else as a return_url,
         // and https is the first scheme the WebView would otherwise load. The prefix has to win.
-        assertEquals("https://gopay.com/sdk/charge-return", GopaySDK.CHARGE_RETURN_URL)
+        assertEquals("https://gopay.com/sdk/charge-return", GopaySDK.chargeReturnUrl)
         assertEquals(
             Navigation.COMPLETE,
             PaymentVerificationPolicy.navigationFor(
@@ -104,7 +104,7 @@ class PaymentVerificationPolicyTest {
         assertEquals(
             Navigation.COMPLETE,
             PaymentVerificationPolicy.navigationFor(
-                GopaySDK.CHARGE_RETURN_URL,
+                GopaySDK.chargeReturnUrl,
                 scheme = "https",
                 isForMainFrame = true,
                 returnUrl = null
@@ -125,7 +125,7 @@ class PaymentVerificationPolicyTest {
         assertEquals(
             Navigation.LOAD,
             PaymentVerificationPolicy.navigationFor(
-                GopaySDK.CHARGE_RETURN_URL,
+                GopaySDK.chargeReturnUrl,
                 scheme = "https",
                 isForMainFrame = true,
                 returnUrl = merchantReturnUrl
@@ -151,13 +151,13 @@ class PaymentVerificationPolicyTest {
         ).forEach { returnUrl ->
             assertEquals(
                 "'$returnUrl' must fall back to the constant",
-                GopaySDK.CHARGE_RETURN_URL,
+                GopaySDK.chargeReturnUrl,
                 PaymentVerificationPolicy.completionUrlFor(returnUrl)
             )
             assertEquals(
                 Navigation.COMPLETE,
                 PaymentVerificationPolicy.navigationFor(
-                    GopaySDK.CHARGE_RETURN_URL,
+                    GopaySDK.chargeReturnUrl,
                     scheme = "https",
                     isForMainFrame = true,
                     returnUrl = returnUrl

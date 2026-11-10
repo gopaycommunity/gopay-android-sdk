@@ -78,7 +78,10 @@ class PaymentSessionApiTest {
             .map { it.name }
             .toSet()
 
-        assertEquals(setOf("chargeWithCardToken", "chargeWithEncryptedCard", "handle3dsVerification"), bodies)
+        assertEquals(
+            setOf("chargeWithWallet", "chargeWithCardToken", "chargeWithEncryptedCard", "handle3dsVerification"),
+            bodies
+        )
     }
 
     private fun payment(charge: ChargePaymentResponse?) = PaymentDetails(

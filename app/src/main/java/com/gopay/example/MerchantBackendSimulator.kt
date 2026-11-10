@@ -23,7 +23,7 @@ import java.net.URL
 object MerchantBackendSimulator {
 
     /** The `callback.return_url` every demo payment is created with. */
-    private const val RETURN_URL = GopaySDK.CHARGE_RETURN_URL
+    private const val RETURN_URL = GopaySDK.chargeReturnUrl
 
     /** What a merchant backend gives the app: the session pair and the payment's return URL. */
     data class CreatedPayment(val paymentId: String, val paymentSecret: String, val returnUrl: String)
