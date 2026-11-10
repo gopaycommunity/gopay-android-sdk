@@ -3,9 +3,9 @@ package cz.gopay.sdk.ui
 /**
  * Whether and when [PaymentCardForm] renders localized inline validation errors beneath its
  * fields. The messages come from the form's resolved [cz.gopay.sdk.locales.GopayLocaleStrings].
- * Mirrors `GopayCardFormValidationDisplay` on iOS.
+ * `PaymentCardFormValidationDisplay` on iOS too; 2.x called it `CardFormValidationDisplay`.
  */
-enum class CardFormValidationDisplay {
+enum class PaymentCardFormValidationDisplay {
     /**
      * Render no inline errors; display is host-driven (the default, and the only behaviour
      * before 2.2). Read the localized strings with `GopaySDK.currentLocaleStrings(...)` to show
@@ -28,3 +28,10 @@ enum class CardFormValidationDisplay {
      */
     ON_SUBMIT
 }
+
+/** The 2.x name of [PaymentCardFormValidationDisplay]. */
+@Deprecated(
+    "Renamed to PaymentCardFormValidationDisplay, the name the iOS SDK uses",
+    ReplaceWith("PaymentCardFormValidationDisplay")
+)
+typealias CardFormValidationDisplay = PaymentCardFormValidationDisplay

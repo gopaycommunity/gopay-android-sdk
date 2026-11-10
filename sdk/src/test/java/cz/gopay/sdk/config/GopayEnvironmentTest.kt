@@ -9,63 +9,63 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Unit tests for the Environment sealed class.
+ * Unit tests for the GopayEnvironment sealed class.
  */
-class EnvironmentTest {
+class GopayEnvironmentTest {
 
     @Test
     fun testEnvironmentTypes() {
         // Verify that all expected environments are defined and have correct types
-        assertTrue(Environment.PRODUCTION is Environment)
-        assertTrue(Environment.SANDBOX is Environment)
+        assertTrue(GopayEnvironment.PRODUCTION is GopayEnvironment)
+        assertTrue(GopayEnvironment.SANDBOX is GopayEnvironment)
         
         // Verify specific object types
-        assertTrue(Environment.PRODUCTION is Environment.PRODUCTION)
-        assertTrue(Environment.SANDBOX is Environment.SANDBOX)
+        assertTrue(GopayEnvironment.PRODUCTION is GopayEnvironment.PRODUCTION)
+        assertTrue(GopayEnvironment.SANDBOX is GopayEnvironment.SANDBOX)
     }
 
     @Test
     fun testProductionEnvironment() {
         // Verify production environment properties
-        assertEquals("https://gate.gopay.com/gp-gw/api/4.0/", Environment.PRODUCTION.apiBaseUrl)
+        assertEquals("https://gate.gopay.com/gp-gw/api/4.0/", GopayEnvironment.PRODUCTION.baseUrl)
     }
 
     @Test
     fun testSandboxEnvironment() {
         // Verify sandbox environment properties
-        assertEquals("https://gw.sandbox.gopay.com/gp-gw/api/4.0/", Environment.SANDBOX.apiBaseUrl)
+        assertEquals("https://gw.sandbox.gopay.com/gp-gw/api/4.0/", GopayEnvironment.SANDBOX.baseUrl)
     }
 
     @Test
     fun testDevelopmentEnvironmentWithCustomUrl() {
         // Verify development environment with custom URL
         val customUrl = "https://localhost:8080"
-        val developmentEnv = Environment.DEVELOPMENT.create(customUrl)
-        assertEquals("https://localhost:8080/", developmentEnv.apiBaseUrl)
+        val developmentEnv = GopayEnvironment.DEVELOPMENT.create(customUrl)
+        assertEquals("https://localhost:8080/", developmentEnv.baseUrl)
     }
 
     @Test
     fun testDevelopmentEnvironmentWithTrailingSlash() {
         // Verify development environment handles trailing slash correctly
         val customUrl = "https://localhost:8080/"
-        val developmentEnv = Environment.DEVELOPMENT.create(customUrl)
-        assertEquals("https://localhost:8080/", developmentEnv.apiBaseUrl)
+        val developmentEnv = GopayEnvironment.DEVELOPMENT.create(customUrl)
+        assertEquals("https://localhost:8080/", developmentEnv.baseUrl)
     }
 
     @Test
     fun testDevelopmentEnvironmentAcceptsUppercaseScheme() {
         // URL schemes are case-insensitive, and iOS accepts this form — the same demo base URL
         // must not work on one platform and fail on the other.
-        val developmentEnv = Environment.DEVELOPMENT.create("HTTPS://localhost:8080/")
-        assertEquals("HTTPS://localhost:8080/", developmentEnv.apiBaseUrl)
+        val developmentEnv = GopayEnvironment.DEVELOPMENT.create("HTTPS://localhost:8080/")
+        assertEquals("HTTPS://localhost:8080/", developmentEnv.baseUrl)
     }
 
     @Test
     fun testDevelopmentEnvironmentWithEmptyUrl() {
         // An empty URL is the shared CONFIG_006, the code iOS reports for a base URL it cannot
         // use, not a bare IllegalArgumentException.
-        val e = assertThrows(GopaySDKException::class.java) { Environment.DEVELOPMENT.create("") }
-        assertEquals(GopayErrorCodes.CONFIG_INVALID_BASE_URL, e.errorCode)
+        val e = assertThrows(GopaySDKException::class.java) { GopayEnvironment.DEVELOPMENT.create("") }
+        assertEquals(GopayErrorCodes.CONFIG_INVALID_BASE_URL, e.code)
     }
 
     @Test
@@ -74,9 +74,9 @@ class EnvironmentTest {
         ErrorReporter.setErrorCallback { reported.add(it) }
         try {
             val e = assertThrows(GopaySDKException::class.java) {
-                Environment.DEVELOPMENT.create("invalid-url")
+                GopayEnvironment.DEVELOPMENT.create("invalid-url")
             }
-            assertEquals(GopayErrorCodes.CONFIG_INVALID_BASE_URL, e.errorCode)
+            assertEquals(GopayErrorCodes.CONFIG_INVALID_BASE_URL, e.code)
             assertTrue(e.message!!.contains("http://"))
             assertTrue("a constructor is not a call of the SDK: not reported", reported.isEmpty())
         } finally {
@@ -87,7 +87,26 @@ class EnvironmentTest {
     @Test
     fun testEndpointComposition() {
         // Verify that we can compose full endpoints correctly
-        val paymentEndpoint = Environment.PRODUCTION.apiBaseUrl + "payments"
+        val paymentEndpoint = GopayEnvironment.PRODUCTION.baseUrl + "payments"
         assertEquals("https://gate.gopay.com/gp-gw/api/4.0/payments", paymentEndpoint)
     }
-} 
+
+    @Test
+    fun `a development URL that carries credentials is CONFIG_006, as on iOS`() {
+        for (url in listOf(
+            "https://user:secret@gw.example.com/api/",
+            "https://gate.gopay.com@evil.example.com/",
+            "https://:secret@gw.example.com"
+        )) {
+            val e = assertThrows(url, GopaySDKException::class.java) { GopayEnvironment.DEVELOPMENT(url) }
+            assertEquals(url, GopayErrorCodes.CONFIG_INVALID_BASE_URL, e.code)
+        }
+    }
+
+    @Test
+    fun `an at sign outside the authority is not credentials`() {
+        val env = GopayEnvironment.DEVELOPMENT("https://gw.example.com/api/v@1")
+
+        assertEquals("https://gw.example.com/api/v@1/", env.baseUrl)
+    }
+}

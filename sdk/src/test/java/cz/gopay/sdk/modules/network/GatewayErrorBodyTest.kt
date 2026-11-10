@@ -59,7 +59,7 @@ class GatewayErrorBodyTest {
 
         val e = assertThrows(GopaySDKException::class.java) { response.unwrap("get Google Pay info") }
 
-        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, e.code)
         assertEquals("Failed to get Google Pay info: HTTP 403: Google Pay is not enabled", e.message)
         assertEquals("FORBIDDEN", e.httpContext?.gatewayError?.error)
         assertEquals("x", e.httpContext?.gatewayError?.detail)

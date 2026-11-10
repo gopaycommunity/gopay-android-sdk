@@ -127,7 +127,7 @@ internal object PaymentVerificationBridge {
 
     private fun failWith(owner: Owner, errorCode: String, message: String) {
         take(owner)?.completeExceptionally(
-            GopaySDKException(errorCode = errorCode, message = message)
+            GopaySDKException(code = errorCode, message = message)
         )
     }
 

@@ -108,7 +108,7 @@ class EncryptionServiceTest {
             service.createJweEncryptedPayload(cardData, badJwk, testClientId, issuedAt)
         }
 
-        assertEquals(GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR, e.code)
         assertTrue(e.message!!.startsWith("Card encryption failed: the public key could not be built"))
         assertNotNull("the original failure is the cause", e.cause)
     }
@@ -123,7 +123,7 @@ class EncryptionServiceTest {
             service.createJweEncryptedPayload(cardData, weakJwk, testClientId, issuedAt)
         }
 
-        assertEquals(GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR, e.code)
         assertTrue(e.message!!.startsWith("Card encryption failed: the JWE could not be built"))
         assertNotNull(e.cause)
     }

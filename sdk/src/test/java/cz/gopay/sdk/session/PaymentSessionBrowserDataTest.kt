@@ -10,7 +10,7 @@ import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.model.GooglePayInfoResponse
 import cz.gopay.sdk.model.InitSessionRequest
 import cz.gopay.sdk.model.Jwk
-import cz.gopay.sdk.model.PaymentCreateResponse
+import cz.gopay.sdk.model.PaymentDetails
 import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.model.syntheticUserAgent
 import cz.gopay.sdk.modules.network.AuthApi
@@ -178,11 +178,11 @@ class PaymentSessionBrowserDataTest {
             runBlocking { session(api).charge(ChargePaymentRequest.cardToken("tok", deviceData)) }
         }
 
-        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, e.code)
         assertEquals(403, e.httpContext?.statusCode)
         assertTrue(e.message!!.startsWith("Failed to charge payment: browser data could not be fetched"))
         val cause = e.cause as GopaySDKException
-        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, cause.errorCode)
+        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, cause.code)
         assertTrue(cause.message!!.contains("fetch browser data"))
         assertTrue("the charge must not go out without ip", api.charges.isEmpty())
     }
@@ -196,7 +196,7 @@ class PaymentSessionBrowserDataTest {
             runBlocking { session(api).charge(ChargePaymentRequest.cardToken("tok", deviceData)) }
         }
 
-        assertEquals(GopayErrorCodes.NETWORK_IO_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.NETWORK_IO_ERROR, e.code)
         assertSame(io, e.cause)
         assertNull(e.httpContext)
         assertTrue(api.charges.isEmpty())
@@ -224,9 +224,9 @@ class PaymentSessionBrowserDataTest {
             runBlocking { session.charge(ChargePaymentRequest.cardToken("tok", deviceData)) }
         }
 
-        assertEquals(GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING, e.code)
         assertTrue(e.message!!.startsWith("Failed to charge payment: browser data could not be fetched"))
-        assertEquals(GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING, (e.cause as GopaySDKException).errorCode)
+        assertEquals(GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING, (e.cause as GopaySDKException).code)
         assertTrue(api.charges.isEmpty())
     }
 
@@ -243,7 +243,7 @@ class PaymentSessionBrowserDataTest {
             runBlocking { session.charge(ChargePaymentRequest.cardToken("tok", deviceData)) }
         }
 
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.code)
         assertTrue(api.browserDataUserAgents.isEmpty())
         assertTrue(api.charges.isEmpty())
     }
@@ -264,7 +264,7 @@ class PaymentSessionBrowserDataTest {
             paymentApiBuilder = { api },
             publicApi = {
                 throw GopaySDKException(
-                    errorCode = GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING,
+                    code = GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING,
                     message = "clientId and shareableKey must be set on GopayConfig to use public endpoints"
                 )
             }
@@ -308,7 +308,7 @@ class PaymentSessionBrowserDataTest {
             return Response.success(ChargePaymentResponse(id = "charge-1", state = ChargeState.PROCESSING))
         }
 
-        override suspend fun getPaymentStatus(paymentId: String): Response<PaymentCreateResponse> =
+        override suspend fun getPaymentStatus(paymentId: String): Response<PaymentDetails> =
             throw UnsupportedOperationException()
 
         override suspend fun getChargeState(paymentId: String): Response<ChargePaymentResponse> =

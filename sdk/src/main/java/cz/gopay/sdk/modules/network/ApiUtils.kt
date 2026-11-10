@@ -42,7 +42,7 @@ internal fun <T> Response<T>.unwrap(action: String, statusCodes: Map<Int, String
         val body = errorBody()?.string()
         val gatewayError = GatewayErrorBody.parse(body)
         throw GopaySDKException(
-            errorCode = statusCodes[code()] ?: if (code() in 500..599) {
+            code = statusCodes[code()] ?: if (code() in 500..599) {
                 GopayErrorCodes.NETWORK_SERVER_ERROR
             } else {
                 GopayErrorCodes.NETWORK_CLIENT_ERROR
@@ -59,7 +59,7 @@ internal fun <T> Response<T>.unwrap(action: String, statusCodes: Map<Int, String
         )
     }
     return body() ?: throw GopaySDKException(
-        errorCode = GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR,
+        code = GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR,
         message = "Empty response body from $action: HTTP ${code()}"
     )
 }
@@ -98,7 +98,7 @@ internal suspend fun <T> apiCall(
         throw e.sdkException
     } catch (e: JsonDataException) {
         throw GopaySDKException(
-            errorCode = GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR,
+            code = GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR,
             message = "Malformed response from $action: ${e.message}",
             cause = e
         )
@@ -106,7 +106,7 @@ internal suspend fun <T> apiCall(
         // A broken body from a converter not wrapped in ReadingConverterFactory; every one the
         // SDK builds is, so this is a safety net. It extends IOException, so it has to come first.
         throw GopaySDKException(
-            errorCode = GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR,
+            code = GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR,
             message = "Unreadable response from $action: ${e.message}",
             cause = e
         )
@@ -114,7 +114,7 @@ internal suspend fun <T> apiCall(
         // An empty or broken body rather than a shape mismatch. It arrived whole, so it is not
         // the transport's failure, which the catch below is for.
         throw GopaySDKException(
-            errorCode = GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR,
+            code = GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR,
             message = "Unreadable response from $action: ${e.message}",
             cause = e.cause
         )
@@ -155,7 +155,7 @@ internal fun transportError(action: String, e: IOException): GopaySDKException {
         else -> GopayErrorCodes.NETWORK_IO_ERROR
     }
     return GopaySDKException(
-        errorCode = code,
+        code = code,
         message = "Failed to $action: ${e.javaClass.simpleName}: ${e.message}",
         cause = e
     )

@@ -1,7 +1,7 @@
 package cz.gopay.sdk.testing
 
 import cz.gopay.sdk.GopaySDK
-import cz.gopay.sdk.config.Environment
+import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopaySDKException
@@ -71,7 +71,7 @@ internal class FakeGateway {
         telemetry.install()
         GopaySDK.initialize(
             GopayConfig(
-                environment = Environment.SANDBOX,
+                environment = GopayEnvironment.SANDBOX,
                 clientId = "client-1",
                 shareableKey = "key-1",
                 errorCallback = { reported.add(it) }

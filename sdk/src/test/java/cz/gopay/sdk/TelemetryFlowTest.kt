@@ -1,7 +1,7 @@
 package cz.gopay.sdk
 
 import android.app.Activity
-import cz.gopay.sdk.config.Environment
+import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
@@ -71,7 +71,7 @@ class TelemetryFlowTest {
 
     /** An SDK whose sessions authenticate against [token] instead of the gateway. */
     private fun sdk(debug: Boolean = true, token: suspend () -> Response<TokenResponse>): GopaySDK {
-        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX, clientId = "client-1", debug = debug))
+        GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.SANDBOX, clientId = "client-1", debugLoggingEnabled = debug))
         val sdk = GopaySDK.getInstance()
         sdk.setPaymentSessionFactoryForTest(
             PaymentSession.Factory(
@@ -161,7 +161,7 @@ class TelemetryFlowTest {
         val sdk = sdk { issued() }
         val session = runBlocking { sdk.startPaymentSession("3000000001", "secret") }
         // The instances told apart by their client id, the one thing of theirs an event carries.
-        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX, clientId = "client-2"))
+        GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.SANDBOX, clientId = "client-2"))
         // The challenge is reported before it opens; opening it needs an Android runtime.
         runCatching {
             runBlocking { session.handle3dsVerification(mock<Activity>(), "https://acs.example-bank.com/challenge?creq=SECRET") }

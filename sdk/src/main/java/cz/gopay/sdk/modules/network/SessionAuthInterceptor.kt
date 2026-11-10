@@ -34,7 +34,7 @@ internal class SessionAuthInterceptor(
         // IOException would reach the dispatcher thread bare.
         throw SdkIOException(
             GopaySDKException(
-                errorCode = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
+                code = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
                 message = "Payment-scoped request could not be authorized: ${e.message}",
                 cause = e
             )
@@ -49,7 +49,7 @@ internal class SessionAuthInterceptor(
         val token = tokenProvider.currentToken()
             ?: if (recoverAuth) reauthBlocking() else throw SdkIOException(
                 GopaySDKException(
-                    errorCode = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
+                    code = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
                     message = "No payment-scoped token for a request that does not renew it"
                 )
             )
@@ -72,7 +72,7 @@ internal class SessionAuthInterceptor(
             retryResponse.close()
             throw SdkIOException(
                 GopaySDKException(
-                    errorCode = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
+                    code = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
                     message = "Payment-scoped token still rejected after re-authentication" +
                         GatewayErrorBody.messageSuffix(gatewayError),
                     httpContext = HttpErrorContext(
@@ -99,7 +99,7 @@ internal class SessionAuthInterceptor(
     } catch (e: Throwable) {
         throw SdkIOException(
             GopaySDKException(
-                errorCode = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
+                code = GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED,
                 message = "Payment-scoped token expired and re-authentication failed",
                 cause = e
             )

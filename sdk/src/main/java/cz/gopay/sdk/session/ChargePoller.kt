@@ -55,7 +55,7 @@ internal class ChargePoller(
             when (state.state) {
                 ChargeState.SUCCEEDED -> return state
                 ChargeState.FAILED -> throw GopaySDKException(
-                    errorCode = GopayErrorCodes.PAYMENT_DECLINED,
+                    code = GopayErrorCodes.PAYMENT_DECLINED,
                     message = "Charge failed" + (state.failReason?.let { ": $it" } ?: ""),
                     chargeState = state
                 )
@@ -80,7 +80,7 @@ internal class ChargePoller(
                 val remaining = it - now()
                 if (remaining <= 0) {
                     throw GopaySDKException(
-                        errorCode = GopayErrorCodes.PAYMENT_TIMEOUT,
+                        code = GopayErrorCodes.PAYMENT_TIMEOUT,
                         message = "Charge did not leave ${state.state} within " +
                             "${formatSeconds(options.initialTimeoutMs)} s; read getChargeState() " +
                             "or wait for the payment notification before offering a new payment",

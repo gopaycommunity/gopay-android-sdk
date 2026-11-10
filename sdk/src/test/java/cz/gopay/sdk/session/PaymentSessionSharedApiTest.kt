@@ -16,7 +16,7 @@ import cz.gopay.sdk.model.GooglePayTokenizationSpec
 import cz.gopay.sdk.model.GooglePayTransactionInfo
 import cz.gopay.sdk.model.InitSessionRequest
 import cz.gopay.sdk.model.Jwk
-import cz.gopay.sdk.model.PaymentCreateResponse
+import cz.gopay.sdk.model.PaymentDetails
 import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.NoAuthRecovery
@@ -69,6 +69,7 @@ class PaymentSessionSharedApiTest {
     }
 
     @Test
+    @Suppress("DEPRECATION") // the deprecated alias is what is tested
     fun `getWalletInfo and getGooglePayInfo are the same call`() = runBlocking {
         val api = Fakes()
         val session = session(api)
@@ -125,7 +126,7 @@ class PaymentSessionSharedApiTest {
             return Response.success(ChargePaymentResponse(id = "charge-1", state = ChargeState.PROCESSING))
         }
 
-        override suspend fun getPaymentStatus(paymentId: String): Response<PaymentCreateResponse> =
+        override suspend fun getPaymentStatus(paymentId: String): Response<PaymentDetails> =
             throw UnsupportedOperationException()
 
         override suspend fun getChargeState(paymentId: String): Response<ChargePaymentResponse> =

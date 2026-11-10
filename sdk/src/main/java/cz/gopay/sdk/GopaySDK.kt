@@ -5,7 +5,7 @@ import android.content.Context
 import androidx.annotation.VisibleForTesting
 import com.google.android.gms.wallet.IsReadyToPayRequest
 import com.google.android.gms.wallet.Wallet
-import cz.gopay.sdk.config.Environment
+import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
@@ -44,7 +44,7 @@ import kotlin.coroutines.suspendCoroutine
  *
  * The names shared with the iOS SDK are the main ones: [isWalletAvailable], [submitCardForm],
  * [clearCardFormData], and on the session `getWalletInfo`, `chargeWithWallet` and the card
- * helpers without an activity. The Google Pay names stay as aliases of the same bodies.
+ * helpers without an activity. The Google Pay names are deprecated aliases of the same bodies.
  */
 class GopaySDK private constructor(val config: GopayConfig) {
 
@@ -73,7 +73,7 @@ class GopaySDK private constructor(val config: GopayConfig) {
     }
 
     /** Whether the SDK was initialized in debug mode. */
-    fun isDebugEnabled(): Boolean = config.debug
+    fun isDebugEnabled(): Boolean = config.debugLoggingEnabled
 
     /**
      * Starts a payment-scoped session.
@@ -106,13 +106,13 @@ class GopaySDK private constructor(val config: GopayConfig) {
     ): PaymentSession = reportErrors {
         if (paymentId.isBlank()) {
             throw GopaySDKException(
-                errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
+                code = GopayErrorCodes.VALIDATION_INVALID_INPUT,
                 message = "paymentId must not be empty"
             )
         }
         if (paymentSecret.isBlank()) {
             throw GopaySDKException(
-                errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
+                code = GopayErrorCodes.VALIDATION_INVALID_INPUT,
                 message = "paymentSecret must not be empty"
             )
         }
@@ -148,7 +148,7 @@ class GopaySDK private constructor(val config: GopayConfig) {
             session.close()
             telemetry?.detach(paymentId)
             throw GopaySDKException(
-                errorCode = GopayErrorCodes.AUTH_PAYMENT_SESSION_ALREADY_EXISTS,
+                code = GopayErrorCodes.AUTH_PAYMENT_SESSION_ALREADY_EXISTS,
                 message = "A PaymentSession for $paymentId already exists; close it before starting a new one."
             )
         }
@@ -180,7 +180,7 @@ class GopaySDK private constructor(val config: GopayConfig) {
      * behalf. Every call fetches the public key from `GET /cards/public-key` again, and the
      * JWE's `iat` and `exp` follow the gateway's clock, read from that response's `Date` header,
      * not the device's. Without a usable header the device clock is used, with a warning in
-     * Logcat while [GopayConfig.debug] is on. Neither the key nor card data is persisted.
+     * Logcat while [GopayConfig.debugLoggingEnabled] is on. Neither the key nor card data is persisted.
      *
      * @return JWE compact serialization (RFC 7516) ready to send to the merchant backend.
      * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] when [cardData] fails
@@ -213,7 +213,7 @@ class GopaySDK private constructor(val config: GopayConfig) {
      * form. Forward the returned JWE promptly and use it for a single charge: the gateway
      * accepts each JWE only once and its payload expires 10 minutes after creation.
      *
-     * In [cz.gopay.sdk.ui.CardFormValidationDisplay.ON_SUBMIT] the form shows its validation
+     * In [cz.gopay.sdk.ui.PaymentCardFormValidationDisplay.ON_SUBMIT] the form shows its validation
      * errors from this call on, whether or not it passes. Safe to call from any thread: the
      * form is updated on the main thread.
      *
@@ -261,7 +261,7 @@ class GopaySDK private constructor(val config: GopayConfig) {
     }
 
     private fun invalidCard(message: String) = GopaySDKException(
-        errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
+        code = GopayErrorCodes.VALIDATION_INVALID_INPUT,
         message = message
     )
 
@@ -270,7 +270,8 @@ class GopaySDK private constructor(val config: GopayConfig) {
      * it asks Apple Pay. Call this before showing a Google Pay button.
      *
      * With [info], the readiness check uses the card networks and auth methods the gateway
-     * allows for that payment, in the environment it names. Without one, before a payment
+     * allows for that payment, in the environment it names. Whether the user has a card saved
+     * in Google Pay is not checked: the sheet lets them add one. Without [info], before a payment
      * exists, it asks for `PAN_ONLY` and `CRYPTOGRAM_3DS` with Visa and Mastercard, which is
      * what the gateway allows, in the environment [GopayConfig.environment] implies:
      * `PRODUCTION` for the production gateway, `TEST` otherwise. A `false` from Google Play
@@ -285,13 +286,11 @@ class GopaySDK private constructor(val config: GopayConfig) {
     suspend fun isWalletAvailable(activity: Activity, info: GooglePayInfoResponse? = null): Boolean =
         checkWalletReady(activity, config.environment, info, telemetry)
 
-    /**
-     * Checks whether Google Pay is available and ready on this device using the allowed payment
-     * methods from a GoPay API response. The Android name of [isWalletAvailable], the same call.
-     *
-     * @param activity The current Activity (used to create a PaymentsClient).
-     * @param info The [GooglePayInfoResponse] returned from [PaymentSession.getGooglePayInfo].
-     */
+    /** The platform name of [isWalletAvailable], the same call. */
+    @Deprecated(
+        "Use isWalletAvailable(), the name shared with the iOS SDK",
+        ReplaceWith("isWalletAvailable(activity, info)")
+    )
     suspend fun isGooglePayAvailable(activity: Activity, info: GooglePayInfoResponse): Boolean =
         isWalletAvailable(activity, info)
 
@@ -357,7 +356,7 @@ class GopaySDK private constructor(val config: GopayConfig) {
          */
         @JvmStatic
         fun getInstance(): GopaySDK = instance ?: throw GopaySDKException(
-            errorCode = GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED,
+            code = GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED,
             message = "GopaySDK has not been initialized. Call GopaySDK.initialize(config) first."
         )
 
@@ -383,14 +382,14 @@ class GopaySDK private constructor(val config: GopayConfig) {
         @JvmStatic
         suspend fun isWalletAvailable(
             context: Context,
-            environment: Environment,
+            environment: GopayEnvironment,
             info: GooglePayInfoResponse? = null
         ): Boolean = checkWalletReady(context, environment, info, Telemetry.current)
 
         /** The readiness check behind both `isWalletAvailable`, reported to [telemetry]. */
         private suspend fun checkWalletReady(
             context: Context,
-            environment: Environment,
+            environment: GopayEnvironment,
             info: GooglePayInfoResponse?,
             telemetry: GwLoggerTelemetry?
         ): Boolean {

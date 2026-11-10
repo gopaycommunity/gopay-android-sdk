@@ -199,13 +199,32 @@ class ChargeModelsTest {
     fun `the SDK Moshi instance decodes a payment whose nested charge has no return_url`() {
         // Deliberately NetworkModule.moshi, not a Moshi built here: this is the instance every
         // SDK call decodes with.
-        val paymentAdapter = NetworkModule.moshi.adapter(PaymentCreateResponse::class.java)
+        val paymentAdapter = NetworkModule.moshi.adapter(PaymentDetails::class.java)
 
         val payment = paymentAdapter.fromJson(jsonPaymentWithNestedCharge)!!
 
         assertEquals("pay-1", payment.id)
         assertNotNull("the charge must survive the missing field", payment.charge)
         assertEquals(ChargeState.PROCESSING, payment.charge!!.state)
+    }
+
+    @Test
+    fun `a payment is decoded straight from the reader, so its numbers stay exact`() {
+        // 2^53 + 1 does not survive a Double, which is what reading the payment into a value
+        // tree would make of it.
+        val paymentAdapter = NetworkModule.moshi.adapter(PaymentDetails::class.java)
+        fun payment(charge: String) = """
+            {"id": "pay-1", "order_number": "o-1", "state": "CREATED", "amount": 9007199254740993,
+             "currency": "CZK", "customer": {"email": "a@b.cz"}, "gw_url": "https://gw.example/1"$charge}
+        """.trimIndent()
+
+        val plain = paymentAdapter.fromJson(payment(""))!!
+        val withCharge = paymentAdapter.fromJson(payment(""", "charge": {"id": "ch-1", "state": "PROCESSING"}"""))!!
+
+        assertEquals(9007199254740993L, plain.amount)
+        assertEquals(9007199254740993L, withCharge.amount)
+        assertEquals(ChargeState.PROCESSING, withCharge.charge!!.state)
+        assertTrue(warnings.isEmpty())
     }
 
     @Test

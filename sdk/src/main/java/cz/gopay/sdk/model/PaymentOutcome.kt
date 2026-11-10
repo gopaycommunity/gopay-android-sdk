@@ -13,7 +13,7 @@ package cz.gopay.sdk.model
 class PaymentOutcome internal constructor(
     val outcome: Outcome,
     /** The payment as `GET /payments/{payment_id}` returned it, the model of `getStatus()`. */
-    val payment: PaymentCreateResponse
+    val payment: PaymentDetails
 ) {
     /**
      * The payment's charge, when the gateway reports one; the same as `payment.charge`. The
@@ -74,7 +74,7 @@ class PaymentOutcome internal constructor(
          *
          * The iOS SDK decides by the same rules.
          */
-        fun of(payment: PaymentCreateResponse): PaymentOutcome {
+        fun of(payment: PaymentDetails): PaymentOutcome {
             val chargeState = payment.charge?.state
             val outcome = when (payment.state) {
                 PaymentState.PAID, PaymentState.AUTHORIZED, PaymentState.REFUNDED,

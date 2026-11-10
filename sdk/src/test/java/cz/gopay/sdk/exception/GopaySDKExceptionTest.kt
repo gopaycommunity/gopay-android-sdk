@@ -46,14 +46,14 @@ class GopaySDKExceptionTest {
     @Test
     fun `getHttpStatusCode returns code when context present and null otherwise`() {
         val withCtx = GopaySDKException(
-            errorCode = "NETWORK_002",
+            code = "NETWORK_002",
             message = "m",
             httpContext = HttpErrorContext(statusCode = 503)
         )
-        assertEquals(503, withCtx.getHttpStatusCode())
+        assertEquals(503, withCtx.httpStatus)
 
         val withoutCtx = GopaySDKException("AUTH_001", "m")
-        assertNull(withoutCtx.getHttpStatusCode())
+        assertNull(withoutCtx.httpStatus)
     }
 
     @Test
@@ -61,7 +61,7 @@ class GopaySDKExceptionTest {
         val cause = IllegalStateException("root")
         val data = mapOf<String, Any>("paymentId" to "p_123")
         val ex = GopaySDKException(
-            errorCode = "PAYMENT_003",
+            code = "PAYMENT_003",
             message = "failed",
             cause = cause,
             additionalData = data
@@ -74,12 +74,12 @@ class GopaySDKExceptionTest {
     @Test
     fun `toString includes http context only when present`() {
         val plain = GopaySDKException("AUTH_001", "boom").toString()
-        assertTrue(plain.contains("errorCode='AUTH_001'"))
+        assertTrue(plain.contains("code='AUTH_001'"))
         assertTrue(plain.contains("message='boom'"))
         assertFalse(plain.contains("httpContext="))
 
         val withCtx = GopaySDKException(
-            errorCode = "NETWORK_002",
+            code = "NETWORK_002",
             message = "boom",
             httpContext = HttpErrorContext(statusCode = 418, requestMethod = "POST", requestUrl = "https://x/y")
         ).toString()
@@ -88,7 +88,7 @@ class GopaySDKExceptionTest {
         assertFalse(withCtx.contains("chargeState="))
 
         val withCharge = GopaySDKException(
-            errorCode = "PAYMENT_006",
+            code = "PAYMENT_006",
             message = "Charge failed",
             chargeState = ChargePaymentResponse(id = "ch-1", state = ChargeState.FAILED)
         ).toString()

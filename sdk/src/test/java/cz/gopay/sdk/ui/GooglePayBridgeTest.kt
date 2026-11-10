@@ -89,7 +89,7 @@ class GooglePayBridgeTest {
         assertTrue(failure is IllegalStateException)
         assertEquals(
             GopayErrorCodes.PAYMENT_PROCESSING_FAILED,
-            GooglePayBridge.failureFor(failure!!).errorCode
+            GooglePayBridge.failureFor(failure!!).code
         )
     }
 
@@ -128,7 +128,7 @@ class GooglePayBridgeTest {
         // A GopaySDKException by type, so never a CancellationException.
         val failure = GooglePayBridge.failureFor(GooglePayBridge.UserCancelledThrowable())
 
-        assertEquals(GopayErrorCodes.PAYMENT_CANCELLED, failure.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_CANCELLED, failure.code)
     }
 
     @Test
@@ -137,7 +137,7 @@ class GooglePayBridgeTest {
 
         val failure = GooglePayBridge.failureFor(cause)
 
-        assertEquals(GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE, failure.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE, failure.code)
         assertSame(cause, failure.cause)
     }
 
@@ -151,7 +151,7 @@ class GooglePayBridgeTest {
         for (cause in causes) {
             val failure = GooglePayBridge.failureFor(cause)
 
-            assertEquals("$cause", GopayErrorCodes.PAYMENT_PROCESSING_FAILED, failure.errorCode)
+            assertEquals("$cause", GopayErrorCodes.PAYMENT_PROCESSING_FAILED, failure.code)
             assertSame(cause, failure.cause)
         }
     }

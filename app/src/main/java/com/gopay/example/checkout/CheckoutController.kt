@@ -156,11 +156,11 @@ class CheckoutController {
             throw e
         } catch (e: GopaySDKException) {
             // Once the charge went out, no error may lead to a new payment: the charge decides.
-            if (chargeSent || e.errorCode == GopayErrorCodes.PAYMENT_CANCELLED) {
+            if (chargeSent || e.code == GopayErrorCodes.PAYMENT_CANCELLED) {
                 afterInterruptedCharge(activity, session, e)
                 return
             }
-            fail("[${e.errorCode}] ${e.message}")
+            fail("[${e.code}] ${e.message}")
         } catch (e: Exception) {
             fail(e.message ?: "Something went wrong")
         } finally {
@@ -225,7 +225,7 @@ class CheckoutController {
             // included (the gateway accepts each JWE only once, so a retry needs the card typed
             // again): the form shows which field is wrong (validation = LIVE). Anything else, a
             // key fetch that failed say, is shown under the form.
-            cardFormError = if (e.errorCode == GopayErrorCodes.VALIDATION_INVALID_INPUT) {
+            cardFormError = if (e.code == GopayErrorCodes.VALIDATION_INVALID_INPUT) {
                 "Please check your card details and try again."
             } else {
                 e.message
@@ -339,7 +339,7 @@ class CheckoutController {
             )
             Outcome(charge.state, charge, null)
         } catch (e: GopaySDKException) {
-            when (e.errorCode) {
+            when (e.code) {
                 GopayErrorCodes.PAYMENT_DECLINED ->
                     Outcome(ChargeState.FAILED, e.chargeState, e.chargeState?.failReason ?: e.message)
                 // Not decided yet: the pending screen, whose Refresh waits again.
@@ -393,10 +393,10 @@ class CheckoutController {
         session: PaymentSession?,
         error: GopaySDKException
     ) {
-        val cancelled = if (error.errorCode == GopayErrorCodes.PAYMENT_CANCELLED) {
+        val cancelled = if (error.code == GopayErrorCodes.PAYMENT_CANCELLED) {
             "Payment cancelled. Pick a method and try again."
         } else {
-            "[${error.errorCode}] ${error.message}. Pick a method and try again."
+            "[${error.code}] ${error.message}. Pick a method and try again."
         }
         if (!chargeSent || session == null) {
             banner = cancelled
@@ -420,7 +420,7 @@ class CheckoutController {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            val noCharge = e is GopaySDKException && e.errorCode == GopayErrorCodes.PAYMENT_NOT_FOUND
+            val noCharge = e is GopaySDKException && e.code == GopayErrorCodes.PAYMENT_NOT_FOUND
             if (noCharge) {
                 // The gateway has no charge on this payment: nothing went out.
                 outcome = null
@@ -429,7 +429,7 @@ class CheckoutController {
             }
             // The charge may be through, so no new payment: the pending screen and its Refresh,
             // with the reason where the result screen shows it rather than behind it in a banner.
-            val reason = if (e is GopaySDKException) "[${e.errorCode}] ${e.message}" else e.message
+            val reason = if (e is GopaySDKException) "[${e.code}] ${e.message}" else e.message
             outcome = Outcome(
                 state = lastRead?.state ?: ChargeState.UNKNOWN,
                 response = lastRead,
@@ -455,9 +455,9 @@ class CheckoutController {
  * has one already, or it answered with a 5xx, or no answer arrived at all.
  */
 internal fun GopaySDKException.chargeMayExist(): Boolean = when {
-    errorCode == GopayErrorCodes.PAYMENT_CHARGE_ALREADY_EXISTS -> true
-    errorCode == GopayErrorCodes.NETWORK_SERVER_ERROR -> true
-    else -> httpContext == null && errorCode in TRANSPORT_CODES
+    code == GopayErrorCodes.PAYMENT_CHARGE_ALREADY_EXISTS -> true
+    code == GopayErrorCodes.NETWORK_SERVER_ERROR -> true
+    else -> httpContext == null && code in TRANSPORT_CODES
 }
 
 /** The transport failures, where the request may have reached the gateway and the answer was lost. */

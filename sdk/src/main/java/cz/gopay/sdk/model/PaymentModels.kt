@@ -80,12 +80,13 @@ enum class PaymentState {
 }
 
 /**
- * Response body for payment creation and payment status.
- * Both POST /eshops/{goid}/payments and GET /payments/{payment_id} return
- * the Payment-Details schema. `charge` is populated once the payment has been charged and
- * mirrors `Payment-Charge-Status-Response`.
+ * The payment as `GET /payments/{payment_id}` returns it, the `Payment-Details` schema: what
+ * [cz.gopay.sdk.session.PaymentSession.getStatus] returns and
+ * [PaymentOutcome.payment] carries. `charge` is populated once the payment has been charged and
+ * mirrors `Payment-Charge-Status-Response`. `PaymentDetails` on iOS too; 2.x called it
+ * `PaymentCreateResponse`.
  */
-data class PaymentCreateResponse(
+data class PaymentDetails(
     val id: String,
     @Json(name = "order_number")
     val orderNumber: String,
@@ -100,3 +101,6 @@ data class PaymentCreateResponse(
     val paymentSecret: String? = null
 )
 
+/** The 2.x name of [PaymentDetails]. */
+@Deprecated("Renamed to PaymentDetails, the name the iOS SDK uses", ReplaceWith("PaymentDetails"))
+typealias PaymentCreateResponse = PaymentDetails

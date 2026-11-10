@@ -43,9 +43,9 @@ class PaymentSessionGatewayCodesTest {
             runBlocking { session.chargeWithEncryptedCard("jwe", browserData) }
         }
 
-        assertEquals(GopayErrorCodes.PAYMENT_CHARGE_ALREADY_EXISTS, e.errorCode)
-        assertEquals("PAYMENT_013", e.errorCode)
-        assertEquals(409, e.getHttpStatusCode())
+        assertEquals(GopayErrorCodes.PAYMENT_CHARGE_ALREADY_EXISTS, e.code)
+        assertEquals("PAYMENT_013", e.code)
+        assertEquals(409, e.httpStatus)
         assertEquals("POST", e.httpContext?.requestMethod)
         assertEquals("Charge already exists for this payment", e.httpContext?.gatewayError?.message)
         assertTrue(e.message!!.endsWith("HTTP 409: Charge already exists for this payment"))
@@ -66,7 +66,7 @@ class PaymentSessionGatewayCodesTest {
 
         for ((i, call) in calls.withIndex()) {
             val e = assertThrows("call #$i", GopaySDKException::class.java) { runBlocking { call() } }
-            assertEquals("call #$i", GopayErrorCodes.PAYMENT_CHARGE_ALREADY_EXISTS, e.errorCode)
+            assertEquals("call #$i", GopayErrorCodes.PAYMENT_CHARGE_ALREADY_EXISTS, e.code)
         }
         assertEquals(3, gateway.reported.size)
     }
@@ -80,9 +80,9 @@ class PaymentSessionGatewayCodesTest {
             runBlocking { session.chargeWithCardToken("token", browserData) }
         }
 
-        assertEquals(GopayErrorCodes.PAYMENT_NOT_FOUND, e.errorCode)
-        assertEquals("PAYMENT_012", e.errorCode)
-        assertEquals(404, e.getHttpStatusCode())
+        assertEquals(GopayErrorCodes.PAYMENT_NOT_FOUND, e.code)
+        assertEquals("PAYMENT_012", e.code)
+        assertEquals(404, e.httpStatus)
         assertEquals("Payment not found", e.httpContext?.gatewayError?.message)
         assertEquals(listOf(e), gateway.reported)
         assertApiCall("/payments/{id}/charge", 404)
@@ -96,8 +96,8 @@ class PaymentSessionGatewayCodesTest {
 
         val e = assertThrows(GopaySDKException::class.java) { runBlocking { session.getChargeState() } }
 
-        assertEquals(GopayErrorCodes.PAYMENT_NOT_FOUND, e.errorCode)
-        assertEquals(404, e.getHttpStatusCode())
+        assertEquals(GopayErrorCodes.PAYMENT_NOT_FOUND, e.code)
+        assertEquals(404, e.httpStatus)
         assertEquals("GET", e.httpContext?.requestMethod)
         assertEquals(listOf(e), gateway.reported)
         assertApiCall("/payments/{id}/charge", 404)
@@ -112,8 +112,8 @@ class PaymentSessionGatewayCodesTest {
             runBlocking { session.awaitChargeState(AwaitChargeOptions(threeDSMode = ThreeDSMode.MANUAL)) }
         }
 
-        assertEquals(GopayErrorCodes.PAYMENT_NOT_FOUND, e.errorCode)
-        assertEquals(404, e.getHttpStatusCode())
+        assertEquals(GopayErrorCodes.PAYMENT_NOT_FOUND, e.code)
+        assertEquals(404, e.httpStatus)
         assertEquals("the polling stops at the first 404", 1, gateway.requests.size)
         assertEquals(listOf(e), gateway.reported)
     }
@@ -125,8 +125,8 @@ class PaymentSessionGatewayCodesTest {
 
         val e = assertThrows(GopaySDKException::class.java) { runBlocking { session.getStatus() } }
 
-        assertEquals(GopayErrorCodes.PAYMENT_NOT_FOUND, e.errorCode)
-        assertEquals(404, e.getHttpStatusCode())
+        assertEquals(GopayErrorCodes.PAYMENT_NOT_FOUND, e.code)
+        assertEquals(404, e.httpStatus)
         assertApiCall("/payments/{id}", 404)
     }
 
@@ -142,15 +142,15 @@ class PaymentSessionGatewayCodesTest {
             gateway.answer = { status to "{}" }
             for ((name, call) in calls) {
                 val e = assertThrows("$name $status", GopaySDKException::class.java) { runBlocking { call() } }
-                assertEquals("$name $status", GopayErrorCodes.NETWORK_CLIENT_ERROR, e.errorCode)
-                assertEquals("$name $status", status, e.getHttpStatusCode())
+                assertEquals("$name $status", GopayErrorCodes.NETWORK_CLIENT_ERROR, e.code)
+                assertEquals("$name $status", status, e.httpStatus)
             }
         }
         // getStatus and getChargeState never get a 409 from the gateway; if one came, it is not a charge.
         gateway.answer = { 409 to CONFLICT }
         for ((name, call) in calls.drop(1)) {
             val e = assertThrows(name, GopaySDKException::class.java) { runBlocking { call() } }
-            assertEquals(name, GopayErrorCodes.NETWORK_CLIENT_ERROR, e.errorCode)
+            assertEquals(name, GopayErrorCodes.NETWORK_CLIENT_ERROR, e.code)
         }
     }
 
@@ -164,8 +164,8 @@ class PaymentSessionGatewayCodesTest {
             "getWalletInfo" to { session.getWalletInfo() }
         )) {
             val e = assertThrows(name, GopaySDKException::class.java) { runBlocking { call() } }
-            assertEquals(name, GopayErrorCodes.NETWORK_CLIENT_ERROR, e.errorCode)
-            assertEquals(name, 404, e.getHttpStatusCode())
+            assertEquals(name, GopayErrorCodes.NETWORK_CLIENT_ERROR, e.code)
+            assertEquals(name, 404, e.httpStatus)
         }
     }
 
@@ -176,7 +176,7 @@ class PaymentSessionGatewayCodesTest {
 
         val e = assertThrows(GopaySDKException::class.java) { runBlocking { session.getChargeState() } }
 
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.code)
         assertTrue(gateway.requests.isEmpty())
     }
 

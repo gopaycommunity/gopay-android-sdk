@@ -107,7 +107,7 @@ object MerchantBackendSimulator {
      * `check` turns the misuse into a clear message instead of a `MalformedURLException`.
      */
     private fun openConnection(path: String): HttpURLConnection {
-        val baseUrl = if (GopaySDK.isInitialized()) GopaySDK.getInstance().config.environment.apiBaseUrl else ""
+        val baseUrl = if (GopaySDK.isInitialized()) GopaySDK.getInstance().config.environment.baseUrl else ""
         check(baseUrl.isNotBlank()) { "GopaySDK is not initialized — no base URL to connect to." }
         return URL(baseUrl + path).openConnection() as HttpURLConnection
     }

@@ -128,16 +128,16 @@ internal object GooglePayBridge {
      */
     fun failureFor(cause: Throwable): GopaySDKException = when (cause) {
         is UserCancelledThrowable -> GopaySDKException(
-            errorCode = GopayErrorCodes.PAYMENT_CANCELLED,
+            code = GopayErrorCodes.PAYMENT_CANCELLED,
             message = "Google Pay sheet was closed without paying"
         )
         is UnavailableThrowable -> GopaySDKException(
-            errorCode = GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE,
+            code = GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE,
             message = "Google Pay is not available: ${cause.message}",
             cause = cause
         )
         else -> GopaySDKException(
-            errorCode = GopayErrorCodes.PAYMENT_PROCESSING_FAILED,
+            code = GopayErrorCodes.PAYMENT_PROCESSING_FAILED,
             message = "Google Pay failed: ${cause.message}",
             cause = cause
         )

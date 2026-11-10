@@ -39,7 +39,7 @@ class PaymentSessionAwaitChargeTest {
             runBlocking { session(api).awaitChargeState() }
         }
 
-        assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, e.errorCode)
+        assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, e.code)
         verifyNoInteractions(api)
     }
 
@@ -56,7 +56,7 @@ class PaymentSessionAwaitChargeTest {
             val e = assertThrows(options.toString(), GopaySDKException::class.java) {
                 runBlocking { session(api).awaitChargeState(options) }
             }
-            assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, e.errorCode)
+            assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, e.code)
         }
         verifyNoInteractions(api)
     }
@@ -91,7 +91,7 @@ class PaymentSessionAwaitChargeTest {
             }
         }
 
-        assertEquals(GopayErrorCodes.NETWORK_SERVER_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.NETWORK_SERVER_ERROR, e.code)
         runBlocking { verify(api, times(1)).getChargeState("pay-1") }
     }
 
@@ -125,7 +125,7 @@ class PaymentSessionAwaitChargeTest {
             }
         }
 
-        assertEquals(GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE, e.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE, e.code)
         assertEquals(listOf("state:ACTION_REQUIRED", "action:intent://x"), events)
         runBlocking { verify(api, times(1)).getChargeState("pay-1") }
         verifyNoMoreInteractions(api)

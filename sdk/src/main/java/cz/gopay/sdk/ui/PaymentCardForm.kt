@@ -124,7 +124,7 @@ data class PaymentFormInputs(
  * @param theme Theme configuration for customizing the form appearance.
  * @param validation Whether and when the form renders localized inline validation errors
  *                   beneath each field, from the resolved locale strings. The default,
- *                   [CardFormValidationDisplay.HIDDEN], keeps error display host-driven. An
+ *                   [PaymentCardFormValidationDisplay.HIDDEN], keeps error display host-driven. An
  *                   error [inputFields] sets shows while the form has none of its own to show.
  * @param formId Identifies this form to [GopaySDK.submitCardForm] and
  *               [GopaySDK.clearCardFormData] when several are on screen; generated when null.
@@ -147,7 +147,7 @@ fun PaymentCardForm(
     localeStrings: GopayLocaleStrings? = null,
     inputFields: PaymentFormInputs? = null,
     theme: PaymentCardFormTheme = PaymentCardFormTheme(),
-    validation: CardFormValidationDisplay = CardFormValidationDisplay.HIDDEN,
+    validation: PaymentCardFormValidationDisplay = PaymentCardFormValidationDisplay.HIDDEN,
     formId: String? = null,
     allowsAutofill: Boolean = false,
     onValidityChange: ((Boolean) -> Unit)? = null

@@ -11,7 +11,7 @@ data class GopayConfig(
     /**
      * The environment to use for the SDK.
      */
-    val environment: Environment,
+    val environment: GopayEnvironment,
 
     /**
      * Merchant `client_id`. Required together with [shareableKey] to call the public-resource
@@ -37,11 +37,11 @@ data class GopayConfig(
     val requestTimeoutMs: Long = 30000,
 
     /**
-     * Whether to enable debug mode: SDK warnings and the HTTP traffic, bodies included, go to
+     * Whether the debug log is on (`debugLoggingEnabled` on iOS too; 2.x called it `debug`): SDK warnings and the HTTP traffic, bodies included, go to
      * Logcat. The `Authorization` header, `payment_secret`, the JWT, card tokens, the card JWE and
      * the Google Pay payment data are masked in that log. Keep it off in release builds.
      */
-    val debug: Boolean = false,
+    val debugLoggingEnabled: Boolean = false,
 
     /**
      * Optional callback for error reporting.
@@ -69,8 +69,53 @@ data class GopayConfig(
     val customLocales: Map<String, GopayLocaleStrings> = emptyMap()
 ) {
     /**
-     * Get the API base URL for the current environment.
+     * The 2.x constructor, with `debug` for [debugLoggingEnabled]. A call that names `debug`
+     * lands here and is told the new name. `debug` sits second, where the primary constructor
+     * takes a string, so the two never compete for a call with positional arguments.
      */
+    @Deprecated(
+        "debug was renamed to debugLoggingEnabled, the name the iOS SDK uses",
+        ReplaceWith(
+            "GopayConfig(environment = environment, clientId = clientId, " +
+                "shareableKey = shareableKey, requestTimeoutMs = requestTimeoutMs, " +
+                "debugLoggingEnabled = debug, errorCallback = errorCallback, locale = locale, " +
+                "customLocales = customLocales)"
+        )
+    )
+    constructor(
+        environment: GopayEnvironment,
+        debug: Boolean,
+        clientId: String? = null,
+        shareableKey: String? = null,
+        requestTimeoutMs: Long = 30000,
+        errorCallback: ErrorCallback? = null,
+        locale: String? = null,
+        customLocales: Map<String, GopayLocaleStrings> = emptyMap()
+    ) : this(
+        environment = environment,
+        clientId = clientId,
+        shareableKey = shareableKey,
+        requestTimeoutMs = requestTimeoutMs,
+        debugLoggingEnabled = debug,
+        errorCallback = errorCallback,
+        locale = locale,
+        customLocales = customLocales
+    )
+
+    /** The address of the gateway's API in [environment]; `baseUrl` on iOS too. */
+    val baseUrl: String
+        get() = environment.baseUrl
+
+    /** The 2.x name of [baseUrl]. */
+    @Deprecated("Renamed to baseUrl, the name the iOS SDK uses", ReplaceWith("baseUrl"))
     val apiBaseUrl: String
-        get() = environment.apiBaseUrl
+        get() = baseUrl
+
+    /** The 2.x name of [debugLoggingEnabled]. */
+    @Deprecated(
+        "Renamed to debugLoggingEnabled, the name the iOS SDK uses",
+        ReplaceWith("debugLoggingEnabled")
+    )
+    val debug: Boolean
+        get() = debugLoggingEnabled
 } 

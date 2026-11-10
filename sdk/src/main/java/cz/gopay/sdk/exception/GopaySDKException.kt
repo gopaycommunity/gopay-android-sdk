@@ -10,7 +10,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  * One the SDK throws reaches `GopayConfig.errorCallback` once, where it leaves the SDK; see
  * [ErrorReporter]. Constructing one reports nothing.
  *
- * @param errorCode Structured error code (e.g., "AUTH_001", "NETWORK_002")
+ * @param code Structured error code (e.g., "AUTH_009", "NETWORK_002"), one of [GopayErrorCodes];
+ *        `code` on iOS too.
  * @param message Human-readable error message
  * @param cause Original exception that caused this error (if any)
  * @param httpContext HTTP-specific error context (status code, response body, etc.)
@@ -21,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *        read returned). Null on every other error. The iOS SDK exposes the same field.
  */
 class GopaySDKException(
-    val errorCode: String,
+    val code: String,
     message: String,
     cause: Throwable? = null,
     val httpContext: HttpErrorContext? = null,
@@ -29,41 +30,68 @@ class GopaySDKException(
     val chargeState: ChargePaymentResponse? = null
 ) : Exception(message, cause) {
 
+    /**
+     * The 2.x constructor, with `errorCode` for [code]. A call that names `errorCode` lands here
+     * and is told the new name; `cause` sits second, where the primary constructor takes the
+     * message, so the two never compete for a call with positional arguments.
+     */
+    @Deprecated(
+        "errorCode was renamed to code, the name the iOS SDK uses",
+        ReplaceWith(
+            "GopaySDKException(code = errorCode, message = message, cause = cause, " +
+                "httpContext = httpContext, additionalData = additionalData, chargeState = chargeState)"
+        )
+    )
+    constructor(
+        errorCode: String,
+        cause: Throwable? = null,
+        message: String,
+        httpContext: HttpErrorContext? = null,
+        additionalData: Map<String, Any>? = null,
+        chargeState: ChargePaymentResponse? = null
+    ) : this(errorCode, message, cause, httpContext, additionalData, chargeState)
+
     /** Set by [ErrorReporter.report] the first time, so the callback hears of this one once. */
     internal val reported = AtomicBoolean(false)
 
     /**
      * Checks if this is an authentication-related error
      */
-    fun isAuthenticationError(): Boolean = errorCode.startsWith("AUTH_")
+    fun isAuthenticationError(): Boolean = code.startsWith("AUTH_")
 
     /**
      * Checks if this is a network-related error
      */
-    fun isNetworkError(): Boolean = errorCode.startsWith("NETWORK_")
+    fun isNetworkError(): Boolean = code.startsWith("NETWORK_")
 
     /**
      * Checks if this is a configuration-related error
      */
-    fun isConfigurationError(): Boolean = errorCode.startsWith("CONFIG_")
+    fun isConfigurationError(): Boolean = code.startsWith("CONFIG_")
 
     /**
      * Checks if this is a payment-related error
      */
-    fun isPaymentError(): Boolean = errorCode.startsWith("PAYMENT_")
+    fun isPaymentError(): Boolean = code.startsWith("PAYMENT_")
 
     /**
      * Checks if this is a validation-related error
      */
-    fun isValidationError(): Boolean = errorCode.startsWith("VALIDATION_")
+    fun isValidationError(): Boolean = code.startsWith("VALIDATION_")
 
-    /**
-     * Gets the HTTP status code if this is an HTTP error
-     */
-    fun getHttpStatusCode(): Int? = httpContext?.statusCode
+    /** The HTTP status the gateway answered with, when this is an HTTP error; `httpStatus` on iOS too. */
+    val httpStatus: Int? get() = httpContext?.statusCode
+
+    /** The 2.x name of [code]. */
+    @Deprecated("Renamed to code, the name the iOS SDK uses", ReplaceWith("code"))
+    val errorCode: String get() = code
+
+    /** The 2.x name of [httpStatus]. */
+    @Deprecated("Renamed to httpStatus, the name the iOS SDK uses", ReplaceWith("httpStatus"))
+    fun getHttpStatusCode(): Int? = httpStatus
 
     override fun toString(): String = buildString {
-        append("GopaySDKException(errorCode='$errorCode', message='$message')")
+        append("GopaySDKException(code='$code', message='$message')")
         if (httpContext != null) append(", httpContext=$httpContext")
         if (chargeState != null) append(", chargeState=$chargeState")
     }

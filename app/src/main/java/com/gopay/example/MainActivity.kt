@@ -149,7 +149,7 @@ private fun EnvironmentBadge() {
         DemoEnvironment.SANDBOX -> CheckoutTheme.warning
         DemoEnvironment.PRODUCTION -> CheckoutTheme.danger
     }
-    val host = runCatching { java.net.URI(environment.sdkEnvironment.apiBaseUrl).host }.getOrNull()
+    val host = runCatching { java.net.URI(environment.sdkEnvironment.baseUrl).host }.getOrNull()
 
     Row(
         modifier = Modifier

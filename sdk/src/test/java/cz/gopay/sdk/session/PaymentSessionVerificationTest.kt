@@ -42,7 +42,7 @@ class PaymentSessionVerificationTest {
                 runBlocking { session().handle3dsVerification(activity, redirectUrl) }
             }
 
-            assertEquals(GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE, e.errorCode)
+            assertEquals(GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE, e.code)
             assertSame("the in-flight verification must be left alone", owner, PaymentVerificationBridge.currentOwner())
             verifyNoInteractions(activity)
         } finally {

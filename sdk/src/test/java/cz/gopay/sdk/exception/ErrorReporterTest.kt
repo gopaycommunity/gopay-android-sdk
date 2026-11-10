@@ -106,7 +106,7 @@ class ErrorReporterTest {
         assertTrue("an undecided charge is not an error", received.isEmpty())
 
         ErrorReporter.report(GopaySDKException(GopayErrorCodes.PAYMENT_DECLINED, "Charge failed"))
-        assertEquals(listOf(GopayErrorCodes.PAYMENT_DECLINED), received.map { it.errorCode })
+        assertEquals(listOf(GopayErrorCodes.PAYMENT_DECLINED), received.map { it.code })
     }
 
     @Test
@@ -121,7 +121,7 @@ class ErrorReporterTest {
         // Reporting must still succeed despite the misbehaving callback.
         val ex = GopaySDKException("PAYMENT_003", "boom")
         ErrorReporter.report(ex)
-        assertEquals("PAYMENT_003", ex.errorCode)
+        assertEquals("PAYMENT_003", ex.code)
     }
 
     @Test

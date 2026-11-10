@@ -20,7 +20,7 @@ import cz.gopay.sdk.model.ClientType
 import cz.gopay.sdk.model.GooglePayInfoResponse
 import cz.gopay.sdk.model.InitSessionRequest
 import cz.gopay.sdk.model.PaymentChargeInstrument
-import cz.gopay.sdk.model.PaymentCreateResponse
+import cz.gopay.sdk.model.PaymentDetails
 import cz.gopay.sdk.model.PaymentOutcome
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.model.QrPaymentDetails
@@ -241,7 +241,7 @@ class PaymentSession internal constructor(
                 val context = e.httpContext
                 if (context != null && context.statusCode in setOf(400, 401, 403)) {
                     throw GopaySDKException(
-                        errorCode = GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID,
+                        code = GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID,
                         message = "payment_credentials rejected: HTTP ${context.statusCode}" +
                             GatewayErrorBody.messageSuffix(context.gatewayError),
                         // The gateway's HTTP error itself, as the iOS SDK keeps it.
@@ -252,7 +252,7 @@ class PaymentSession internal constructor(
                 throw e
             } catch (e: Exception) {
                 throw GopaySDKException(
-                    errorCode = GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR,
+                    code = GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR,
                     message = "Failed to acquire payment-scoped token: ${e.message}",
                     cause = e
                 )
@@ -273,7 +273,7 @@ class PaymentSession internal constructor(
      * `GET /payments/{payment_id}`. A 404, a payment that does not exist or that the session's
      * token has no access to, throws [GopayErrorCodes.PAYMENT_NOT_FOUND].
      */
-    suspend fun getStatus(): PaymentCreateResponse = reportErrors(paymentId) {
+    suspend fun getStatus(): PaymentDetails = reportErrors(paymentId) {
         ensureOpen()
         apiCall("get payment status", PAYMENT_STATUS_CODES) { paymentApi.getPaymentStatus(paymentId) }
     }
@@ -394,7 +394,7 @@ class PaymentSession internal constructor(
         // Charging without the address would fail on the gateway anyway, and reporting that as
         // the charge's own 400 would hide where it went wrong.
         throw GopaySDKException(
-            errorCode = e.errorCode,
+            code = e.code,
             message = "Failed to charge payment: browser data could not be fetched " +
                 "(${e.message})",
             // The transport failure apiCall wrapped, not the wrapper; an HTTP error has none.
@@ -425,7 +425,7 @@ class PaymentSession internal constructor(
     }
 
     private fun sessionClosed() = GopaySDKException(
-        errorCode = GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED,
+        code = GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED,
         message = "PaymentSession for $paymentId is closed"
     )
 
@@ -500,7 +500,7 @@ class PaymentSession internal constructor(
         ensureOpen()
         if (options.intervalMs <= 0 || options.initialTimeoutMs <= 0) {
             throw GopaySDKException(
-                errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
+                code = GopayErrorCodes.VALIDATION_INVALID_INPUT,
                 message = "awaitChargeState needs a positive intervalMs and initialTimeoutMs"
             )
         }
@@ -509,7 +509,7 @@ class PaymentSession internal constructor(
         val verify: (suspend (String) -> Unit)? = when (options.threeDSMode) {
             ThreeDSMode.AUTOMATIC -> {
                 val activity = options.activity ?: throw GopaySDKException(
-                    errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
+                    code = GopayErrorCodes.VALIDATION_INVALID_INPUT,
                     message = "awaitChargeState needs an activity to run the 3DS challenge in " +
                         "ThreeDSMode.AUTOMATIC; pass one or use ThreeDSMode.MANUAL"
                 )
@@ -532,30 +532,35 @@ class PaymentSession internal constructor(
     /**
      * `GET /payments/{payment_id}/google-pay/info`: what the gateway allows for this payment in
      * the device's wallet, Google Pay. The name shared with the iOS SDK, where it reads the
-     * Apple Pay info; [getGooglePayInfo] is the same call.
+     * Apple Pay info.
      */
     suspend fun getWalletInfo(): GooglePayInfoResponse = reportErrors(paymentId) {
         ensureOpen()
         apiCall("get Google Pay info") { paymentApi.getGooglePayInfo(paymentId) }
     }
 
-    /** GET /payments/{payment_id}/google-pay/info. The Android name of [getWalletInfo]. */
+    /** The platform name of [getWalletInfo], the same call. */
+    @Deprecated(
+        "Use getWalletInfo(), the name shared with the iOS SDK",
+        ReplaceWith("getWalletInfo()")
+    )
     suspend fun getGooglePayInfo(): GooglePayInfoResponse = getWalletInfo()
 
-    /**
-     * Pays with the device's wallet, Google Pay: the name shared with the iOS SDK, where it runs
-     * Apple Pay. The same call as [chargeWithGooglePay], which documents it.
-     */
-    suspend fun chargeWithWallet(
+    /** The platform name of [chargeWithWallet], the same call. */
+    @Deprecated(
+        "Use chargeWithWallet(), the name shared with the iOS SDK",
+        ReplaceWith("chargeWithWallet(activity, browserData, challengePreference)")
+    )
+    suspend fun chargeWithGooglePay(
         activity: Activity,
         browserData: BrowserData? = null,
         challengePreference: ChallengePreference? = null
-    ): ChargePaymentResponse = chargeWithGooglePay(activity, browserData, challengePreference)
+    ): ChargePaymentResponse = chargeWithWallet(activity, browserData, challengePreference)
 
     /**
-     * Managed Google Pay flow: fetches Google Pay config for this payment, launches the Google
-     * Pay sheet, parses the resulting token, and submits the charge in one call. The Android
-     * name of [chargeWithWallet].
+     * Pays with the device's wallet, Google Pay: the name shared with the iOS SDK, where it runs
+     * Apple Pay. The managed flow: fetches the Google Pay config for this payment, launches the
+     * Google Pay sheet, parses the resulting token, and submits the charge in one call.
      *
      * Suspends while the Google Pay sheet is visible. Returns the [ChargePaymentResponse] on
      * success — inspect `action.redirectUrl` and call [handle3dsVerification] if 3DS is
@@ -575,21 +580,21 @@ class PaymentSession internal constructor(
      *                    if you collected more accurate values elsewhere.
      * @param challengePreference 3DS challenge preference forwarded to the gateway.
      */
-    suspend fun chargeWithGooglePay(
+    suspend fun chargeWithWallet(
         activity: Activity,
         browserData: BrowserData? = null,
         challengePreference: ChallengePreference? = null
     ): ChargePaymentResponse = reportErrors(paymentId) {
         ensureOpen()
         Telemetry.noteOrigin(activity)
-        val info = getGooglePayInfo()
+        val info = getWalletInfo()
         val paymentRequestJson = GooglePayHelper.buildPaymentDataRequestJson(info)
         val env = GooglePayHelper.walletEnvironment(info)
 
         val deferred = CompletableDeferred<Result<String>>()
         val owner = GooglePayBridge.register(deferred)
             ?: throw GopaySDKException(
-                errorCode = GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS,
+                code = GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS,
                 message = "A Google Pay payment is already in progress"
             )
         // The steps of the sheet, `GPAY.<step>`; see GwLoggerTelemetry.GooglePayFunnel.
@@ -612,7 +617,7 @@ class PaymentSession internal constructor(
                     // problem, not Google Pay being unavailable, so not the code that hides the
                     // button.
                     throw GopaySDKException(
-                        errorCode = GopayErrorCodes.PAYMENT_PROCESSING_FAILED,
+                        code = GopayErrorCodes.PAYMENT_PROCESSING_FAILED,
                         message = "Google Pay failed: the SDK's Google Pay activity could not " +
                             "be started",
                         cause = e
@@ -810,7 +815,7 @@ class PaymentSession internal constructor(
         // opened. An empty redirect_url from the gateway lands here too.
         if (!PaymentVerificationPolicy.isLoadableChallengeUrl(redirectUrl)) {
             throw GopaySDKException(
-                errorCode = GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE,
+                code = GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE,
                 message = "3DS verification could not be loaded: the redirect URL is not an " +
                     "http(s) address the challenge WebView can open"
             )
@@ -818,7 +823,7 @@ class PaymentSession internal constructor(
         val deferred = CompletableDeferred<Boolean>()
         val owner = PaymentVerificationBridge.register(deferred)
             ?: throw GopaySDKException(
-                errorCode = GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS,
+                code = GopayErrorCodes.PAYMENT_VERIFICATION_IN_PROGRESS,
                 message = "A payment verification is already in progress"
             )
         // The one departure that is part of a payment, told apart from the session's close.

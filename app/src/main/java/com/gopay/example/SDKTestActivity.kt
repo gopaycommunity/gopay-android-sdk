@@ -59,7 +59,7 @@ import cz.gopay.sdk.model.deviceDefault
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.session.AwaitChargeOptions
 import cz.gopay.sdk.session.PaymentSession
-import cz.gopay.sdk.ui.CardFormValidationDisplay
+import cz.gopay.sdk.ui.PaymentCardFormValidationDisplay
 import cz.gopay.sdk.ui.PaymentCardForm
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -127,11 +127,11 @@ fun SDKTestScreen() {
             try {
                 block()
             } catch (e: GopaySDKException) {
-                if (e.errorCode == GopayErrorCodes.PAYMENT_CANCELLED) {
-                    log("Closed before it finished [${e.errorCode}]: ${e.message}")
+                if (e.code == GopayErrorCodes.PAYMENT_CANCELLED) {
+                    log("Closed before it finished [${e.code}]: ${e.message}")
                     return@launch
                 }
-                log("Error [${e.errorCode}]: ${e.message}" +
+                log("Error [${e.code}]: ${e.message}" +
                     e.chargeState?.let { "\nCharge ${it.id} ended ${it.state}" }.orEmpty() +
                     e.httpContext?.let { "\nHTTP ${it.statusCode} ${it.requestMethod} ${it.requestUrl}" +
                         (it.responseBody?.takeIf { b -> b.isNotEmpty() }?.let { b -> "\n${b.take(300)}" } ?: "") }.orEmpty())
@@ -669,7 +669,7 @@ fun CardFormSection(isBusy: Boolean, onError: (String) -> Unit, onJwe: (String) 
             theme = theme,
             // The form shows the locale's own error messages under a field as soon as it holds
             // something invalid; the host reads nothing back.
-            validation = CardFormValidationDisplay.LIVE,
+            validation = PaymentCardFormValidationDisplay.LIVE,
             formId = CONSOLE_CARD_FORM_ID,
             // Placed straight into the section card, the way the iOS example sits in its grey box.
             // The screen's 16dp and the card's 16dp put the fields 32dp from the screen edge under
@@ -692,7 +692,7 @@ fun CardFormSection(isBusy: Boolean, onError: (String) -> Unit, onJwe: (String) 
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: GopaySDKException) {
-                        errorMessage = "[${e.errorCode}] ${e.message}"
+                        errorMessage = "[${e.code}] ${e.message}"
                     } catch (e: Exception) {
                         errorMessage = "Unexpected error: ${e.message}"
                     } finally {

@@ -78,7 +78,7 @@ class PaymentSessionOutcomeTest {
 
         gateway.answer = { 200 to NO_STATE }
         val e = assertThrows(GopaySDKException::class.java) { runBlocking { session.getChargeState() } }
-        assertEquals(GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.code)
     }
 
     @Test
@@ -99,8 +99,8 @@ class PaymentSessionOutcomeTest {
 
         val e = assertThrows(GopaySDKException::class.java) { runBlocking { session.getPaymentOutcome() } }
 
-        assertEquals(GopayErrorCodes.PAYMENT_NOT_FOUND, e.errorCode)
-        assertEquals(404, e.getHttpStatusCode())
+        assertEquals(GopayErrorCodes.PAYMENT_NOT_FOUND, e.code)
+        assertEquals(404, e.httpStatus)
         assertEquals(listOf(e), gateway.reported)
     }
 
@@ -115,12 +115,12 @@ class PaymentSessionOutcomeTest {
             gateway.answer = { status to "{}" }
             val outcome = assertThrows(GopaySDKException::class.java) { runBlocking { session.getPaymentOutcome() } }
             val statusError = assertThrows(GopaySDKException::class.java) { runBlocking { session.getStatus() } }
-            assertEquals("$status", code, outcome.errorCode)
-            assertEquals("$status", statusError.errorCode, outcome.errorCode)
+            assertEquals("$status", code, outcome.code)
+            assertEquals("$status", statusError.code, outcome.code)
         }
         gateway.answer = { 200 to "<html>captive portal</html>" }
         val e = assertThrows(GopaySDKException::class.java) { runBlocking { session.getPaymentOutcome() } }
-        assertEquals(GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.code)
     }
 
     @Test
@@ -130,7 +130,7 @@ class PaymentSessionOutcomeTest {
 
         val e = assertThrows(GopaySDKException::class.java) { runBlocking { session.getPaymentOutcome() } }
 
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.code)
         assertTrue(gateway.requests.isEmpty())
         assertEquals(listOf(e), gateway.reported)
     }

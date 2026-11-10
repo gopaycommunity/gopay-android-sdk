@@ -322,7 +322,7 @@ internal object Redaction {
      * The same words as on iOS.
      */
     fun failureLabel(error: Throwable): String = when {
-        error is GopaySDKException -> error.errorCode
+        error is GopaySDKException -> error.code
         error is SocketTimeoutException -> "timeout"
         // OkHttp's call timeout reports itself this way.
         error is InterruptedIOException && error.message == "timeout" -> "timeout"
@@ -339,7 +339,7 @@ internal object Redaction {
      * request that failed, or the [failureLabel] of anything else; never a message.
      */
     fun describeFailure(error: Throwable): String = when {
-        error is GopaySDKException && error.errorCode.matches(CODE) -> error.errorCode
+        error is GopaySDKException && error.code.matches(CODE) -> error.code
         error is GopaySDKException && error.httpContext != null -> "HTTP_${error.httpContext.statusCode}"
         error is GopaySDKException -> "error"
         else -> failureLabel(error)

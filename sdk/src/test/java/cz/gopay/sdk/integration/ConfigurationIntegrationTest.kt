@@ -1,7 +1,7 @@
 package cz.gopay.sdk.integration
 
 import cz.gopay.sdk.GopaySDK
-import cz.gopay.sdk.config.Environment
+import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.telemetry.TelemetryCapture
@@ -39,10 +39,10 @@ class ConfigurationIntegrationTest {
     @Test
     fun testFullConfigurationFlow() {
         val config = GopayConfig(
-            environment = Environment.SANDBOX,
+            environment = GopayEnvironment.SANDBOX,
             clientId = "test-client",
             shareableKey = "test-shareable",
-            debug = true,
+            debugLoggingEnabled = true,
             requestTimeoutMs = 45_000
         )
 
@@ -52,22 +52,22 @@ class ConfigurationIntegrationTest {
         assertTrue(GopaySDK.isInitialized())
 
         val sdk = GopaySDK.getInstance()
-        assertEquals(Environment.SANDBOX, sdk.config.environment)
-        assertEquals("https://gw.sandbox.gopay.com/gp-gw/api/4.0/", sdk.config.apiBaseUrl)
+        assertEquals(GopayEnvironment.SANDBOX, sdk.config.environment)
+        assertEquals("https://gw.sandbox.gopay.com/gp-gw/api/4.0/", sdk.config.baseUrl)
         assertEquals("test-client", sdk.config.clientId)
         assertEquals("test-shareable", sdk.config.shareableKey)
-        assertTrue(sdk.config.debug)
+        assertTrue(sdk.config.debugLoggingEnabled)
         assertEquals(45_000L, sdk.config.requestTimeoutMs)
     }
 
     @Test
     fun testEnvironmentSwitching() {
-        GopaySDK.initialize(GopayConfig(environment = Environment.SANDBOX))
-        assertEquals(Environment.SANDBOX, GopaySDK.getInstance().config.environment)
+        GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.SANDBOX))
+        assertEquals(GopayEnvironment.SANDBOX, GopaySDK.getInstance().config.environment)
 
-        GopaySDK.initialize(GopayConfig(environment = Environment.PRODUCTION))
+        GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.PRODUCTION))
         val sdk = GopaySDK.getInstance()
-        assertEquals(Environment.PRODUCTION, sdk.config.environment)
-        assertEquals("https://gate.gopay.com/gp-gw/api/4.0/", sdk.config.apiBaseUrl)
+        assertEquals(GopayEnvironment.PRODUCTION, sdk.config.environment)
+        assertEquals("https://gate.gopay.com/gp-gw/api/4.0/", sdk.config.baseUrl)
     }
 }

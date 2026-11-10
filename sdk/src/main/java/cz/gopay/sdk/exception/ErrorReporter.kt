@@ -29,7 +29,7 @@ fun interface ErrorCallback {
  * remembers that it was reported, so an entry point calling another, `chargeWithCardToken`
  * calling `charge`, still reports once. `CONFIG_001` is thrown before `initialize`, when no
  * callback is installed yet, so it reaches none; a `GopaySDKException` a constructor throws,
- * `Environment.DEVELOPMENT` with a bad URL, is not a call of the SDK and reaches none either.
+ * `GopayEnvironment.DEVELOPMENT` with a bad URL, is not a call of the SDK and reaches none either.
  */
 internal object ErrorReporter {
     
@@ -65,8 +65,8 @@ internal object ErrorReporter {
     fun reportTo(callback: ErrorCallback?, exception: GopaySDKException, paymentId: String? = null) {
         // A payment window that closed before it finished is not an error; see PAYMENT_CANCELLED.
         // Neither is a charge the gateway has not decided yet; see PAYMENT_TIMEOUT.
-        if (exception.errorCode == GopayErrorCodes.PAYMENT_CANCELLED ||
-            exception.errorCode == GopayErrorCodes.PAYMENT_TIMEOUT
+        if (exception.code == GopayErrorCodes.PAYMENT_CANCELLED ||
+            exception.code == GopayErrorCodes.PAYMENT_TIMEOUT
         ) {
             return
         }

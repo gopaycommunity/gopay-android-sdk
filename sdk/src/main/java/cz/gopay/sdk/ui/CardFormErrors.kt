@@ -8,7 +8,7 @@ import cz.gopay.sdk.ui.utils.ExpirationDateInputValidator
 /**
  * Which localized validation errors [PaymentCardForm] shows under its fields, as a pure
  * computation so the display rules can be unit-tested. Mirrors `GopayCardFormErrors` on iOS:
- * what is shown depends on the [CardFormValidationDisplay] mode, on whether a submit was
+ * what is shown depends on the [PaymentCardFormValidationDisplay] mode, on whether a submit was
  * attempted, and on how far the user has got with the field.
  *
  * @property cardNumber the card-number error, or null when nothing is shown.
@@ -37,13 +37,13 @@ internal data class CardFormErrors(
         ): Boolean = wasFocused && !isFocused && edited && !changingConfigurations
 
         /**
-         * In [CardFormValidationDisplay.LIVE] a field that holds something invalid is flagged
+         * In [PaymentCardFormValidationDisplay.LIVE] a field that holds something invalid is flagged
          * once the user is done with it, not while it is first being typed: when it holds its
          * full length and still fails (a card number that fails its check, an expired date),
          * when the user has typed in it and left it, or once a submit ran. Once flagged, a field
          * stays flagged while the user goes back to fix it, until it is valid or the form is
          * emptied. An empty field is never flagged in LIVE; only
-         * [CardFormValidationDisplay.ON_SUBMIT] says "required". The same rule as the iOS form's
+         * [PaymentCardFormValidationDisplay.ON_SUBMIT] says "required". The same rule as the iOS form's
          * `.live`.
          *
          * @param data what the fields hold.
@@ -51,23 +51,23 @@ internal data class CardFormErrors(
          * @param mode when errors are shown at all.
          * @param submitAttempted whether a submit ran since the fields were last emptied.
          * @param cardNumberLeft whether the user has typed in the card number and left it since;
-         *        read only in [CardFormValidationDisplay.LIVE].
+         *        read only in [PaymentCardFormValidationDisplay.LIVE].
          * @param expirationLeft the same for the expiration.
          * @param cvvLeft the same for the CVV.
          */
         fun of(
             data: CardFormData,
             strings: GopayLocaleStrings,
-            mode: CardFormValidationDisplay,
+            mode: PaymentCardFormValidationDisplay,
             submitAttempted: Boolean,
             cardNumberLeft: Boolean,
             expirationLeft: Boolean,
             cvvLeft: Boolean
         ): CardFormErrors {
-            if (mode == CardFormValidationDisplay.HIDDEN) return NONE
+            if (mode == PaymentCardFormValidationDisplay.HIDDEN) return NONE
             val validation = data.validate()
             fun message(left: Boolean, isFull: Boolean, isEmpty: Boolean, isValid: Boolean, pattern: String): String? =
-                if (mode == CardFormValidationDisplay.LIVE) {
+                if (mode == PaymentCardFormValidationDisplay.LIVE) {
                     // Live: never nag about an empty field or one still being typed, only about
                     // invalid content the user is done with.
                     if (!isEmpty && !isValid && (isFull || left || submitAttempted)) pattern else null

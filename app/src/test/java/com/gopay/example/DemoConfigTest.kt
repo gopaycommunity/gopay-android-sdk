@@ -1,6 +1,6 @@
 package com.gopay.example
 
-import cz.gopay.sdk.config.Environment
+import cz.gopay.sdk.config.GopayEnvironment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -9,29 +9,29 @@ class DemoConfigTest {
 
     @Test
     fun `a blank base URL maps to the sandbox gateway`() {
-        assertEquals(Environment.SANDBOX, demoBaseUrlEnvironment(""))
-        assertEquals(Environment.SANDBOX, demoBaseUrlEnvironment("   "))
+        assertEquals(GopayEnvironment.SANDBOX, demoBaseUrlEnvironment(""))
+        assertEquals(GopayEnvironment.SANDBOX, demoBaseUrlEnvironment("   "))
     }
 
     @Test
     fun `the sandbox gateway URL maps to the sandbox environment`() {
-        assertEquals(Environment.SANDBOX, demoBaseUrlEnvironment("https://gw.sandbox.gopay.com/gp-gw/api/4.0/"))
-        assertEquals(Environment.SANDBOX, demoBaseUrlEnvironment("https://gw.sandbox.gopay.com/gp-gw/api/4.0"))
-        assertEquals(Environment.SANDBOX, demoBaseUrlEnvironment("  https://gw.sandbox.gopay.com/gp-gw/api/4.0/  "))
+        assertEquals(GopayEnvironment.SANDBOX, demoBaseUrlEnvironment("https://gw.sandbox.gopay.com/gp-gw/api/4.0/"))
+        assertEquals(GopayEnvironment.SANDBOX, demoBaseUrlEnvironment("https://gw.sandbox.gopay.com/gp-gw/api/4.0"))
+        assertEquals(GopayEnvironment.SANDBOX, demoBaseUrlEnvironment("  https://gw.sandbox.gopay.com/gp-gw/api/4.0/  "))
     }
 
     @Test
     fun `the production gateway URL maps to the production environment`() {
-        assertEquals(Environment.PRODUCTION, demoBaseUrlEnvironment("https://gate.gopay.com/gp-gw/api/4.0/"))
-        assertEquals(Environment.PRODUCTION, demoBaseUrlEnvironment("https://gate.gopay.com/gp-gw/api/4.0"))
+        assertEquals(GopayEnvironment.PRODUCTION, demoBaseUrlEnvironment("https://gate.gopay.com/gp-gw/api/4.0/"))
+        assertEquals(GopayEnvironment.PRODUCTION, demoBaseUrlEnvironment("https://gate.gopay.com/gp-gw/api/4.0"))
     }
 
     @Test
     fun `a custom base URL maps to a development gateway on that host`() {
         val environment = demoBaseUrlEnvironment("https://gw.example.com/gp-gw/api/4.0")
 
-        assertTrue(environment is Environment.DEVELOPMENT)
-        assertEquals("https://gw.example.com/gp-gw/api/4.0/", environment.apiBaseUrl)
+        assertTrue(environment is GopayEnvironment.DEVELOPMENT)
+        assertEquals("https://gw.example.com/gp-gw/api/4.0/", environment.baseUrl)
     }
 
     @Test

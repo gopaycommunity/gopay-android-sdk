@@ -61,7 +61,7 @@ internal suspend fun submitCardForm(formId: String?, encrypt: suspend (CardData)
  * JWE-reuse retry on it.
  */
 internal fun invalidCardForm(data: CardFormData?): GopaySDKException = GopaySDKException(
-    errorCode = GopayErrorCodes.VALIDATION_INVALID_INPUT,
+    code = GopayErrorCodes.VALIDATION_INVALID_INPUT,
     message = if (data == null || data.isEmpty) {
         NO_CARD_DATA_MESSAGE
     } else {

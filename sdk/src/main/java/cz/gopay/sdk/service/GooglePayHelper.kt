@@ -2,7 +2,7 @@ package cz.gopay.sdk.service
 
 import com.google.android.gms.wallet.WalletConstants
 import com.squareup.moshi.Json
-import cz.gopay.sdk.config.Environment
+import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.exception.reportErrors
@@ -126,11 +126,11 @@ object GooglePayHelper {
      * The Google Pay environment a wallet call runs in: the one the gateway names in [info],
      * else `PRODUCTION` for the production gateway and `TEST` for every other [environment].
      */
-    internal fun walletEnvironment(info: GooglePayInfoResponse?, environment: Environment): Int {
+    internal fun walletEnvironment(info: GooglePayInfoResponse?, environment: GopayEnvironment): Int {
         val production = if (info != null) {
             info.environment == "PRODUCTION"
         } else {
-            environment is Environment.PRODUCTION
+            environment is GopayEnvironment.PRODUCTION
         }
         return if (production) WalletConstants.ENVIRONMENT_PRODUCTION else WalletConstants.ENVIRONMENT_TEST
     }
@@ -157,7 +157,7 @@ object GooglePayHelper {
     )
 
     private fun unreadableToken(message: String, cause: Throwable? = null) = GopaySDKException(
-        errorCode = GopayErrorCodes.PAYMENT_PROCESSING_FAILED,
+        code = GopayErrorCodes.PAYMENT_PROCESSING_FAILED,
         message = "Google Pay failed: $message",
         cause = cause
     )

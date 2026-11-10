@@ -78,12 +78,13 @@ class PaymentSessionTransportTest {
             runBlocking { session.getChargeState() }
         }
 
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.code)
         assertEquals("nothing may go out on a closed session", 0, gateway.requests.get())
         assertNoCrash()
     }
 
     @Test
+    @Suppress("DEPRECATION") // the deprecated aliases are refused like the names they stand for
     fun `every public method of a closed session throws AUTH_013`() {
         val gateway = Gateway(chargeState())
         val session = session(gateway)
@@ -110,7 +111,7 @@ class PaymentSessionTransportTest {
         )
         for ((name, call) in calls) {
             val e = assertThrows(name, GopaySDKException::class.java) { runBlocking { call() } }
-            assertEquals(name, GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.errorCode)
+            assertEquals(name, GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.code)
         }
 
         assertEquals("nothing may go out on a closed session", 0, gateway.requests.get())
@@ -128,7 +129,7 @@ class PaymentSessionTransportTest {
             runBlocking { session.getChargeState() }
         }
 
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.code)
         assertEquals("the late token was dropped", null, session.currentToken())
         assertNoCrash()
     }
@@ -147,7 +148,7 @@ class PaymentSessionTransportTest {
             runBlocking { session.getChargeState() }
         }
 
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.code)
         assertNoCrash()
     }
 
@@ -161,7 +162,7 @@ class PaymentSessionTransportTest {
         }
 
         // Offline is not bad credentials: the host should retry, not fetch a new payment.
-        assertEquals(GopayErrorCodes.NETWORK_NO_CONNECTION, e.errorCode)
+        assertEquals(GopayErrorCodes.NETWORK_NO_CONNECTION, e.code)
         assertNoCrash()
     }
 
@@ -182,7 +183,7 @@ class PaymentSessionTransportTest {
             val e = assertThrows("case #$index", GopaySDKException::class.java) {
                 runBlocking { start(answer) }
             }
-            assertEquals("case #$index", code, e.errorCode)
+            assertEquals("case #$index", code, e.code)
         }
     }
 
@@ -193,7 +194,7 @@ class PaymentSessionTransportTest {
         }
 
         val cause = e.cause as GopaySDKException
-        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, cause.errorCode)
+        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, cause.code)
         assertEquals(401, cause.httpContext?.statusCode)
     }
 
@@ -205,7 +206,7 @@ class PaymentSessionTransportTest {
             runBlocking { session.getChargeState() }
         }
 
-        assertEquals(GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.code)
         assertNoCrash()
     }
 
@@ -218,7 +219,7 @@ class PaymentSessionTransportTest {
                 runBlocking { session.getChargeState() }
             }
 
-            assertEquals(body, GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.errorCode)
+            assertEquals(body, GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.code)
         }
         assertNoCrash()
     }
@@ -237,7 +238,7 @@ class PaymentSessionTransportTest {
             }
         }
 
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID, e.code)
         assertEquals("payment_credentials rejected: HTTP 401: Invalid payment credentials", e.message)
         assertEquals("UNAUTHORIZED", e.httpContext?.gatewayError?.error)
     }
@@ -266,7 +267,7 @@ class PaymentSessionTransportTest {
             runBlocking { session.getChargeState() }
         }
 
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID, e.code)
         assertEquals(1, received.size)
         assertSame(e, received.single().first)
         assertSame("reported where the public call ended", Thread.currentThread(), received.single().second)
@@ -282,7 +283,7 @@ class PaymentSessionTransportTest {
             runBlocking { session.getChargeState() }
         }
 
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED, e.code)
         assertEquals(2, gateway.requests.get())
         assertNoCrash()
     }
@@ -298,7 +299,7 @@ class PaymentSessionTransportTest {
             runBlocking { session.getChargeState() }
         }
 
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED, e.code)
         assertEquals(
             "Payment-scoped token still rejected after re-authentication: Token revoked",
             e.message
@@ -318,7 +319,7 @@ class PaymentSessionTransportTest {
             runBlocking { session.getChargeState() }
         }
 
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED, e.code)
         assertEquals("nothing may go out without the header", 0, gateway.requests.get())
         assertNoCrash()
     }

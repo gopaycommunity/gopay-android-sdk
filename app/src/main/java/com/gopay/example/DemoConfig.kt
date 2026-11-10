@@ -1,6 +1,6 @@
 package com.gopay.example
 
-import cz.gopay.sdk.config.Environment
+import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.locales.GopayLocales
 
@@ -13,12 +13,12 @@ enum class DemoEnvironment {
     SANDBOX,
     PRODUCTION;
 
-    /** The SDK [Environment] this maps to. */
-    val sdkEnvironment: Environment
+    /** The SDK [GopayEnvironment] this maps to. */
+    val sdkEnvironment: GopayEnvironment
         get() = when (this) {
             DEVELOPMENT -> demoBaseUrlEnvironment(DemoConfig.developmentBaseUrl)
-            SANDBOX -> Environment.SANDBOX
-            PRODUCTION -> Environment.PRODUCTION
+            SANDBOX -> GopayEnvironment.SANDBOX
+            PRODUCTION -> GopayEnvironment.PRODUCTION
         }
 }
 
@@ -26,20 +26,20 @@ enum class DemoEnvironment {
  * What a `gopay.demo.baseUrl` value resolves to: blank means the SDK's own sandbox host, one of the
  * SDK's built-in gateway URLs that environment, anything else a custom gateway.
  */
-internal fun demoBaseUrlEnvironment(baseUrl: String): Environment {
+internal fun demoBaseUrlEnvironment(baseUrl: String): GopayEnvironment {
     val normalized = baseUrl.trim().let { if (it.isEmpty() || it.endsWith("/")) it else "$it/" }
     return when (normalized) {
-        "", Environment.SANDBOX.apiBaseUrl -> Environment.SANDBOX
-        Environment.PRODUCTION.apiBaseUrl -> Environment.PRODUCTION
-        else -> Environment.DEVELOPMENT.create(baseUrl)
+        "", GopayEnvironment.SANDBOX.baseUrl -> GopayEnvironment.SANDBOX
+        GopayEnvironment.PRODUCTION.baseUrl -> GopayEnvironment.PRODUCTION
+        else -> GopayEnvironment.DEVELOPMENT.create(baseUrl)
     }
 }
 
 /** The badge entry the demo starts on for a `gopay.demo.baseUrl` value. */
 internal fun demoInitialEnvironment(baseUrl: String): DemoEnvironment =
     when (demoBaseUrlEnvironment(baseUrl)) {
-        Environment.SANDBOX -> DemoEnvironment.SANDBOX
-        Environment.PRODUCTION -> DemoEnvironment.PRODUCTION
+        GopayEnvironment.SANDBOX -> DemoEnvironment.SANDBOX
+        GopayEnvironment.PRODUCTION -> DemoEnvironment.PRODUCTION
         else -> DemoEnvironment.DEVELOPMENT
     }
 
@@ -89,7 +89,7 @@ object DemoConfig {
         environment = environment.sdkEnvironment,
         clientId = credentials.clientId,
         shareableKey = credentials.shareableKey,
-        debug = true,
+        debugLoggingEnabled = true,
         requestTimeoutMs = 5_000,
         // Register a custom locale (code "xx") the form can select alongside the built-ins, and
         // leave `locale = null` so the default follows the device language.
@@ -101,7 +101,7 @@ object DemoConfig {
             )
         ),
         errorCallback = { error ->
-            println("Global SDK Error: [${error.errorCode}] ${error.message}")
+            println("Global SDK Error: [${error.code}] ${error.message}")
             error.httpContext?.let { http ->
                 println("HTTP: ${http.statusCode} ${http.requestMethod} ${http.requestUrl}")
                 http.responseBody?.let { body -> println("Body: ${body.take(200)}…") }

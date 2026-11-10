@@ -29,7 +29,7 @@ import kotlin.math.roundToLong
  * the caller's thread outside the lock; the lock covers only the budget, the number and the
  * hand-over to the HTTP client.
  *
- * With `GopayConfig.debug` on, each sent event is named in one Logcat line, without its content.
+ * With `GopayConfig.debugLoggingEnabled` on, each sent event is named in one Logcat line, without its content.
  */
 internal class GwLoggerTelemetry(
     private val endpoint: String,
@@ -306,7 +306,7 @@ internal class GwLoggerTelemetry(
         }
 
         /** The sheet could not be started, or ended without a token. */
-        fun sheetFailed(failure: GopaySDKException) = when (failure.errorCode) {
+        fun sheetFailed(failure: GopaySDKException) = when (failure.code) {
             GopayErrorCodes.PAYMENT_CANCELLED -> step("cancel", StepStatus.INFO)
             // The sheet never came up, rather than failing once it was there.
             GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE -> step("begin", StepStatus.FAILURE, failure)
@@ -369,7 +369,7 @@ internal class GwLoggerTelemetry(
      */
     fun error(error: GopaySDKException, paymentId: String?) {
         if (error.httpContext != null) return
-        val code = error.errorCode.takeIf { it.isNotEmpty() } ?: "UNKNOWN"
+        val code = error.code.takeIf { it.isNotEmpty() } ?: "UNKNOWN"
         post(Budget.ERROR, paymentId) {
             put("event_type", "js_event")
             put("function_name", code)

@@ -50,7 +50,7 @@ class ApiUtilsTest {
             response.unwrap("fetch thing")
             fail("Expected GopaySDKException for empty body")
         } catch (e: GopaySDKException) {
-            assertEquals(GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.errorCode)
+            assertEquals(GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.code)
             assertTrue(e.message!!.contains("fetch thing"))
         }
     }
@@ -64,7 +64,7 @@ class ApiUtilsTest {
             response.unwrap("charge payment")
             fail("Expected GopaySDKException for HTTP error")
         } catch (e: GopaySDKException) {
-            assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, e.errorCode)
+            assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, e.code)
             assertTrue(e.message!!.contains("charge payment"))
             assertTrue(e.message!!.contains("400"))
 
@@ -85,7 +85,7 @@ class ApiUtilsTest {
             response.unwrap("do thing")
             fail("Expected GopaySDKException")
         } catch (e: GopaySDKException) {
-            assertEquals(500, e.getHttpStatusCode())
+            assertEquals(500, e.httpStatus)
             assertTrue(e.isNetworkError())
         }
     }
@@ -107,7 +107,7 @@ class ApiUtilsTest {
             }
             fail("Expected GopaySDKException for a malformed response")
         } catch (e: GopaySDKException) {
-            assertEquals(GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.errorCode)
+            assertEquals(GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.code)
             assertTrue(e.message!!.contains("get charge state"))
             assertTrue(e.cause is JsonDataException)
         }
@@ -123,7 +123,7 @@ class ApiUtilsTest {
             }
             fail("Expected GopaySDKException for an unreadable body")
         } catch (e: GopaySDKException) {
-            assertEquals(GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.errorCode)
+            assertEquals(GopayErrorCodes.INTERNAL_SERIALIZATION_ERROR, e.code)
             assertTrue(e.message!!.contains("get charge state"))
             assertTrue(e.cause is JsonEncodingException)
         }
@@ -137,7 +137,7 @@ class ApiUtilsTest {
             apiCall<String>("charge payment") { Response.error(400, errorBody) }
             fail("Expected GopaySDKException for an HTTP error")
         } catch (e: GopaySDKException) {
-            assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, e.errorCode)
+            assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, e.code)
             assertNotNull(e.httpContext)
         }
     }
@@ -148,8 +148,8 @@ class ApiUtilsTest {
 
         val e = assertThrows(GopaySDKException::class.java) { response.unwrap("charge payment") }
 
-        assertEquals(GopayErrorCodes.NETWORK_SERVER_ERROR, e.errorCode)
-        assertEquals(503, e.getHttpStatusCode())
+        assertEquals(GopayErrorCodes.NETWORK_SERVER_ERROR, e.code)
+        assertEquals(503, e.httpStatus)
     }
 
     @Test
@@ -177,7 +177,7 @@ class ApiUtilsTest {
                 apiCall<String>("charge payment") { throw failure }
                 fail("Expected GopaySDKException for $failure")
             } catch (e: GopaySDKException) {
-                assertEquals("$failure", code, e.errorCode)
+                assertEquals("$failure", code, e.code)
                 assertSame(failure, e.cause)
             }
         }

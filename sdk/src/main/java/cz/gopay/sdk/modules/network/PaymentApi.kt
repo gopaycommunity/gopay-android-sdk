@@ -4,7 +4,7 @@ import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.GooglePayInfoResponse
 import cz.gopay.sdk.model.InitSessionRequest
-import cz.gopay.sdk.model.PaymentCreateResponse
+import cz.gopay.sdk.model.PaymentDetails
 import cz.gopay.sdk.model.QrPaymentDetails
 import retrofit2.Call
 import retrofit2.Response
@@ -34,7 +34,7 @@ internal interface PaymentApi {
     @Headers("Accept: application/json")
     suspend fun getPaymentStatus(
         @Path("payment_id") paymentId: String
-    ): Response<PaymentCreateResponse>
+    ): Response<PaymentDetails>
 
     @POST("payments/{payment_id}/charge")
     @Headers(

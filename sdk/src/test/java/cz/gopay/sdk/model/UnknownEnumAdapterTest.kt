@@ -41,8 +41,8 @@ class UnknownEnumAdapterTest {
            "action":{"action_type":"$actionType","state":"$actionState","redirect_url":"https://acs.example/c"}}"""
     )!!
 
-    private fun payment(state: String = "CREATED", currency: String = "CZK"): PaymentCreateResponse =
-        moshi.adapter(PaymentCreateResponse::class.java).fromJson(
+    private fun payment(state: String = "CREATED", currency: String = "CZK"): PaymentDetails =
+        moshi.adapter(PaymentDetails::class.java).fromJson(
             """{"id":"p1","order_number":"o1","state":"$state","amount":100,"currency":"$currency",
                "customer":{"email":"a@b.cz"},"gw_url":"https://gw.example"}"""
         )!!

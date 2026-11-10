@@ -119,7 +119,7 @@ class CardEncryptionTest {
                 CardEncryption(
                     publicApi = {
                         throw GopaySDKException(
-                            errorCode = GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING,
+                            code = GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING,
                             message = "clientId and shareableKey must be set on GopayConfig"
                         )
                     },
@@ -128,7 +128,7 @@ class CardEncryptionTest {
             }
         }
 
-        assertEquals(GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING, e.code)
     }
 
     @Test
@@ -143,7 +143,7 @@ class CardEncryptionTest {
             runBlocking { encryption(api).encrypt(cardData, CLIENT_ID) }
         }
 
-        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, e.code)
         assertEquals(401, e.httpContext?.statusCode)
         assertTrue(warnings.isEmpty())
     }
@@ -157,7 +157,7 @@ class CardEncryptionTest {
             runBlocking { encryption(api).encrypt(cardData, CLIENT_ID) }
         }
 
-        assertEquals(GopayErrorCodes.NETWORK_IO_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.NETWORK_IO_ERROR, e.code)
         assertSame(io, e.cause)
     }
 

@@ -1,6 +1,6 @@
 package cz.gopay.sdk.telemetry
 
-import cz.gopay.sdk.config.Environment
+import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
@@ -70,17 +70,17 @@ class GwLoggerTelemetryTest {
 
     @Test
     fun `goes to the environment's own host, and nowhere without one`() {
-        assertEquals("https://lx.sandbox.gopay.com/events", Environment.SANDBOX.telemetryUrl)
-        assertEquals("https://lx.gopay.com/events", Environment.PRODUCTION.telemetryUrl)
-        assertNull(Environment.DEVELOPMENT("https://mock.test/").telemetryUrl)
-        assertNull(Telemetry.create(GopayConfig(Environment.DEVELOPMENT("https://gw.sandbox.gopay.com/x/"))))
+        assertEquals("https://lx.sandbox.gopay.com/events", GopayEnvironment.SANDBOX.telemetryUrl)
+        assertEquals("https://lx.gopay.com/events", GopayEnvironment.PRODUCTION.telemetryUrl)
+        assertNull(GopayEnvironment.DEVELOPMENT("https://mock.test/").telemetryUrl)
+        assertNull(Telemetry.create(GopayConfig(GopayEnvironment.DEVELOPMENT("https://gw.sandbox.gopay.com/x/"))))
     }
 
     @Test
     fun `cannot be turned off by any configuration`() {
         for (debug in listOf(true, false)) {
-            for (env in listOf(Environment.SANDBOX, Environment.PRODUCTION)) {
-                assertTrue(Telemetry.create(GopayConfig(env, clientId = "c", debug = debug)) != null)
+            for (env in listOf(GopayEnvironment.SANDBOX, GopayEnvironment.PRODUCTION)) {
+                assertTrue(Telemetry.create(GopayConfig(env, clientId = "c", debugLoggingEnabled = debug)) != null)
             }
         }
     }

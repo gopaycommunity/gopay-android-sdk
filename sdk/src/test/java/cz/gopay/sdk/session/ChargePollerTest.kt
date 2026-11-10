@@ -115,7 +115,7 @@ class ChargePollerTest {
 
         val e = assertThrowsSdk { manual(gateway).run() }
 
-        assertEquals(GopayErrorCodes.PAYMENT_DECLINED, e.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_DECLINED, e.code)
         assertSame(failed, e.chargeState)
         assertEquals("Charge failed: Insufficient funds", e.message)
         assertEquals("the final state is reported before the error", "state:FAILED", events.last())
@@ -129,7 +129,7 @@ class ChargePollerTest {
 
         val e = assertThrowsSdk { manual(gateway).run() }
 
-        assertEquals(GopayErrorCodes.PAYMENT_DECLINED, e.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_DECLINED, e.code)
         assertSame(failed, e.chargeState)
         assertEquals("Charge failed", e.message)
     }
@@ -140,7 +140,7 @@ class ChargePollerTest {
 
         val e = assertThrowsSdk { manual(gateway).run() }
 
-        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, e.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, e.code)
         assertEquals(30_000L, currentTime)
         // Reads at 0, 1000, …, 30000: the one on the deadline decides, and comes on the error.
         assertEquals(31, gateway.reads)
@@ -159,7 +159,7 @@ class ChargePollerTest {
 
         val e = assertThrowsSdk { manual(gateway, options(intervalMs = 7_000)).run() }
 
-        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, e.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, e.code)
         assertEquals(listOf(0L, 7_000L, 14_000L, 21_000L, 28_000L, 30_000L), gateway.readTimes)
     }
 
@@ -179,7 +179,7 @@ class ChargePollerTest {
 
         val e = assertThrowsSdk { manual(gateway).run() }
 
-        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, e.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, e.code)
         assertEquals(ChargeState.UNKNOWN, e.chargeState?.state)
     }
 
@@ -205,7 +205,7 @@ class ChargePollerTest {
 
         val e = assertThrowsSdk { manual(gateway).run() }
 
-        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, e.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, e.code)
         assertEquals(6, gateway.reads)
         assertEquals(35_000L, currentTime)
     }
@@ -236,8 +236,8 @@ class ChargePollerTest {
             val manual = assertThrowsSdk { manual(gateway).run() }
             val automatic = assertThrowsSdk { automatic(gateway).run() }
 
-            assertEquals("$missing", GopayErrorCodes.PAYMENT_TIMEOUT, manual.errorCode)
-            assertEquals("$missing", GopayErrorCodes.PAYMENT_TIMEOUT, automatic.errorCode)
+            assertEquals("$missing", GopayErrorCodes.PAYMENT_TIMEOUT, manual.code)
+            assertEquals("$missing", GopayErrorCodes.PAYMENT_TIMEOUT, automatic.code)
             assertEquals("$missing", ChargeState.ACTION_REQUIRED, automatic.chargeState?.state)
             assertTrue("$missing", actions.isEmpty())
             assertTrue("$missing", verifications.isEmpty())
@@ -284,7 +284,7 @@ class ChargePollerTest {
 
         val e = assertThrowsSdk { automatic(gateway, verify).run() }
 
-        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, e.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, e.code)
         // 20 s of polling, the read at 20 s, 60 s in the challenge, then a fresh 30 s.
         assertEquals(20_000L + 60_000L + 30_000L, currentTime)
         assertEquals(ChargeState.PROCESSING, e.chargeState?.state)
@@ -313,7 +313,7 @@ class ChargePollerTest {
 
         val e = assertThrowsSdk { automatic(gateway).run() }
 
-        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, e.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, e.code)
         assertEquals(listOf("verify:https://acs.example/1"), verifications)
         assertEquals(30_000L, currentTime)
     }

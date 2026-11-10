@@ -13,7 +13,7 @@ import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.model.GooglePayInfoResponse
 import cz.gopay.sdk.model.InitSessionRequest
 import cz.gopay.sdk.model.Jwk
-import cz.gopay.sdk.model.PaymentCreateResponse
+import cz.gopay.sdk.model.PaymentDetails
 import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.NoAuthRecovery
@@ -66,9 +66,9 @@ class PaymentSessionErrorCallbackTest {
         // itself reports nothing, so the boundary is stood in for here.
         val e = assertThrows(GopaySDKException::class.java) { runBlocking { reportErrors { open(api) } } }
 
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID, e.code)
         // The 401 behind it is the cause, not a second report.
-        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, (e.cause as GopaySDKException).errorCode)
+        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, (e.cause as GopaySDKException).code)
         assertEquals(listOf(e), received)
     }
 
@@ -81,7 +81,7 @@ class PaymentSessionErrorCallbackTest {
             runBlocking { session.charge(ChargePaymentRequest.cardToken("tok", deviceData)) }
         }
 
-        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.NETWORK_CLIENT_ERROR, e.code)
         assertTrue(e.message!!.startsWith("Failed to charge payment: browser data could not be fetched"))
         assertEquals("the fetch's own error is the cause, not a report", listOf(e), received)
     }
@@ -95,7 +95,7 @@ class PaymentSessionErrorCallbackTest {
             runBlocking { session.chargeWithCardToken(mock<Activity>(), "tok", browserData = deviceData) }
         }
 
-        assertEquals(GopayErrorCodes.NETWORK_SERVER_ERROR, e.errorCode)
+        assertEquals(GopayErrorCodes.NETWORK_SERVER_ERROR, e.code)
         assertEquals(listOf(e), received)
     }
 
@@ -108,7 +108,7 @@ class PaymentSessionErrorCallbackTest {
             runBlocking { session.charge(ChargePaymentRequest.cardToken("tok", deviceData)) }
         }
 
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.code)
         assertEquals(listOf(e), received)
     }
 
@@ -121,7 +121,7 @@ class PaymentSessionErrorCallbackTest {
         runCatching { runBlocking { session.charge(ChargePaymentRequest.cardToken("tok", deviceData)) } }
 
         assertEquals(1, received.size)
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, received.single().errorCode)
+        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, received.single().code)
         assertTrue(received.none { it === hostsOwn })
     }
 
@@ -146,7 +146,7 @@ class PaymentSessionErrorCallbackTest {
         val bad = assertThrows(GopaySDKException::class.java) {
             runBlocking { session.awaitChargeState(AwaitChargeOptions(intervalMs = 0, threeDSMode = ThreeDSMode.MANUAL)) }
         }
-        assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, bad.errorCode)
+        assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, bad.code)
         assertEquals(listOf(bad), received)
 
         val timeout = assertThrows(GopaySDKException::class.java) {
@@ -156,7 +156,7 @@ class PaymentSessionErrorCallbackTest {
                 )
             }
         }
-        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, timeout.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_TIMEOUT, timeout.code)
         assertEquals("an undecided charge is not an error", listOf(bad), received)
     }
 
@@ -169,7 +169,7 @@ class PaymentSessionErrorCallbackTest {
             runBlocking { session.awaitChargeState(AwaitChargeOptions(threeDSMode = ThreeDSMode.MANUAL)) }
         }
 
-        assertEquals(GopayErrorCodes.PAYMENT_NOT_FOUND, e.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_NOT_FOUND, e.code)
         assertEquals("getChargeState and awaitChargeState are both entry points", listOf(e), received)
     }
 
@@ -199,7 +199,7 @@ class PaymentSessionErrorCallbackTest {
         override suspend fun chargePayment(paymentId: String, request: ChargePaymentRequest): Response<ChargePaymentResponse> =
             Response.success(ChargePaymentResponse(id = "charge-1", state = ChargeState.PROCESSING))
 
-        override suspend fun getPaymentStatus(paymentId: String): Response<PaymentCreateResponse> =
+        override suspend fun getPaymentStatus(paymentId: String): Response<PaymentDetails> =
             throw UnsupportedOperationException()
 
         override suspend fun getChargeState(paymentId: String): Response<ChargePaymentResponse> = chargeState()

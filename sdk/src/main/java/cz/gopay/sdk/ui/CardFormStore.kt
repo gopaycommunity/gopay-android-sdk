@@ -101,7 +101,7 @@ internal data class ParkedForm(val data: CardFormData, val flags: CardFormFlags)
  * What a live [PaymentCardForm] lets the store do to it. Both run on the main thread.
  *
  * @param reset empties the visible fields, the edited flags and the submit-attempted flag.
- * @param submitAttempted tells the form a submit ran, so [CardFormValidationDisplay.ON_SUBMIT]
+ * @param submitAttempted tells the form a submit ran, so [PaymentCardFormValidationDisplay.ON_SUBMIT]
  *        shows its errors.
  * @param steps the form's card form steps, which a submit reports to; kept here beside the
  *        form's data and dropped with it when the form leaves.
@@ -270,7 +270,7 @@ internal object CardFormStore {
     fun steps(formId: String?): CardFormSteps? =
         synchronized(lock) { formId?.let { registrations[it]?.handlers?.steps } }
 
-    /** Tells the form with [formId] that a submit ran, for [CardFormValidationDisplay.ON_SUBMIT]. */
+    /** Tells the form with [formId] that a submit ran, for [PaymentCardFormValidationDisplay.ON_SUBMIT]. */
     fun submitAttempted(formId: String?) {
         val handler = synchronized(lock) { formId?.let { registrations[it]?.handlers?.submitAttempted } }
         if (handler != null) handlerScope.launch(Dispatchers.Main.immediate) { handler() }

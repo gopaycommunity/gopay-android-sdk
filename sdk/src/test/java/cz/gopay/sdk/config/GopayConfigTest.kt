@@ -14,18 +14,18 @@ class GopayConfigTest {
     fun testDefaultConfigValues() {
         // When creating a config with only required values
         val config = GopayConfig(
-            environment = Environment.PRODUCTION
+            environment = GopayEnvironment.PRODUCTION
         )
 
         // Then default values should be set
-        assertEquals(Environment.PRODUCTION, config.environment)
-        assertFalse(config.debug)
+        assertEquals(GopayEnvironment.PRODUCTION, config.environment)
+        assertFalse(config.debugLoggingEnabled)
     }
 
     @Test
     fun testCustomConfigValues() {
         // Given custom configuration values
-        val environment = Environment.DEVELOPMENT.create("https://localhost:8080")
+        val environment = GopayEnvironment.DEVELOPMENT.create("https://localhost:8080")
         val timeoutMs = 45000L
         val enableDebug = true
 
@@ -33,21 +33,21 @@ class GopayConfigTest {
         val config = GopayConfig(
             environment = environment,
             requestTimeoutMs = timeoutMs,
-            debug = enableDebug
+            debugLoggingEnabled = enableDebug
         )
 
         // Then custom values should be set
         assertEquals(environment, config.environment)
         assertEquals(timeoutMs, config.requestTimeoutMs)
-        assertTrue(config.debug)
+        assertTrue(config.debugLoggingEnabled)
     }
 
     @Test
     fun testApiBaseUrlDerivedFromEnvironment() {
         // Test with predefined environments
         val environments = listOf(
-            Environment.PRODUCTION,
-            Environment.SANDBOX
+            GopayEnvironment.PRODUCTION,
+            GopayEnvironment.SANDBOX
         )
         
         for (environment in environments) {
@@ -56,34 +56,34 @@ class GopayConfigTest {
                 environment = environment
             )
 
-            // Then apiBaseUrl should match the environment's URL
-            assertEquals(environment.apiBaseUrl, config.apiBaseUrl)
+            // Then baseUrl should match the environment's URL
+            assertEquals(environment.baseUrl, config.baseUrl)
         }
         
         // Test with custom development environment
-        val customDevEnv = Environment.DEVELOPMENT.create("https://localhost:8080")
+        val customDevEnv = GopayEnvironment.DEVELOPMENT.create("https://localhost:8080")
         val devConfig = GopayConfig(environment = customDevEnv)
-        assertEquals("https://localhost:8080/", devConfig.apiBaseUrl)
+        assertEquals("https://localhost:8080/", devConfig.baseUrl)
     }
     
     @Test
     fun testDataClassCopy() {
         // Original config
         val originalConfig = GopayConfig(
-            environment = Environment.SANDBOX,
+            environment = GopayEnvironment.SANDBOX,
             requestTimeoutMs = 30000L,
-            debug = false
+            debugLoggingEnabled = false
         )
         
         // When copying with a change
         val modifiedConfig = originalConfig.copy(
-            debug = true
+            debugLoggingEnabled = true
         )
         
         // Then only the specified parameter should be changed
         assertEquals(originalConfig.environment, modifiedConfig.environment)
         assertEquals(originalConfig.requestTimeoutMs, modifiedConfig.requestTimeoutMs)
-        assertTrue(modifiedConfig.debug)
+        assertTrue(modifiedConfig.debugLoggingEnabled)
     }
 
 } 

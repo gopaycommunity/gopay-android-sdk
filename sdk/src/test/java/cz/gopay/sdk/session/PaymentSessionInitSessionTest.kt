@@ -1,7 +1,7 @@
 package cz.gopay.sdk.session
 
 import cz.gopay.sdk.GopaySDK
-import cz.gopay.sdk.config.Environment
+import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
@@ -319,7 +319,7 @@ class PaymentSessionInitSessionTest {
     private fun sdk(): GopaySDK {
         GopaySDK.initialize(
             GopayConfig(
-                environment = Environment.SANDBOX,
+                environment = GopayEnvironment.SANDBOX,
                 clientId = "client-1",
                 errorCallback = { reported.add(it) }
             )

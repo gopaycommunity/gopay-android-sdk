@@ -9,7 +9,7 @@ import cz.gopay.sdk.model.GooglePayMethodParameters
 import cz.gopay.sdk.model.GooglePayTokenizationSpec
 import cz.gopay.sdk.model.GooglePayTransactionInfo
 import com.google.android.gms.wallet.WalletConstants
-import cz.gopay.sdk.config.Environment
+import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
@@ -89,7 +89,7 @@ class GooglePayHelperTest {
     /** A token the SDK cannot read is PAYMENT_003, as an unreadable Apple Pay token is on iOS. */
     private fun assertUnreadable(json: String): GopaySDKException {
         val e = assertThrows(GopaySDKException::class.java) { GooglePayHelper.parseGooglePayToken(json) }
-        assertEquals(GopayErrorCodes.PAYMENT_PROCESSING_FAILED, e.errorCode)
+        assertEquals(GopayErrorCodes.PAYMENT_PROCESSING_FAILED, e.code)
         assertTrue(e.message!!.startsWith("Google Pay failed: "))
         return e
     }
@@ -202,13 +202,13 @@ class GooglePayHelperTest {
         val test = buildTestInfo()
         val production = test.copy(environment = "PRODUCTION")
 
-        assertEquals(WalletConstants.ENVIRONMENT_TEST, GooglePayHelper.walletEnvironment(test, Environment.PRODUCTION))
-        assertEquals(WalletConstants.ENVIRONMENT_PRODUCTION, GooglePayHelper.walletEnvironment(production, Environment.SANDBOX))
-        assertEquals(WalletConstants.ENVIRONMENT_PRODUCTION, GooglePayHelper.walletEnvironment(null, Environment.PRODUCTION))
-        assertEquals(WalletConstants.ENVIRONMENT_TEST, GooglePayHelper.walletEnvironment(null, Environment.SANDBOX))
+        assertEquals(WalletConstants.ENVIRONMENT_TEST, GooglePayHelper.walletEnvironment(test, GopayEnvironment.PRODUCTION))
+        assertEquals(WalletConstants.ENVIRONMENT_PRODUCTION, GooglePayHelper.walletEnvironment(production, GopayEnvironment.SANDBOX))
+        assertEquals(WalletConstants.ENVIRONMENT_PRODUCTION, GooglePayHelper.walletEnvironment(null, GopayEnvironment.PRODUCTION))
+        assertEquals(WalletConstants.ENVIRONMENT_TEST, GooglePayHelper.walletEnvironment(null, GopayEnvironment.SANDBOX))
         assertEquals(
             WalletConstants.ENVIRONMENT_TEST,
-            GooglePayHelper.walletEnvironment(null, Environment.DEVELOPMENT.create("https://gw.example/"))
+            GooglePayHelper.walletEnvironment(null, GopayEnvironment.DEVELOPMENT.create("https://gw.example/"))
         )
     }
 

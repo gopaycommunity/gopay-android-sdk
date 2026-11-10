@@ -121,7 +121,7 @@ internal class EncryptionService {
 
     /** `Card encryption failed: <step>`, the shape the iOS `JweUtils` gives the same code. */
     private fun jweError(step: String, cause: Throwable? = null) = GopaySDKException(
-        errorCode = GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR,
+        code = GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR,
         message = "Card encryption failed: $step",
         cause = cause
     )

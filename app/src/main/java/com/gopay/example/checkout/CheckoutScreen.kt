@@ -51,7 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.locales.GopayLocales
-import cz.gopay.sdk.ui.CardFormValidationDisplay
+import cz.gopay.sdk.ui.PaymentCardFormValidationDisplay
 import cz.gopay.sdk.ui.PaymentCardForm
 import kotlinx.coroutines.launch
 
@@ -305,7 +305,7 @@ private fun PaymentMethods(model: CheckoutController) {
                         PaymentCardForm(
                             locale = model.locale,
                             theme = CheckoutTheme.cardForm,
-                            validation = CardFormValidationDisplay.LIVE,
+                            validation = PaymentCardFormValidationDisplay.LIVE,
                             formId = CheckoutController.CARD_FORM_ID
                         )
                     }

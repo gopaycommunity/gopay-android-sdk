@@ -5,7 +5,7 @@ import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import cz.gopay.sdk.model.PaymentCreateResponseAdapter
+import cz.gopay.sdk.model.PaymentDetailsAdapter
 import cz.gopay.sdk.model.UnknownEnumAdapter
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -89,7 +89,7 @@ internal object NetworkModule {
      * it, and the unknown-enum adapter wraps the standard enum adapter for every enum the gateway sends.
      */
     internal val moshi: Moshi = Moshi.Builder()
-        .add(PaymentCreateResponseAdapter.Factory)
+        .add(PaymentDetailsAdapter.Factory)
         .add(UnknownEnumAdapter.Factory)
         .add(KotlinJsonAdapterFactory())
         .build()
@@ -99,7 +99,7 @@ internal object NetworkModule {
      * [moshi] converter.
      *
      * @throws GopaySDKException [GopayErrorCodes.CONFIG_INVALID_BASE_URL] for a base URL the
-     *         HTTP client cannot use, which [cz.gopay.sdk.config.Environment.DEVELOPMENT] lets
+     *         HTTP client cannot use, which [cz.gopay.sdk.config.GopayEnvironment.DEVELOPMENT] lets
      *         through: it checks the scheme only. Retrofit would otherwise throw a bare
      *         `IllegalArgumentException` out of `GopaySDK.initialize`.
      */
@@ -109,7 +109,7 @@ internal object NetworkModule {
             Retrofit.Builder().baseUrl(normalizedBaseUrl)
         } catch (e: IllegalArgumentException) {
             throw GopaySDKException(
-                errorCode = GopayErrorCodes.CONFIG_INVALID_BASE_URL,
+                code = GopayErrorCodes.CONFIG_INVALID_BASE_URL,
                 message = "Invalid API base URL '$normalizedBaseUrl': ${e.message}",
                 cause = e
             )

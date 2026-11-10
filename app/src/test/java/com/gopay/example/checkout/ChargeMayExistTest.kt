@@ -15,7 +15,7 @@ import org.junit.Test
 class ChargeMayExistTest {
 
     private fun error(code: String, status: Int? = null) = GopaySDKException(
-        errorCode = code,
+        code = code,
         message = code,
         httpContext = status?.let { HttpErrorContext(statusCode = it) }
     )

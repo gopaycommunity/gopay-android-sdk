@@ -73,7 +73,7 @@ class PaymentVerificationBridgeTest {
             d.await()
             fail("Expected GopaySDKException for a closed challenge")
         } catch (e: GopaySDKException) {
-            assertEquals(GopayErrorCodes.PAYMENT_CANCELLED, e.errorCode)
+            assertEquals(GopayErrorCodes.PAYMENT_CANCELLED, e.code)
         }
     }
 
@@ -90,7 +90,7 @@ class PaymentVerificationBridgeTest {
             d.await()
             fail("Expected GopaySDKException for a challenge that could not be loaded")
         } catch (e: GopaySDKException) {
-            assertEquals(GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE, e.errorCode)
+            assertEquals(GopayErrorCodes.PAYMENT_VERIFICATION_UNREACHABLE, e.code)
             assertTrue(e.message!!.contains("HTTP 404"))
         }
     }
@@ -106,7 +106,7 @@ class PaymentVerificationBridgeTest {
             d.await()
             fail("Expected GopaySDKException for a verification that could not start")
         } catch (e: GopaySDKException) {
-            assertEquals(GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR, e.errorCode)
+            assertEquals(GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR, e.code)
             assertTrue(e.message!!.contains("no redirect URL"))
         }
     }
@@ -189,7 +189,7 @@ class PaymentVerificationBridgeTest {
             PaymentVerificationBridge.await(token, deferred)
             fail("Expected the dismissal as PAYMENT_CANCELLED")
         } catch (e: GopaySDKException) {
-            assertEquals(GopayErrorCodes.PAYMENT_CANCELLED, e.errorCode)
+            assertEquals(GopayErrorCodes.PAYMENT_CANCELLED, e.code)
         }
 
         assertEquals("the activity closes itself after a dismissal", 0, closed)

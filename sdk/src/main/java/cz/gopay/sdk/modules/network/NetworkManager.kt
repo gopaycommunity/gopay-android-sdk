@@ -27,7 +27,7 @@ internal class NetworkManager(
     private val telemetry: GwLoggerTelemetry? = null
 ) {
 
-    private val baseUrl: String = gopayConfig.apiBaseUrl.let { if (it.endsWith("/")) it else "$it/" }
+    private val baseUrl: String = gopayConfig.baseUrl.let { if (it.endsWith("/")) it else "$it/" }
 
     /** OkHttp client with no auth interceptors — every API client clones from this. */
     private val baseClient: OkHttpClient = NetworkModule.createOkHttpClient(
@@ -35,7 +35,7 @@ internal class NetworkManager(
             baseUrl = baseUrl,
             readTimeoutSeconds = gopayConfig.requestTimeoutMs / 1000,
             connectTimeoutSeconds = gopayConfig.requestTimeoutMs / 2000,
-            enableLogging = gopayConfig.debug
+            enableLogging = gopayConfig.debugLoggingEnabled
         )
     )
 
@@ -79,7 +79,7 @@ internal class NetworkManager(
         val shareableKey = gopayConfig.shareableKey
         if (clientId.isNullOrBlank() || shareableKey.isNullOrBlank()) {
             throw GopaySDKException(
-                errorCode = GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING,
+                code = GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING,
                 message = "clientId and shareableKey must be set on GopayConfig to use public endpoints"
             )
         }
