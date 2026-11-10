@@ -6,7 +6,7 @@ import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocales
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.telemetry.TelemetryCapture
 import cz.gopay.sdk.ui.INVALID_CARD_FORM_DATA_MESSAGE
 import cz.gopay.sdk.ui.NO_CARD_DATA_MESSAGE
@@ -158,7 +158,7 @@ class GopaySDKTest {
         // AUTH_011 on the key fetch, so VALIDATION_007 proves the check runs first.
         GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.SANDBOX))
         val sdk = GopaySDK.getInstance()
-        val good = CardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
+        val good = GopayCardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
         val bad = mapOf(
             "Card PAN cannot be empty" to good.copy(cardPan = ""),
             "Card PAN must be 13-19 digits" to good.copy(cardPan = "444444444444"),

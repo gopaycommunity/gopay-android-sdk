@@ -13,7 +13,7 @@ import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.exception.reportErrors
 import cz.gopay.sdk.locales.GopayLocaleStrings
 import cz.gopay.sdk.locales.GopayLocales
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.model.GooglePayInfoResponse
 import cz.gopay.sdk.modules.network.NetworkManager
 import cz.gopay.sdk.service.CardEncryption
@@ -191,7 +191,7 @@ class GopaySDK private constructor(val config: GopayConfig) {
      *         [GopayErrorCodes.INTERNAL_UNEXPECTED_ERROR] when the key or the encryption itself
      *         fails, with the original exception as the cause. The iOS SDK throws the same codes.
      */
-    suspend fun encryptCardData(cardData: CardData): String = reportErrors {
+    suspend fun encryptCardData(cardData: GopayCardData): String = reportErrors {
         validateCardData(cardData)
         cardEncryption.encrypt(cardData, config.clientId)
     }
@@ -253,7 +253,7 @@ class GopaySDK private constructor(val config: GopayConfig) {
         GopayLocales.resolve(preferred)
 
     /** The same rules and messages as the iOS SDK's `validateCardData`. */
-    private fun validateCardData(cardData: CardData) {
+    private fun validateCardData(cardData: GopayCardData) {
         if (cardData.cardPan.isBlank()) throw invalidCard("Card PAN cannot be empty")
         if (cardData.cardPan.length !in 13..19) throw invalidCard("Card PAN must be 13-19 digits")
         if (!cardData.cardPan.all { it.isDigit() }) throw invalidCard("Card PAN must contain only digits")

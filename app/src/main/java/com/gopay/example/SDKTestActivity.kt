@@ -51,7 +51,7 @@ import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.model.BrowserData
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.model.ChallengePreference
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.ChargeState
@@ -373,7 +373,7 @@ fun SDKTestScreen() {
 
                 DemoButton("Get test card token (server)", enabled = !isBusy) {
                     run("Get test card token") {
-                        val testCard = CardData(
+                        val testCard = GopayCardData(
                             cardPan = "4444444444444448",
                             expMonth = "12",
                             expYear = "28",

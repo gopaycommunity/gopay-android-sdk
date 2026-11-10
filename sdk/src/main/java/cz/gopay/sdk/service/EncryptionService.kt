@@ -2,7 +2,7 @@ package cz.gopay.sdk.service
 
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.model.CardJwePayload
 import cz.gopay.sdk.model.JweHeader
 import cz.gopay.sdk.model.Jwk
@@ -56,7 +56,7 @@ internal class EncryptionService {
      *         built from [jwk] or the encryption fails, with the original exception as the cause.
      */
     fun createJweEncryptedPayload(
-        cardData: CardData,
+        cardData: GopayCardData,
         jwk: Jwk,
         clientId: String,
         issuedAt: Long
@@ -68,7 +68,7 @@ internal class EncryptionService {
         throw jweError("the JWE could not be built: ${e.message}", e)
     }
 
-    private fun encrypt(cardData: CardData, jwk: Jwk, clientId: String, issuedAt: Long): String {
+    private fun encrypt(cardData: GopayCardData, jwk: Jwk, clientId: String, issuedAt: Long): String {
         val publicKey = jwkToPublicKey(jwk)
 
         val jweHeader = JweHeader(kid = jwk.kid)

@@ -6,7 +6,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.VisibleForTesting
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.telemetry.CardFormProgress
 import cz.gopay.sdk.telemetry.CardFormSteps
 import cz.gopay.sdk.ui.utils.CardValidator
@@ -67,12 +67,12 @@ internal data class CardFormData(
      * The card as `encryptCardData` takes it, with the four-digit year; null when the
      * expiration does not parse, which [validate] rules out first.
      */
-    fun toCardData(): CardData? {
+    fun toCardData(): GopayCardData? {
         val parsed = CardValidator.parseExpirationDate(formattedExpiration()) ?: return null
         val month = parsed.first.toIntOrNull() ?: return null
         val year = parsed.second.toIntOrNull() ?: return null
         if (month < 1 || month > 12) return null
-        return CardData(
+        return GopayCardData(
             cardPan = cardNumberDigits,
             expMonth = month.toString().padStart(2, '0'),
             expYear = (2000 + year).toString(),

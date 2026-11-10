@@ -3,7 +3,7 @@ package cz.gopay.sdk.service
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.BrowserDataDetected
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.util.SdkLog
@@ -32,7 +32,7 @@ class CardEncryptionTest {
     private val keys = TestJwe()
 
     private val cardData =
-        CardData(cardPan = "4532015112830366", expMonth = "12", expYear = "30", cvv = "123")
+        GopayCardData(cardPan = "4532015112830366", expMonth = "12", expYear = "30", cvv = "123")
 
     /** The header production sent on 30 Sep 2026, and the same instant in Unix seconds. */
     private val gatewayDate = "Wed, 30 Sep 2026 17:34:17 GMT"

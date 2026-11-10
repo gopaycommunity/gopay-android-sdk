@@ -7,12 +7,26 @@ import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.exception.HttpErrorContext
+import cz.gopay.sdk.model.BankAccountInternationalDetails
+import cz.gopay.sdk.model.BankAccountLocalDetails
+import cz.gopay.sdk.model.BankTransferRecipient
+import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.model.Currency
 import cz.gopay.sdk.model.GooglePayInfoResponse
+import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.model.PaymentCreateResponse
 import cz.gopay.sdk.model.PaymentCustomer
 import cz.gopay.sdk.model.PaymentDetails
 import cz.gopay.sdk.model.PaymentState
+import cz.gopay.sdk.model.QrCodeList
+import cz.gopay.sdk.model.QrInternationalBankAccount
+import cz.gopay.sdk.model.QrLocalBankAccount
+import cz.gopay.sdk.model.QrPaymentDetails
+import cz.gopay.sdk.model.QrRecipient
+import cz.gopay.sdk.model.QrRecipientAddress
+import cz.gopay.sdk.model.QrRecipientBankAccount
+import cz.gopay.sdk.model.RecipientAddress
+import cz.gopay.sdk.model.RecipientBankAccount
 import cz.gopay.sdk.modules.network.NetworkModule
 import cz.gopay.sdk.ui.CardFormValidationDisplay
 import cz.gopay.sdk.ui.PaymentCardFormValidationDisplay
@@ -166,6 +180,40 @@ class DeprecatedAliasesTest {
         val json = NetworkModule.moshi.adapter(PaymentDetails::class.java).toJson(payment)
         assertTrue(json, "\"gw_url\":\"https://gw.example/1\"" in json)
         assertTrue(json, "gwUrl" !in json && "gatewayUrl" !in json)
+    }
+
+    @Test
+    fun `CardData is GopayCardData`() {
+        val old: CardData = CardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
+
+        val new: GopayCardData = old
+        assertEquals(GopayCardData("4444444444444448", "12", "28", "123"), new)
+        assertEquals("still masked under either name", "GopayCardData(cardPan=****4448, expMonth=12, expYear=28, cvv=***)", old.toString())
+    }
+
+    @Test
+    fun `the QR models of 2_7 are the Qr models`() {
+        val local: BankAccountLocalDetails =
+            BankAccountLocalDetails(prefix = "000000", accountNumber = "2600000001", bankCode = "2010", variableSymbol = "1")
+        val international: BankAccountInternationalDetails = BankAccountInternationalDetails(iban = "CZ00")
+        val account: RecipientBankAccount = RecipientBankAccount(local = local, international = international)
+        val address: RecipientAddress = RecipientAddress(city = "Praha")
+        val recipient: BankTransferRecipient = BankTransferRecipient(name = "GoPay", bankAccount = account, address = address)
+
+        val new = QrRecipient(
+            name = "GoPay",
+            bankAccount = QrRecipientBankAccount(
+                local = QrLocalBankAccount("000000", "2600000001", "2010", "1"),
+                international = QrInternationalBankAccount(iban = "CZ00")
+            ),
+            address = QrRecipientAddress(city = "Praha")
+        )
+        assertEquals(new, recipient)
+
+        // What 2.7 code read from the details still reads, by the old type names.
+        val details = QrPaymentDetails(amount = 100, currency = Currency.CZK, recipient = recipient, qrCode = QrCodeList())
+        val readLocal: BankAccountLocalDetails? = details.recipient.bankAccount?.local
+        assertEquals("2600000001", readLocal?.accountNumber)
     }
 
     @Test

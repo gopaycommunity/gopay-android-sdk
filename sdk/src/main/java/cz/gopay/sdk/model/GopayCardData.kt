@@ -8,9 +8,10 @@ private fun maskPan(pan: String): String =
 
 /**
  * Raw card data collected from the customer. Passed to [cz.gopay.sdk.GopaySDK.encryptCardData]
- * which produces a JWE for the merchant backend to tokenize.
+ * which produces a JWE for the merchant backend to tokenize. `GopayCardData` on iOS too; 2.x
+ * called it `CardData` here.
  */
-data class CardData(
+data class GopayCardData(
     @Json(name = "card_pan") val cardPan: String,
     @Json(name = "exp_month") val expMonth: String,
     @Json(name = "exp_year") val expYear: String,
@@ -18,8 +19,12 @@ data class CardData(
 ) {
     /** Masked — the data-class default would print the full PAN and CVV into any log. */
     override fun toString(): String =
-        "CardData(cardPan=${maskPan(cardPan)}, expMonth=$expMonth, expYear=$expYear, cvv=***)"
+        "GopayCardData(cardPan=${maskPan(cardPan)}, expMonth=$expMonth, expYear=$expYear, cvv=***)"
 }
+
+/** The 2.x name of [GopayCardData]. */
+@Deprecated("Renamed to GopayCardData, the name the iOS SDK uses", ReplaceWith("GopayCardData"))
+typealias CardData = GopayCardData
 
 /** Full JWE plaintext payload — card fields plus the metadata claims required by the spec. */
 internal data class CardJwePayload(

@@ -1,6 +1,6 @@
 package cz.gopay.sdk.service
 
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.model.JweHeader
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.util.Base64Utils
@@ -20,7 +20,7 @@ import org.junit.Test
  *
  * The service only encrypts, so these tests generate an RSA keypair, hand the service a JWK built
  * from the public half, and then decrypt the resulting JWE with the private half to assert the
- * full round-trip recovers the original [CardData]. Runs on the plain JVM provider — no Android.
+ * full round-trip recovers the original [GopayCardData]. Runs on the plain JVM provider — no Android.
  */
 class EncryptionServiceTest {
 
@@ -28,7 +28,7 @@ class EncryptionServiceTest {
     private lateinit var keys: TestJwe
     private lateinit var jwk: Jwk
 
-    private val cardData = CardData(
+    private val cardData = GopayCardData(
         cardPan = "4532015112830366",
         expMonth = "12",
         expYear = "30",

@@ -3,7 +3,7 @@ package cz.gopay.sdk.ui
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -50,12 +50,12 @@ class PaymentCardFormSubmitTest {
     @Test
     fun `the submit returns the JWE, empties the form and reports nothing`() = runBlocking {
         CardFormStore.update(FORM, owner, valid)
-        var encrypted: CardData? = null
+        var encrypted: GopayCardData? = null
 
         val jwe = submitCardForm(FORM) { encrypted = it; "header.key.iv.ciphertext.tag" }
 
         assertEquals("header.key.iv.ciphertext.tag", jwe)
-        assertEquals(CardData("4532015112830366", "12", "2030", "123"), encrypted)
+        assertEquals(GopayCardData("4532015112830366", "12", "2030", "123"), encrypted)
         assertTrue("the SDK's copy is gone", CardFormStore.storedFormIds().isEmpty())
         assertEquals("the fields were emptied", 1, resets)
         assertEquals("the form was told a submit ran", 1, attempts)

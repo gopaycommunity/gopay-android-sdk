@@ -255,7 +255,7 @@ class PaymentCardFormTest {
         val expMonth = expParts[0].padStart(2, '0')
         val expYear = expParts[1].padStart(2, '0')
         
-        // This simulates creating CardData (we can't import it due to dependencies)
+        // This simulates creating GopayCardData (we can't import it due to dependencies)
         val processedCardNumber = cardNumber.replace(" ", "")
         
         assertEquals("Card number should be cleaned", "4444444444444448", processedCardNumber)

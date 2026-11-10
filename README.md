@@ -425,7 +425,7 @@ on its own when you want to log what goes out; pass its result to the charge unc
 | `startPaymentSession(paymentId, paymentSecret, scope?)` | Eagerly authenticates and returns a [`PaymentSession`](sdk/src/main/java/cz/gopay/sdk/session/PaymentSession.kt). Throws `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` if one is already live for the same `paymentId`. |
 | `getPaymentSession(paymentId)` | Looks up a live session by id; `null` if absent. |
 | `closeAllPaymentSessions()` | Closes every session — wipes secrets and tokens. |
-| `encryptCardData(CardData)` | Validates the card (`VALIDATION_INVALID_INPUT` when it fails), fetches the JWK, returns a JWE string; an encryption that fails is `INTERNAL_UNEXPECTED_ERROR`. |
+| `encryptCardData(GopayCardData)` | Validates the card (`VALIDATION_INVALID_INPUT` when it fails), fetches the JWK, returns a JWE string; an encryption that fails is `INTERNAL_UNEXPECTED_ERROR`. |
 | `submitCardForm(formId?)` | Encrypts the card the `PaymentCardForm` on screen holds under `formId` (the most recently active form when null) into a JWE and empties the form; see [Card form → JWE](#card-form--jwe). |
 | `clearCardFormData(formId?)` | Drops the SDK's copy of a form's card (every form when null) and empties its fields. |
 | `isWalletAvailable(activity, info?)` | Whether Google Pay can pay on this device: with the methods from a `GooglePayInfoResponse`, or without one, before a payment exists, with the gateway's defaults in the environment the config implies. Whether the user has a card saved in Google Pay is not checked. |
@@ -631,11 +631,11 @@ language. With `HIDDEN`, take the texts from the locale strings, as
 
 ```kotlin
 import cz.gopay.sdk.GopaySDK
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 
 // The sandbox test card, see Testing on the sandbox.
 val jwe: String = GopaySDK.getInstance().encryptCardData(
-    CardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
+    GopayCardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
 )
 // POST `jwe` to your backend; backend returns a card_token.
 ```
@@ -654,12 +654,12 @@ the charge's `payload`; nothing else changes about the charge or 3DS flow.
 
 ```kotlin
 import cz.gopay.sdk.GopaySDK
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.model.ChallengePreference
 import cz.gopay.sdk.session.AwaitChargeOptions
 
 val jwe = GopaySDK.getInstance().encryptCardData(
-    CardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
+    GopayCardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
 )
 val charge = session.chargeWithEncryptedCard(
     activity = activity,
@@ -1440,8 +1440,14 @@ the new symbol, so the renames are fix-its.
 | `GopaySDKException.errorCode` | `code` |
 | `getHttpStatusCode()` | `httpStatus` |
 | `CardFormValidationDisplay` | `PaymentCardFormValidationDisplay` |
+| `CardData` | `GopayCardData` |
 | `PaymentCreateResponse` | `PaymentDetails` |
 | `gwUrl` of the payment | `gatewayUrl` |
+| `BankTransferRecipient` | `QrRecipient` |
+| `RecipientBankAccount` | `QrRecipientBankAccount` |
+| `BankAccountLocalDetails` | `QrLocalBankAccount` |
+| `BankAccountInternationalDetails` | `QrInternationalBankAccount` |
+| `RecipientAddress` | `QrRecipientAddress` |
 
 The old names are deprecated aliases: they do exactly what the new names do. They leave in 4.0.
 
@@ -1494,6 +1500,9 @@ What has to change before the app builds:
     if (e.code == GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY) askForTheCardAgain()
 }
 ```
+
+The default of `requestTimeoutMs` stays 30 seconds. A value the client cannot use, zero, negative
+or out of range, falls back to that default, as on iOS, whose default is 60 seconds.
 
 ## Migrating from 1.x
 
@@ -1607,7 +1616,7 @@ repo root, then run the app from Android Studio or with `./gradlew :app:installD
 - Card data lives in memory only while the form needs it: the form state is cleared after a
   successful encryption and when the form leaves the composition (PCI DSS 4.0.1, req. 3.3.1).
   It is deliberately kept after a *failed* encryption so the user can retry without retyping.
-  `CardData`'s `toString()` is masked, so a stray log never prints the PAN or CVV. JVM strings
+  `GopayCardData`'s `toString()` is masked, so a stray log never prints the PAN or CVV. JVM strings
   cannot be securely overwritten, so clearing releases the references rather than zeroing bytes.
 - Network: both built-in environments are HTTPS. The SDK sets no cleartext policy of its own, so
   your manifest decides it; a `DEVELOPMENT` gateway on `http://` needs cleartext allowed there.

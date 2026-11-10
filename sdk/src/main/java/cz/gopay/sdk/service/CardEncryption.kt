@@ -1,6 +1,6 @@
 package cz.gopay.sdk.service
 
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.modules.network.apiCall
 import cz.gopay.sdk.util.HttpDate
@@ -25,7 +25,7 @@ internal class CardEncryption(
      * @param clientId read after the key fetch: without it the public API itself fails first
      *        with [cz.gopay.sdk.exception.GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING].
      */
-    suspend fun encrypt(cardData: CardData, clientId: String?): String {
+    suspend fun encrypt(cardData: GopayCardData, clientId: String?): String {
         var dateHeader: String? = null
         val jwk = apiCall("fetch public key") {
             publicApi().getPublicKey().also { dateHeader = it.headers()[DATE_HEADER] }

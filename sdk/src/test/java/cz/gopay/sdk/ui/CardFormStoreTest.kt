@@ -2,7 +2,7 @@ package cz.gopay.sdk.ui
 
 import android.app.Activity
 import android.app.Application
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.util.SdkLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -399,7 +399,7 @@ class CardFormStoreTest {
 
     @Test
     fun `the stored digits become the card encryptCardData takes, with the four-digit year`() {
-        assertEquals(CardData("4532015112830366", "12", "2030", "123"), a.toCardData())
+        assertEquals(GopayCardData("4532015112830366", "12", "2030", "123"), a.toCardData())
         assertEquals("12/30", a.formattedExpiration())
         assertTrue(a.isValid)
         assertTrue(CardFormData().isEmpty)

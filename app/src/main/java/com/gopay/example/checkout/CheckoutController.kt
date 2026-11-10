@@ -10,7 +10,7 @@ import com.gopay.example.MerchantBackendSimulator
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.model.ChallengePreference
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.ChargeState
@@ -265,7 +265,7 @@ class CheckoutController {
         // server holds the token; here we mint one on the fly from a known test card.
         busyLabel = "Loading saved card…"
         val jwe = GopaySDK.getInstance().encryptCardData(
-            CardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
+            GopayCardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
         )
         val token = MerchantBackendSimulator.tokenizeCard(jwe)
 

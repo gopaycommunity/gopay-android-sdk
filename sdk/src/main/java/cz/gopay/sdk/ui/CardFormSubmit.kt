@@ -3,7 +3,7 @@ package cz.gopay.sdk.ui
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
-import cz.gopay.sdk.model.CardData
+import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.telemetry.GwLoggerTelemetry
 import cz.gopay.sdk.telemetry.Telemetry
 import kotlinx.coroutines.CancellationException
@@ -22,7 +22,7 @@ import kotlinx.coroutines.CancellationException
  *         screen or the form is empty, [GopayErrorCodes.VALIDATION_INVALID_INPUT] when what it
  *         holds fails validation; then whatever [encrypt] throws.
  */
-internal suspend fun submitCardForm(formId: String?, encrypt: suspend (CardData) -> String): String {
+internal suspend fun submitCardForm(formId: String?, encrypt: suspend (GopayCardData) -> String): String {
     val (id, data) = CardFormStore.resolve(formId)
     val steps = CardFormStore.steps(id)
     // With the validity the pay button was pressed on, then the errors the press found, whether
