@@ -80,10 +80,11 @@ import java.util.concurrent.TimeUnit
  * [GopayErrorCodes.PAYMENT_TIMEOUT]; a coroutine cancellation is never reported. The iOS SDK
  * reports the same way.
  *
- * [close] says what a closed session does.
+ * [close] says what a closed session does. [PaymentSessionApi] is the same set of calls as an
+ * interface, for an app that replaces the session in its tests.
  */
 class PaymentSession internal constructor(
-    val paymentId: String,
+    override val paymentId: String,
     private val scope: String,
     private val authApi: AuthApi,
     paymentApiBuilder: (SessionTokenProvider) -> PaymentApi,
@@ -95,7 +96,7 @@ class PaymentSession internal constructor(
     private val onClose: (PaymentSession) -> Unit,
     /** The operational data of the SDK instance that started this session; null without any. */
     private val telemetry: GwLoggerTelemetry? = null
-) {
+) : PaymentSessionApi {
 
     /** In-memory only; nulled by [close], which is the canonical "closed" signal. */
     @Volatile
@@ -273,7 +274,7 @@ class PaymentSession internal constructor(
      * `GET /payments/{payment_id}`. A 404, a payment that does not exist or that the session's
      * token has no access to, throws [GopayErrorCodes.PAYMENT_NOT_FOUND].
      */
-    suspend fun getStatus(): PaymentDetails = reportErrors(paymentId) {
+    override suspend fun getStatus(): PaymentDetails = reportErrors(paymentId) {
         ensureOpen()
         apiCall("get payment status", PAYMENT_STATUS_CODES) { paymentApi.getPaymentStatus(paymentId) }
     }
@@ -292,7 +293,7 @@ class PaymentSession internal constructor(
      * [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] before anything goes out, and any other
      * failure the code [getStatus] would throw.
      */
-    suspend fun getPaymentOutcome(): PaymentOutcome = reportErrors(paymentId) {
+    override suspend fun getPaymentOutcome(): PaymentOutcome = reportErrors(paymentId) {
         ensureOpen()
         val payment = apiCall("get payment status", PAYMENT_STATUS_CODES) {
             paymentApi.getPaymentStatus(paymentId)
@@ -319,7 +320,7 @@ class PaymentSession internal constructor(
      * [GopayErrorCodes.PAYMENT_CHARGE_ALREADY_EXISTS], and the first charge stands: read it with
      * [getChargeState]. The `chargeWith*` calls end here, so they throw the same.
      */
-    suspend fun charge(request: ChargePaymentRequest): ChargePaymentResponse = reportErrors(paymentId) {
+    override suspend fun charge(request: ChargePaymentRequest): ChargePaymentResponse = reportErrors(paymentId) {
         ensureOpen()
         val instrument = request.paymentInstrument
         val completed = request.copy(
@@ -363,7 +364,7 @@ class PaymentSession internal constructor(
      *         [GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING] without the key) and the original
      *         exception as its cause.
      */
-    suspend fun completeBrowserData(browserData: BrowserData): BrowserData = reportErrors(paymentId) {
+    override suspend fun completeBrowserData(browserData: BrowserData): BrowserData = reportErrors(paymentId) {
         ensureOpen()
         val userAgent = browserData.userAgent ?: syntheticUserAgent().also {
             SdkLog.w(
@@ -433,7 +434,7 @@ class PaymentSession internal constructor(
      * `GET /payments/{payment_id}/charge`. A 404, no charge made on the payment yet or no such
      * payment, throws [GopayErrorCodes.PAYMENT_NOT_FOUND].
      */
-    suspend fun getChargeState(): ChargePaymentResponse = reportErrors(paymentId) {
+    override suspend fun getChargeState(): ChargePaymentResponse = reportErrors(paymentId) {
         ensureOpen()
         apiCall("get charge state", PAYMENT_STATUS_CODES) { paymentApi.getChargeState(paymentId) }
     }
@@ -494,8 +495,8 @@ class PaymentSession internal constructor(
      *         is not positive, or when [ThreeDSMode.AUTOMATIC] is asked for without an
      *         [AwaitChargeOptions.activity].
      */
-    suspend fun awaitChargeState(
-        options: AwaitChargeOptions = AwaitChargeOptions()
+    override suspend fun awaitChargeState(
+        options: AwaitChargeOptions
     ): ChargePaymentResponse = reportErrors(paymentId) {
         ensureOpen()
         if (options.intervalMs <= 0 || options.initialTimeoutMs <= 0) {
@@ -524,7 +525,7 @@ class PaymentSession internal constructor(
     }
 
     /** GET /payments/{payment_id}/qr-payment/info */
-    suspend fun getQrPaymentInfo(format: QrCodeFormat? = null): QrPaymentDetails = reportErrors(paymentId) {
+    override suspend fun getQrPaymentInfo(format: QrCodeFormat?): QrPaymentDetails = reportErrors(paymentId) {
         ensureOpen()
         apiCall("get QR payment info") { paymentApi.getQrPaymentInfo(paymentId, format?.name?.lowercase()) }
     }
@@ -534,7 +535,7 @@ class PaymentSession internal constructor(
      * the device's wallet, Google Pay. The name shared with the iOS SDK, where it reads the
      * Apple Pay info.
      */
-    suspend fun getWalletInfo(): GooglePayInfoResponse = reportErrors(paymentId) {
+    override suspend fun getWalletInfo(): GooglePayInfoResponse = reportErrors(paymentId) {
         ensureOpen()
         apiCall("get Google Pay info") { paymentApi.getGooglePayInfo(paymentId) }
     }
@@ -580,10 +581,10 @@ class PaymentSession internal constructor(
      *                    if you collected more accurate values elsewhere.
      * @param challengePreference 3DS challenge preference forwarded to the gateway.
      */
-    suspend fun chargeWithWallet(
+    override suspend fun chargeWithWallet(
         activity: Activity,
-        browserData: BrowserData? = null,
-        challengePreference: ChallengePreference? = null
+        browserData: BrowserData?,
+        challengePreference: ChallengePreference?
     ): ChargePaymentResponse = reportErrors(paymentId) {
         ensureOpen()
         Telemetry.noteOrigin(activity)
@@ -670,11 +671,11 @@ class PaymentSession internal constructor(
      *                    if you collected more accurate values elsewhere.
      * @param challengePreference 3DS challenge preference forwarded to the gateway.
      */
-    suspend fun chargeWithCardToken(
+    override suspend fun chargeWithCardToken(
         activity: Activity,
         cardToken: String,
-        browserData: BrowserData? = null,
-        challengePreference: ChallengePreference? = null
+        browserData: BrowserData?,
+        challengePreference: ChallengePreference?
     ): ChargePaymentResponse = chargeCardToken(
         cardToken = cardToken,
         browserData = browserData ?: BrowserData.deviceDefault(activity),
@@ -691,10 +692,10 @@ class PaymentSession internal constructor(
      * @param browserData 3DS browser data, required by the spec on every card charge.
      * @param challengePreference 3DS challenge preference forwarded to the gateway.
      */
-    suspend fun chargeWithCardToken(
+    override suspend fun chargeWithCardToken(
         cardToken: String,
         browserData: BrowserData,
-        challengePreference: ChallengePreference? = null
+        challengePreference: ChallengePreference?
     ): ChargePaymentResponse = chargeCardToken(
         cardToken = cardToken,
         browserData = browserData,
@@ -725,11 +726,11 @@ class PaymentSession internal constructor(
      *                    if you collected more accurate values elsewhere.
      * @param challengePreference 3DS challenge preference forwarded to the gateway.
      */
-    suspend fun chargeWithEncryptedCard(
+    override suspend fun chargeWithEncryptedCard(
         activity: Activity,
         payload: String,
-        browserData: BrowserData? = null,
-        challengePreference: ChallengePreference? = null
+        browserData: BrowserData?,
+        challengePreference: ChallengePreference?
     ): ChargePaymentResponse = chargeEncryptedCard(
         payload = payload,
         browserData = browserData ?: BrowserData.deviceDefault(activity),
@@ -748,10 +749,10 @@ class PaymentSession internal constructor(
      * @param browserData 3DS browser data, required by the spec on every card charge.
      * @param challengePreference 3DS challenge preference forwarded to the gateway.
      */
-    suspend fun chargeWithEncryptedCard(
+    override suspend fun chargeWithEncryptedCard(
         payload: String,
         browserData: BrowserData,
-        challengePreference: ChallengePreference? = null
+        challengePreference: ChallengePreference?
     ): ChargePaymentResponse = chargeEncryptedCard(
         payload = payload,
         browserData = browserData,
@@ -804,10 +805,10 @@ class PaymentSession internal constructor(
      *        has to have been created with that address. It should carry no fragment (`#…`):
      *        what the gateway appends lands in front of it, and the address no longer matches.
      */
-    suspend fun handle3dsVerification(
+    override suspend fun handle3dsVerification(
         activity: Activity,
         redirectUrl: String,
-        returnUrl: String? = null
+        returnUrl: String?
     ): Unit = reportErrors(paymentId) {
         // Checked here rather than in the activity: the WebView is never asked to decide about
         // the URL it is handed, so a scheme it cannot load would surface only as an error with
@@ -853,7 +854,7 @@ class PaymentSession internal constructor(
      * arrives after the close is not kept. Only [handle3dsVerification], which sends nothing on
      * the session, still runs. The iOS `PaymentSession` does the same.
      */
-    fun close() {
+    override fun close() {
         if (paymentSecret == null) return
         paymentSecret = null
         token = null

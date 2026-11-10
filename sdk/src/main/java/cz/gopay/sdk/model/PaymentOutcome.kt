@@ -6,11 +6,13 @@ package cz.gopay.sdk.model
  * the [outcome], decided from the payment's state and its charge, with the [payment] it was
  * decided from. The iOS SDK returns the same outcome from the method of the same name.
  *
- * Only the SDK creates one, so the outcome always matches the payment; it is not a data class,
- * whose `copy` could pair them otherwise. It is what the app knows, not proof of payment: your
- * backend settles the order from the notification GoPay sends it.
+ * The one the SDK returns always has the outcome its rules give the payment. The constructor is
+ * public so that a test can build the value a session returns, see
+ * [cz.gopay.sdk.session.PaymentSessionApi]; it takes the [outcome] as given and does not check
+ * it against the [payment]. The [charge] is always the payment's own. It is what the app knows,
+ * not proof of payment: your backend settles the order from the notification GoPay sends it.
  */
-class PaymentOutcome internal constructor(
+class PaymentOutcome(
     val outcome: Outcome,
     /** The payment as `GET /payments/{payment_id}` returned it, the model of `getStatus()`. */
     val payment: PaymentDetails

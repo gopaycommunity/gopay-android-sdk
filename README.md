@@ -1643,6 +1643,56 @@ To check the whole project compiles, including the demo app:
 ./gradlew :app:assembleDebug
 ```
 
+### Replacing the session in tests
+
+`PaymentSession` implements `PaymentSessionApi`, which has every call an integration makes on a
+session. Let your code depend on `PaymentSessionApi`, hand it the real session in the app and
+your own implementation in tests. The response models have public initializers, so the fake can
+return any answer; `PaymentOutcome` takes the `outcome` and the `payment`, and its `charge` is
+still the one in the payment.
+
+```kotlin
+// Your code takes the interface; in the app it gets the session startPaymentSession returned.
+class Checkout(private val session: PaymentSessionApi) {
+    suspend fun resultMessage(): String = when (session.getPaymentOutcome().outcome) {
+        PaymentOutcome.Outcome.PAID -> "Paid"
+        PaymentOutcome.Outcome.DECLINED -> "Declined"
+        PaymentOutcome.Outcome.NOT_CHARGED -> "Not charged"
+        PaymentOutcome.Outcome.UNDECIDED -> "Still processing"
+    }
+}
+
+// In a test it gets a session of your own.
+class FakeSession(private val outcome: PaymentOutcome) : PaymentSessionApi {
+    override val paymentId = outcome.payment.id
+    override suspend fun getPaymentOutcome() = outcome
+    override suspend fun getStatus() = outcome.payment
+    // … the other members, each one line; throw from the ones the test does not call
+}
+
+@Test
+fun `a paid payment shows as paid`() = runBlocking {
+    val payment = PaymentDetails(
+        id = "3310782449",
+        orderNumber = "order-1",
+        state = PaymentState.PAID,
+        amount = 100,
+        currency = Currency.CZK,
+        customer = PaymentCustomer(email = "customer@example.com"),
+        gwUrl = "https://gw.sandbox.gopay.com/gw/v3/3310782449",
+        charge = ChargePaymentResponse(id = "charge-1", state = ChargeState.SUCCEEDED)
+    )
+    val session = FakeSession(PaymentOutcome(PaymentOutcome.Outcome.PAID, payment))
+
+    assertEquals("Paid", Checkout(session).resultMessage())
+}
+```
+
+A fake throws what the session throws by constructing the exception,
+`GopaySDKException(code = GopayErrorCodes.PAYMENT_NOT_FOUND, message = "HTTP 404")`. The demo
+app's `FakePaymentSessionTest` is this example in full, with every member of the interface. A
+mocking library works on the interface as well.
+
 ## Releasing
 
 A release is started by hand on `master`; semantic-release picks the version from the commit
