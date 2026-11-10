@@ -34,7 +34,7 @@ the exception at the call. The rule is the same on both platforms:
   of a type other than `GopaySDKException` does. Constructing a `GopaySDKException` yourself
   reports nothing.
 - `CONFIG_001` is thrown before `initialize`, when no callback is installed yet, so it does not
-  reach one. Neither does a `GopaySDKException` a constructor throws, `Environment.DEVELOPMENT`
+  reach one. Neither does a `GopaySDKException` a constructor throws, `GopayEnvironment.DEVELOPMENT`
   with a bad URL: a constructor is not a call of the SDK.
 
 The callback runs on whatever thread the failing call ends on, not necessarily the main thread.
@@ -210,7 +210,7 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
   - Check domain validity
 - **A charge may exist**: No: nothing is sent
 - **Safe to retry**: Yes, with a usable URL
-- **Note**: thrown by `Environment.DEVELOPMENT` for an empty URL or one without an `http(s)` scheme, and by `GopaySDK.initialize` for a URL the HTTP client refuses, say one with a space in the host, with that refusal as the `cause`; nothing is sent either way, and a failed `initialize` leaves the SDK as an earlier one set it up. From `Environment.DEVELOPMENT(url)` the code is thrown by the constructor, before `initialize`, and is not reported; from `initialize` it is, to that config's own `errorCallback`. `SANDBOX` and `PRODUCTION` carry their own hosts and cannot hit this. The iOS SDK throws it when the first request is built instead
+- **Note**: thrown by `GopayEnvironment.DEVELOPMENT` for an empty URL, one without an `http(s)` scheme or one that carries credentials (`https://user:secret@host/`), and by `GopaySDK.initialize` for a URL the HTTP client refuses, say one with a space in the host, with that refusal as the `cause`; nothing is sent either way, and a failed `initialize` leaves the SDK as an earlier one set it up. From `GopayEnvironment.DEVELOPMENT(url)` the code is thrown by the constructor, before `initialize`, and is not reported; from `initialize` it is, to that config's own `errorCallback`. `SANDBOX` and `PRODUCTION` carry their own hosts and cannot hit this. The iOS SDK throws it when the first request is built instead
 
 ## Payment Errors (PAYMENT_XXX)
 
@@ -281,7 +281,7 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 ### PAYMENT_009: Wallet Sheet Already In Progress
 - **Description**: A Google Pay sheet is already running; only one can run at a time (the iOS SDK uses this code for Apple Pay). The SDK raises it for nothing else: a closed sheet is `PAYMENT_011`, other wallet failures are `PAYMENT_003` or `PAYMENT_004`
 - **Common Causes**:
-  - `chargeWithGooglePay` invoked twice, e.g. from a double tap
+  - `chargeWithWallet` invoked twice, e.g. from a double tap
 - **Developer Action**:
   - Disable the pay button while a charge is in flight
 - **A charge may exist**: Not from this call, refused before the sheet; the sheet already up may still end in a charge
@@ -378,7 +378,7 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
   - The token request failed with something that is neither an HTTP answer nor a transport failure
   - The 3DS screen could not be started
 - **Developer Action**:
-  - Enable `debug` and report the message
+  - Enable `debugLoggingEnabled` and report the message
   - Check for SDK updates
 - **A charge may exist**: From the encryption or the token request, no: both fail before a charge is sent. From the 3DS screen failing to start, the charge exists already
 - **Safe to retry**: Yes for the encryption and the token request; for the 3DS screen, read the charge state first
@@ -405,7 +405,7 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 try {
     session.charge(request)
 } catch (e: GopaySDKException) {
-    when (e.errorCode) {
+    when (e.code) {
         GopayErrorCodes.AUTH_PAYMENT_TOKEN_EXPIRED -> refreshCredsFromBackend()
         GopayErrorCodes.NETWORK_NO_CONNECTION -> showOffline()
         else -> showGenericError(e)
@@ -416,9 +416,9 @@ try {
 ### 2. Use Error Codes for Logic
 ```kotlin
 try {
-    session.chargeWithGooglePay(activity)
+    session.chargeWithWallet(activity)
 } catch (e: GopaySDKException) {
-    when (e.errorCode) {
+    when (e.code) {
         GopayErrorCodes.PAYMENT_GOOGLE_PAY_IN_PROGRESS -> Unit // a sheet is already open
         GopayErrorCodes.PAYMENT_METHOD_UNAVAILABLE -> hideGooglePayButton()
         GopayErrorCodes.PAYMENT_CANCELLED -> Unit // the user closed the sheet; not a failure
@@ -432,7 +432,7 @@ suspend fun readChargeBeforeRetrying(session: PaymentSession) {
     try {
         showResult(session.getChargeState())
     } catch (e: GopaySDKException) {
-        if (e.errorCode == GopayErrorCodes.PAYMENT_NOT_FOUND) offerPaymentAgain() // no charge went out
+        if (e.code == GopayErrorCodes.PAYMENT_NOT_FOUND) offerPaymentAgain() // no charge went out
         else askBackendForState() // still unknown: the charge may be through
     }
 }
@@ -444,11 +444,11 @@ The codes worth a branch of their own are the ones in the README's
 ### 3. Implement Error Reporting
 ```kotlin
 val config = GopayConfig(
-    environment = Environment.PRODUCTION,
+    environment = GopayEnvironment.PRODUCTION,
     errorCallback = { error ->
-        analytics.trackError(error.errorCode, mapOf(
+        analytics.trackError(error.code, mapOf(
             "message" to error.message,
-            "httpStatus" to error.getHttpStatusCode()?.toString()
+            "httpStatus" to error.httpStatus?.toString()
         ))
     }
 )

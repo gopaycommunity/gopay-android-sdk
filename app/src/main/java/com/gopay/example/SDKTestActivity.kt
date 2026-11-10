@@ -284,7 +284,8 @@ fun SDKTestScreen() {
                     paymentId = created.paymentId
                     paymentSecret = created.paymentSecret
                     returnUrl = created.returnUrl
-                    log("// merchant backend created a 1 CZK payment\npayment_id: ${created.paymentId}\npayment_secret: ${created.paymentSecret}\nreturn_url: ${created.returnUrl}")
+                    // The secret goes into the field below and nowhere else: a console is copied around.
+                    log("// merchant backend created a 1 CZK payment\npayment_id: ${created.paymentId}\npayment_secret: filled into the field below, not printed\nreturn_url: ${created.returnUrl}")
                 }
             }
             LabeledField("payment_id", paymentId, enabled = !isBusy) { paymentId = it }
@@ -348,8 +349,8 @@ fun SDKTestScreen() {
 
                 DemoButton("Get wallet (Google Pay) info", enabled = !isBusy) {
                     run("Get wallet info") {
-                        // The names shared with iOS; getGooglePayInfo / isGooglePayAvailable are
-                        // the same calls. Without info, isWalletAvailable asks for the gateway's
+                        // The names shared with iOS; the Google Pay names are deprecated aliases
+                        // of the same calls. Without info, isWalletAvailable asks for the gateway's
                         // default methods in the environment the SDK config implies.
                         val sdk = GopaySDK.getInstance()
                         val defaultAvailable = sdk.isWalletAvailable(context as Activity)
@@ -499,7 +500,8 @@ fun SDKTestScreen() {
                 )
                 CardFormSection(isBusy = isBusy, onError = { log("Error: $it") }) { encrypted ->
                     jwe = encrypted
-                    log("// submitCardForm(\"$CONSOLE_CARD_FORM_ID\") -> JWE (filled into the field below)\n${encrypted.take(120)}…")
+                    // The encrypted card is not printed either; its length says the encryption ran.
+                    log("// submitCardForm(\"$CONSOLE_CARD_FORM_ID\") -> JWE of ${encrypted.length} characters, filled into the field below")
                 }
 
                 LabeledField(
