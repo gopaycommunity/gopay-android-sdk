@@ -9,7 +9,7 @@ enum class PaymentCardFormValidationDisplay {
     /**
      * Render no inline errors; display is host-driven (the default, and the only behaviour
      * before 2.2). Read the localized strings with `GopaySDK.currentLocaleStrings(...)` to show
-     * your own, from the `VALIDATION_007` a submit throws.
+     * your own, from the `VALIDATION_008` or `VALIDATION_007` a submit throws.
      */
     HIDDEN,
 
@@ -20,11 +20,13 @@ enum class PaymentCardFormValidationDisplay {
     LIVE,
 
     /**
-     * Show errors only once a submit was attempted, through
-     * [cz.gopay.sdk.GopaySDK.submitCardForm]: an empty
-     * required field shows the locale's `requiredErrorMessage`, an invalid one the field's
-     * pattern message. The form hides them again when it empties its fields, after a
-     * successful submit or [cz.gopay.sdk.GopaySDK.clearCardFormData].
+     * Show errors only while the form's `submitAttempted` flag is `true`: an empty required
+     * field shows the locale's `requiredErrorMessage`, an invalid one the field's pattern
+     * message. The SDK raises the flag itself when [cz.gopay.sdk.GopaySDK.submitCardForm] is
+     * called for the form, before it judges the card, and lowers it when the form empties its
+     * fields, after a successful submit or [cz.gopay.sdk.GopaySDK.clearCardFormData]. Pass
+     * [PaymentCardForm] a `submitAttempted` and an `onSubmitAttemptedChange` to raise or lower
+     * it yourself. `.onSubmit` on iOS, with the same flag as a binding.
      */
     ON_SUBMIT
 }

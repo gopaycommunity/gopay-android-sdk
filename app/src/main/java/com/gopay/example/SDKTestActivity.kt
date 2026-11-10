@@ -473,12 +473,12 @@ fun SDKTestScreen() {
                         log(buildString {
                             appendLine("// getQrPaymentInfo(format: .png) -> QrPaymentDetails")
                             appendLine("Amount: ${resp.amount} ${resp.currency}")
-                            appendLine("Recipient: ${resp.recipient?.name ?: "N/A"}")
-                            resp.recipient?.bankAccount?.local?.let {
+                            appendLine("Recipient: ${resp.recipient.name ?: "N/A"}")
+                            resp.recipient.bankAccount?.local?.let {
                                 appendLine("Account: ${it.accountNumber}/${it.bankCode}")
                                 appendLine("Variable symbol: ${it.variableSymbol}")
                             }
-                            resp.recipient?.bankAccount?.international?.let {
+                            resp.recipient.bankAccount?.international?.let {
                                 appendLine("IBAN: ${it.iban ?: "N/A"}")
                                 appendLine("BIC: ${it.bic ?: "N/A"}")
                             }

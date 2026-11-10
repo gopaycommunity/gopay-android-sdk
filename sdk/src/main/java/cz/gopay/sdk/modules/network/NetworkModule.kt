@@ -26,9 +26,9 @@ internal object NetworkModule {
      */
     internal fun createOkHttpClient(config: NetworkConfig): OkHttpClient {
         val builder = OkHttpClient.Builder()
-            .connectTimeout(config.connectTimeoutSeconds, TimeUnit.SECONDS)
-            .readTimeout(config.readTimeoutSeconds, TimeUnit.SECONDS)
-            .writeTimeout(config.readTimeoutSeconds, TimeUnit.SECONDS)
+            .connectTimeout(config.connectTimeoutMs, TimeUnit.MILLISECONDS)
+            .readTimeout(config.readTimeoutMs, TimeUnit.MILLISECONDS)
+            .writeTimeout(config.readTimeoutMs, TimeUnit.MILLISECONDS)
 
         // Add User-Agent interceptor first to ensure it's applied to all requests
         builder.addInterceptor(UserAgentInterceptor())

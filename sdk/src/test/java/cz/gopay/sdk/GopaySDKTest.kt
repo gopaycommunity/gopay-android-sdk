@@ -228,20 +228,21 @@ class GopaySDKTest {
     }
 
     @Test
-    fun `submitCardForm without a form on screen is VALIDATION_007 with the no-data message, once`() {
+    fun `submitCardForm without a form on screen is VALIDATION_008 with the no-data message, once`() {
         GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.SANDBOX, errorCallback = { reported.add(it) }))
 
         val e = assertThrows(GopaySDKException::class.java) {
             runBlocking { GopaySDK.getInstance().submitCardForm() }
         }
 
-        assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, e.code)
-        assertEquals(NO_CARD_DATA_MESSAGE, e.message)
+        assertEquals(GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY, e.code)
+        assertEquals("VALIDATION_008", e.code)
+        assertEquals("No card form data available. Please use PaymentCardForm to enter card data.", e.message)
         assertEquals(listOf(e), reported)
     }
 
     @Test
-    fun `submitCardForm on an empty or invalid form is VALIDATION_007 and tells the form a submit ran`() {
+    fun `submitCardForm on an empty form is VALIDATION_008, on an invalid one VALIDATION_007, and both tell the form a submit ran`() {
         GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.SANDBOX, errorCallback = { reported.add(it) }))
         var attempts = 0
         CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = {}, submitAttempted = { attempts++ }))
@@ -249,6 +250,7 @@ class GopaySDKTest {
 
         CardFormStore.update("form-1", formOwner, CardFormData())
         val empty = assertThrows(GopaySDKException::class.java) { runBlocking { sdk.submitCardForm("form-1") } }
+        assertEquals(GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY, empty.code)
         assertEquals(NO_CARD_DATA_MESSAGE, empty.message)
 
         CardFormStore.update("form-1", formOwner, CardFormData("4532015112830366", "1230", "12"))

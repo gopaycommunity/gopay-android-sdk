@@ -221,12 +221,12 @@ class CheckoutController {
         } catch (e: CancellationException) {
             throw e
         } catch (e: GopaySDKException) {
-            // A form the SDK refuses to submit, an empty one after a successful encryption
-            // included (the gateway accepts each JWE only once, so a retry needs the card typed
-            // again): the form shows which field is wrong (validation = LIVE). Anything else, a
-            // key fetch that failed say, is shown under the form.
-            cardFormError = if (e.code == GopayErrorCodes.VALIDATION_INVALID_INPUT) {
-                "Please check your card details and try again."
+            // An empty form has a code of its own. It is what a second tap finds after a
+            // successful encryption emptied the fields: the gateway accepts each JWE only once, so
+            // a retry needs the card typed again. A card that fails validation (the form shows
+            // which field, validation = LIVE) or a key fetch that failed is shown under the form.
+            cardFormError = if (e.code == GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY) {
+                "Please re-enter your card details and try again."
             } else {
                 e.message
             }

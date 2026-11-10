@@ -69,8 +69,8 @@ fun BankTransferSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val bitmap = remember(details) { details.toBitmapOrNull() }
 
-    val local = details.recipient?.bankAccount?.local
-    val international = details.recipient?.bankAccount?.international
+    val local = details.recipient.bankAccount?.local
+    val international = details.recipient.bankAccount?.international
 
     // Every field is optional — collect first, so an empty result doesn't render a blank card.
     val rows = remember(details) {

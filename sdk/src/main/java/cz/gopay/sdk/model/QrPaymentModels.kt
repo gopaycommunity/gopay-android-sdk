@@ -56,7 +56,7 @@ data class QrCodeList(
 data class QrPaymentDetails(
     val amount: Long,
     val currency: Currency,
-    val recipient: BankTransferRecipient? = null,
+    val recipient: BankTransferRecipient,
     @Json(name = "qr_code")
     val qrCode: QrCodeList
 )

@@ -32,9 +32,12 @@ data class GopayConfig(
     val shareableKey: String? = null,
 
     /**
-     * Timeout for API requests in milliseconds.
+     * Timeout for API requests in milliseconds: how long a request waits for data from the
+     * gateway; connecting may take half of it. A value that is not positive, or is past
+     * `Int.MAX_VALUE`, is replaced by the default, [DEFAULT_REQUEST_TIMEOUT_MS], as the iOS SDK does with its `requestTimeout`,
+     * which is in seconds there.
      */
-    val requestTimeoutMs: Long = 30000,
+    val requestTimeoutMs: Long = DEFAULT_REQUEST_TIMEOUT_MS,
 
     /**
      * Whether the debug log is on (`debugLoggingEnabled` on iOS too; 2.x called it `debug`): SDK warnings and the HTTP traffic, bodies included, go to
@@ -87,7 +90,7 @@ data class GopayConfig(
         debug: Boolean,
         clientId: String? = null,
         shareableKey: String? = null,
-        requestTimeoutMs: Long = 30000,
+        requestTimeoutMs: Long = DEFAULT_REQUEST_TIMEOUT_MS,
         errorCallback: ErrorCallback? = null,
         locale: String? = null,
         customLocales: Map<String, GopayLocaleStrings> = emptyMap()
@@ -118,4 +121,9 @@ data class GopayConfig(
     )
     val debug: Boolean
         get() = debugLoggingEnabled
+
+    companion object {
+        /** The [requestTimeoutMs] the SDK uses when none, or one it cannot use, is given. */
+        const val DEFAULT_REQUEST_TIMEOUT_MS: Long = 30_000
+    }
 } 

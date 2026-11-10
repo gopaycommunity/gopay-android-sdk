@@ -32,8 +32,8 @@ class NetworkModuleTest {
         // Given a network config with custom timeouts
         val config = NetworkConfig(
             baseUrl = "https://api.example.com",
-            readTimeoutSeconds = 60,
-            connectTimeoutSeconds = 30
+            readTimeoutMs = 60_000,
+            connectTimeoutMs = 30_000
         )
         
         // When creating an OkHttpClient

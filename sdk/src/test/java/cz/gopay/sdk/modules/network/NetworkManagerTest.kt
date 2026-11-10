@@ -68,6 +68,35 @@ class NetworkManagerTest {
         }
     }
 
+    @Test
+    fun `a requestTimeoutMs the HTTP client cannot use is replaced by the default`() {
+        fun timeout(asked: Long) =
+            NetworkManager.requestTimeoutMs(GopayConfig(GopayEnvironment.SANDBOX, requestTimeoutMs = asked))
+
+        for (unusable in listOf(0L, -1L, Long.MIN_VALUE, Int.MAX_VALUE + 1L, Long.MAX_VALUE)) {
+            assertEquals("$unusable", GopayConfig.DEFAULT_REQUEST_TIMEOUT_MS, timeout(unusable))
+        }
+        assertEquals(1L, timeout(1))
+        assertEquals(1_500L, timeout(1_500))
+        assertEquals(Int.MAX_VALUE.toLong(), timeout(Int.MAX_VALUE.toLong()))
+        assertEquals(30_000L, GopayConfig(GopayEnvironment.SANDBOX).requestTimeoutMs)
+    }
+
+    @Test
+    fun `connecting gets half of the timeout and never none`() {
+        assertEquals(15_000L, NetworkManager.connectTimeoutMs(30_000))
+        assertEquals("under two seconds used to come out as zero, no timeout", 750L, NetworkManager.connectTimeoutMs(1_500))
+        assertEquals(1L, NetworkManager.connectTimeoutMs(1))
+    }
+
+    @Test
+    fun `the SDK builds its clients with any requestTimeoutMs`() {
+        for (asked in listOf(-5L, 0L, 1L, 1_999L, Long.MAX_VALUE)) {
+            val manager = NetworkManager(GopayConfig(GopayEnvironment.SANDBOX, requestTimeoutMs = asked))
+            assertNotNull("$asked", manager.authApi)
+        }
+    }
+
     private fun noopProvider() = object : SessionTokenProvider {
         override fun currentToken(): String? = "fake.jwt.token"
         override suspend fun reauthenticate(): String = "fake.jwt.token"

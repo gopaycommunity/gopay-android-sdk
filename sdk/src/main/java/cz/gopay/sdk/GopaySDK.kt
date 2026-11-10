@@ -205,7 +205,8 @@ class GopaySDK private constructor(val config: GopayConfig) {
      * **and the visible fields are emptied**, so the user sees an empty card form and your own
      * UI should move on rather than wait for further input. A failed encryption leaves
      * everything as the user typed it, since nothing has been authorized yet. A second call
-     * for the same form therefore fails, as an empty form does, until a new card is typed.
+     * for the same form therefore fails with [GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY], as
+     * an empty form does, until a new card is typed.
      *
      * Like [encryptCardData], every call fetches the public key afresh and dates the payload by
      * the gateway's clock. A call cancelled while the key is on its way ends with the
@@ -220,9 +221,10 @@ class GopaySDK private constructor(val config: GopayConfig) {
      * @param formId the form to read, the `formId` it was composed with. When null, the most
      *        recently active form.
      * @return JWE compact serialization (RFC 7516) ready to send to the merchant backend.
-     * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] when no form is on
-     *         screen, the form is empty or what it holds fails validation; then whatever
-     *         [encryptCardData] throws.
+     * @throws GopaySDKException [GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY] when no form is on
+     *         screen or every field of the form is empty,
+     *         [GopayErrorCodes.VALIDATION_INVALID_INPUT] when what it holds fails validation;
+     *         then whatever [encryptCardData] throws.
      *         [GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED] comes from [getInstance] before.
      */
     suspend fun submitCardForm(formId: String? = null): String = reportErrors {

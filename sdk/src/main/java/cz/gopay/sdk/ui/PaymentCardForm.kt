@@ -139,6 +139,19 @@ data class PaymentFormInputs(
  *                         the card it took over, and when none comes back within ten
  *                         seconds the card is dropped without a report, so after a rotation
  *                         the host clears a `true` it holds itself. Nothing about the card.
+ * @param submitAttempted Whether a submit was attempted since the fields were last emptied, the
+ *                        flag [PaymentCardFormValidationDisplay.ON_SUBMIT] and
+ *                        [PaymentCardFormValidationDisplay.LIVE] show their errors by. `null`
+ *                        (the default) leaves the flag to the form. Pass a value to drive it
+ *                        yourself, to raise it when your button is tapped before you call the SDK
+ *                        or to lower it, together with [onSubmitAttemptedChange]: the value you
+ *                        pass is the flag, as the `submitAttempted` binding is on iOS.
+ * @param onSubmitAttemptedChange Told when the SDK changes the flag: `true` when
+ *                                [GopaySDK.submitCardForm] is called for this form, before the
+ *                                card is judged, and `false` when the form empties its fields,
+ *                                after a successful submit or [GopaySDK.clearCardFormData]. With
+ *                                [submitAttempted], store what it reports, or the flag stays as
+ *                                you passed it.
  */
 @Composable
 fun PaymentCardForm(
@@ -150,7 +163,9 @@ fun PaymentCardForm(
     validation: PaymentCardFormValidationDisplay = PaymentCardFormValidationDisplay.HIDDEN,
     formId: String? = null,
     allowsAutofill: Boolean = false,
-    onValidityChange: ((Boolean) -> Unit)? = null
+    onValidityChange: ((Boolean) -> Unit)? = null,
+    submitAttempted: Boolean? = null,
+    onSubmitAttemptedChange: ((Boolean) -> Unit)? = null
 ) {
     theme.WarnWhenTheHostThemeFightsDarkMode()
 
@@ -190,7 +205,16 @@ fun PaymentCardForm(
     var cardNumberLeft by remember { mutableStateOf(restoredFlags.cardNumberLeft) }
     var expirationLeft by remember { mutableStateOf(restoredFlags.expirationLeft) }
     var cvvLeft by remember { mutableStateOf(restoredFlags.cvvLeft) }
-    var submitAttempted by remember { mutableStateOf(restoredFlags.submitAttempted) }
+    // The submit flag: the host's when it passes one, the form's own otherwise. The SDK raises
+    // and lowers it through setSubmitAttempted, which reads what the host passes now, not what
+    // it passed when the form registered.
+    val attemptedFlag = remember { SubmitAttemptedFlag(restoredFlags.submitAttempted) }
+    val attempted = attemptedFlag.value(submitAttempted)
+    val currentHostAttempted by rememberUpdatedState(submitAttempted)
+    val currentOnSubmitAttemptedChange by rememberUpdatedState(onSubmitAttemptedChange)
+    val setSubmitAttempted = { value: Boolean ->
+        attemptedFlag.set(value, currentHostAttempted, currentOnSubmitAttemptedChange)
+    }
     // A field losing the focus because the activity is being recreated is not a field left.
     val changingConfigurations = { view.context.findActivity()?.isChangingConfigurations == true }
     val isCardNumberValid = CardValidator.validateCardNumber(cardNumberDigits).isValid
@@ -236,7 +260,7 @@ fun PaymentCardForm(
         cardNumberLeft = false
         expirationLeft = false
         cvvLeft = false
-        submitAttempted = false
+        setSubmitAttempted(false)
         steps.emptied()
     }
 
@@ -254,7 +278,7 @@ fun PaymentCardForm(
         CardFormStore.register(
             resolvedFormId,
             owner,
-            CardFormHandlers(reset = resetForm, submitAttempted = { submitAttempted = true }, steps = steps)
+            CardFormHandlers(reset = resetForm, submitAttempted = { setSubmitAttempted(true) }, steps = steps)
         )
         CardFormStore.update(resolvedFormId, owner, snapshot())
         onDispose {
@@ -294,15 +318,6 @@ fun PaymentCardForm(
         steps.ready()
         Telemetry.current?.ready(GwLoggerTelemetry.Method.CARD, GwLoggerTelemetry.CARD_FORM_FLOW)
         onDispose {
-            // Leaving because the activity is being recreated for a configuration change: the
-            // card is parked for the form that comes back under the same id. Here, before the
-            // fields are emptied below; effects are disposed in reverse order, so the
-            // registration above is still in place.
-            val activity = view.context.findActivity()
-            if (activity?.isChangingConfigurations == true) {
-                val flags = CardFormFlags(submitAttempted, cardNumberLeft, expirationLeft, cvvLeft)
-                CardFormStore.park(currentFormId, owner, snapshot(), flags, activity)
-            }
             Telemetry.current?.unmount(
                 GwLoggerTelemetry.Method.CARD,
                 chargeInFlight = Telemetry.runningCharges.get() > 0
@@ -315,7 +330,18 @@ fun PaymentCardForm(
             cardNumberLeft = false
             expirationLeft = false
             cvvLeft = false
-            submitAttempted = false
+            attemptedFlag.forget()
+        }
+    }
+
+    // Leaving because the activity is being recreated for a configuration change: the card is
+    // parked for the form that comes back under the same id, with the flags as they are now.
+    // Effects are disposed in reverse order, so this runs before the fields are emptied above,
+    // and with the registration further up still in place.
+    OnCardFormLeaving(CardFormFlags(attempted, cardNumberLeft, expirationLeft, cvvLeft)) { flags ->
+        val activity = view.context.findActivity()
+        if (activity?.isChangingConfigurations == true) {
+            CardFormStore.park(currentFormId, owner, snapshot(), flags, activity)
         }
     }
 
@@ -323,7 +349,7 @@ fun PaymentCardForm(
         data = formData,
         strings = resolvedStrings,
         mode = validation,
-        submitAttempted = submitAttempted,
+        submitAttempted = attempted,
         cardNumberLeft = cardNumberLeft,
         expirationLeft = expirationLeft,
         cvvLeft = cvvLeft

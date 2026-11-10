@@ -1,6 +1,7 @@
 package cz.gopay.sdk.ui
 
 import cz.gopay.sdk.exception.ErrorReporter
+import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.CardData
 import kotlinx.coroutines.CancellationException
@@ -67,12 +68,14 @@ class PaymentCardFormSubmitTest {
         val empty = assertThrows(GopaySDKException::class.java) {
             runBlocking { submitCardForm(FORM) { throw AssertionError("must not encrypt") } }
         }
+        assertEquals(GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY, empty.code)
         assertEquals(NO_CARD_DATA_MESSAGE, empty.message)
 
         CardFormStore.update(FORM, owner, valid.copy(cvv = "12"))
         val invalid = assertThrows(GopaySDKException::class.java) {
             runBlocking { submitCardForm(FORM) { throw AssertionError("must not encrypt") } }
         }
+        assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, invalid.code)
         assertEquals(INVALID_CARD_FORM_DATA_MESSAGE, invalid.message)
         assertEquals(setOf(FORM), CardFormStore.storedFormIds())
         assertEquals(0, resets)
@@ -107,6 +110,30 @@ class PaymentCardFormSubmitTest {
         assertSame(failure, e)
         assertEquals(0, resets)
         assertEquals(setOf(FORM), CardFormStore.storedFormIds())
+    }
+
+    @Test
+    fun `a form that left the screen, or an id no form has, is VALIDATION_008`() {
+        CardFormStore.update(FORM, owner, valid)
+        CardFormStore.unregister(FORM, owner)
+
+        for (id in listOf(FORM, "no-such-form")) {
+            val e = assertThrows(id, GopaySDKException::class.java) {
+                runBlocking { submitCardForm(id) { throw AssertionError("must not encrypt") } }
+            }
+            assertEquals(id, GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY, e.code)
+        }
+    }
+
+    @Test
+    fun `a form with one field filled is invalid, not empty`() {
+        CardFormStore.update(FORM, owner, CardFormData(cvv = "1"))
+
+        val e = assertThrows(GopaySDKException::class.java) {
+            runBlocking { submitCardForm(FORM) { throw AssertionError("must not encrypt") } }
+        }
+
+        assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, e.code)
     }
 
     private companion object {

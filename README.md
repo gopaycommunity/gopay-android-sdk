@@ -300,13 +300,14 @@ class CheckoutViewModel : ViewModel() {
                 val jwe = try {
                     GopaySDK.getInstance().submitCardForm(CARD_FORM_ID)
                 } catch (e: GopaySDKException) {
-                    // An empty or invalid form is VALIDATION_INVALID_INPUT. Anything else, such
-                    // as the key not being fetched, leaves the card in the form for another tap.
+                    // An empty form is VALIDATION_CARD_FORM_EMPTY, an invalid one
+                    // VALIDATION_INVALID_INPUT. Anything else, such as the key not being
+                    // fetched, leaves the card in the form for another tap.
                     Log.w("Checkout", "The card was not encrypted", e)
-                    status.value = if (e.errorCode == GopayErrorCodes.VALIDATION_INVALID_INPUT) {
-                        "Check the card details"
-                    } else {
-                        "Could not reach GoPay, try again"
+                    status.value = when (e.code) {
+                        GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY -> "Enter your card"
+                        GopayErrorCodes.VALIDATION_INVALID_INPUT -> "Check the card details"
+                        else -> "Could not reach GoPay, try again"
                     }
                     return@launch
                 }
@@ -520,7 +521,7 @@ fun MyCardSheet(onJwe: (String) -> Unit, onError: (GopaySDKException) -> Unit) {
                 try {
                     onJwe(GopaySDK.getInstance().submitCardForm("checkout-card"))
                 } catch (e: GopaySDKException) {
-                    onError(e)   // VALIDATION_INVALID_INPUT for an empty or invalid form
+                    onError(e)   // VALIDATION_CARD_FORM_EMPTY, or VALIDATION_INVALID_INPUT for an invalid card
                 }
             }
         }) { Text("Pay") }
@@ -551,8 +552,9 @@ A second charge on a payment that already has one is refused with `PAYMENT_013`;
 stands, so read its state rather than charging again. The emptied form is not an invitation to
 type the card again, and the card cannot be shown again: the SDK keeps no copy of it. A failed
 encryption leaves everything as the user typed it, since nothing has been authorized yet. A second
-submit on the emptied form fails with `VALIDATION_INVALID_INPUT`, and so does a form that fails
-validation. The gateway accepts each JWE **once** and
+submit on the emptied form fails with `VALIDATION_CARD_FORM_EMPTY` (`VALIDATION_008`), the code
+of a form that holds no card; a form whose card fails validation with `VALIDATION_INVALID_INPUT`
+(`VALIDATION_007`). The gateway accepts each JWE **once** and
 its payload expires 10 minutes after creation. A charge that never reached the gateway leaves the
 JWE unused, so keep it until the charge is through: it can be charged again until it expires, and
 [After a network error](#after-a-network-error) says how to tell. Otherwise, to retry, have the
@@ -569,6 +571,30 @@ user goes back to fix the field, until the field is valid; `ON_SUBMIT` shows the
 "required" message for empty fields included, once a submit ran, and hides them again when the
 form is emptied. The modes are the iOS form's `.hidden`, `.live` and `.onSubmit`, with the same
 rules.
+
+`ON_SUBMIT` shows the localized required/pattern message for every invalid field while the form's
+`submitAttempted` is `true`. The SDK raises the flag itself when `submitCardForm()` is called for
+the form, before it judges the card, so an empty or invalid card shows its errors on the submit,
+which then throws `VALIDATION_008` or `VALIDATION_007`. Pass `submitAttempted` and
+`onSubmitAttemptedChange` to raise it yourself, e.g. when your button is tapped before you call
+the SDK, or to lower it. The form lowers it whenever it empties its fields, e.g. after a
+successful `submitCardForm()`, so the emptied fields do not light up as required. Without
+`submitAttempted` the form keeps the flag itself.
+
+```kotlin
+var submitAttempted by rememberSaveable { mutableStateOf(false) }
+
+PaymentCardForm(
+    formId = "checkout-card",
+    validation = PaymentCardFormValidationDisplay.ON_SUBMIT,
+    submitAttempted = submitAttempted,
+    onSubmitAttemptedChange = { submitAttempted = it }   // what the SDK raises and lowers
+)
+Button(onClick = { submitAttempted = true; pay() }) { Text("Pay") }
+```
+
+The value you pass is the flag, as the `submitAttempted` binding is on iOS: store what
+`onSubmitAttemptedChange` reports, or the flag stays as you passed it.
 
 **Autofill is off unless you turn it on.** The form declares its fields unfillable to autofill
 services and gives them no card hints. That is a declaration, not a barrier: focusing a field
@@ -588,8 +614,8 @@ enable your pay button. It carries a `Boolean` and nothing about the card. Only 
 its `formId` reports, and it reports `false` as it leaves the screen. The iOS form reports the same
 through its `isValid` binding.
 
-**Messages for the user come from the form.** The `message` of the `VALIDATION_INVALID_INPUT` that
-`submitCardForm` throws is in English and meant for you as a developer, for logs; do not show it
+**Messages for the user come from the form.** The `message` of the `VALIDATION_CARD_FORM_EMPTY` or
+`VALIDATION_INVALID_INPUT` that `submitCardForm` throws is in English and meant for you as a developer, for logs; do not show it
 to the user. To tell the user what is wrong
 with the card, use `LIVE` or `ON_SUBMIT`, where the form shows its own errors in the user's
 language. With `HIDDEN`, take the texts from the locale strings, as
@@ -1164,7 +1190,8 @@ per-payment flow; what a `NETWORK_*` code means for the payment is under
 | `PAYMENT_CHARGE_ALREADY_EXISTS` | HTTP 409 from a charge: the payment already has a charge, e.g. after a double tap; read it instead of charging again |
 | `PAYMENT_DECLINED` | `awaitChargeState` saw the charge end `FAILED`; the charge is on `chargeState`, with `failReason` when the gateway sends one, which the message then repeats. A retry needs a new payment |
 | `PAYMENT_TIMEOUT` | `awaitChargeState` saw the charge stay undecided (`REQUESTED`/`PROCESSING`/`UNKNOWN`, or `ACTION_REQUIRED` without a new address) for the whole `initialTimeoutMs`; the last state is on `chargeState`. Not a failure and not passed to `errorCallback`: read the state again or wait for the notification |
-| `VALIDATION_INVALID_INPUT` | Invalid input: an empty `paymentId` / `paymentSecret`, a card that fails the PAN / month / year / CVV rules in `encryptCardData`, a `submitCardForm` with no card or an invalid one, or `awaitChargeState` with a non-positive interval or timeout, or in `ThreeDSMode.AUTOMATIC` without an `activity` |
+| `VALIDATION_INVALID_INPUT` | Invalid input: an empty `paymentId` / `paymentSecret`, a card that fails the PAN / month / year / CVV rules in `encryptCardData`, a card form whose data is not valid, or `awaitChargeState` with a non-positive interval or timeout, or in `ThreeDSMode.AUTOMATIC` without an `activity` |
+| `VALIDATION_CARD_FORM_EMPTY` | `submitCardForm` on a card form that holds no card: none is on screen, or all its fields are empty |
 | `CONFIG_SDK_NOT_INITIALIZED` | `getInstance()`, and so any call, before `initialize` |
 | `CONFIG_INVALID_BASE_URL` | A `DEVELOPMENT` URL that is empty, not `http(s)`, or one the HTTP client refuses at `initialize` |
 | `INTERNAL_UNEXPECTED_ERROR` | The card encryption failed after the key was fetched; the platform's exception is the `cause` |

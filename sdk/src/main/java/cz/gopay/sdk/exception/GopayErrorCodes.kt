@@ -138,6 +138,15 @@ object GopayErrorCodes {
     /** Invalid input data provided */
     const val VALIDATION_INVALID_INPUT = "VALIDATION_007"
 
+    /**
+     * [cz.gopay.sdk.GopaySDK.submitCardForm] was called while no card form holds a card: no form
+     * is on screen under that `formId`, or every field of the form is empty, as after a
+     * successful submit. A form that holds something not valid is [VALIDATION_INVALID_INPUT].
+     * New in 3.0, the same on iOS; in 2.x both were [VALIDATION_INVALID_INPUT] and differed only
+     * in the message.
+     */
+    const val VALIDATION_CARD_FORM_EMPTY = "VALIDATION_008"
+
     // ========================================
     // INTERNAL ERRORS (INTERNAL_XXX)
     // ========================================

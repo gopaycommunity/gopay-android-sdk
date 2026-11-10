@@ -105,7 +105,7 @@ class UnknownEnumAdapterTest {
     @Test
     fun `an unknown currency in the QR payment details is UNKNOWN`() {
         val details = moshi.adapter(QrPaymentDetails::class.java).fromJson(
-            """{"amount":100,"currency":"CHF","qr_code":{}}"""
+            """{"amount":100,"currency":"CHF","recipient":{},"qr_code":{}}"""
         )!!
 
         assertEquals(Currency.UNKNOWN, details.currency)

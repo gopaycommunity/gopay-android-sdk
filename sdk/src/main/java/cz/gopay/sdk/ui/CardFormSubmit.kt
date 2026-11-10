@@ -18,9 +18,9 @@ import kotlinx.coroutines.CancellationException
  *
  * @param formId the form to read, or the most recently active one when null.
  * @param encrypt `GopaySDK.encryptCardData` in production; a stub in tests.
- * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] with
- *         [NO_CARD_DATA_MESSAGE] when no form is on screen or the form is empty, and with
- *         [INVALID_CARD_FORM_DATA_MESSAGE] when what it holds fails validation; then whatever [encrypt] throws.
+ * @throws GopaySDKException [GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY] when no form is on
+ *         screen or the form is empty, [GopayErrorCodes.VALIDATION_INVALID_INPUT] when what it
+ *         holds fails validation; then whatever [encrypt] throws.
  */
 internal suspend fun submitCardForm(formId: String?, encrypt: suspend (CardData) -> String): String {
     val (id, data) = CardFormStore.resolve(formId)
@@ -56,25 +56,24 @@ internal suspend fun submitCardForm(formId: String?, encrypt: suspend (CardData)
 }
 
 /**
- * The error for a form that cannot be submitted. An all-empty form is reported distinctly: it is
- * the expected state right after a successful encryption cleared the fields, and hosts key their
- * JWE-reuse retry on it.
+ * The error for a form that cannot be submitted. An all-empty form has a code of its own,
+ * [GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY]: it is the expected state right after a successful
+ * encryption cleared the fields, and hosts key their "enter the card again" prompt on it. The
+ * iOS SDK throws the same two codes with the same two messages.
  */
-internal fun invalidCardForm(data: CardFormData?): GopaySDKException = GopaySDKException(
-    code = GopayErrorCodes.VALIDATION_INVALID_INPUT,
-    message = if (data == null || data.isEmpty) {
-        NO_CARD_DATA_MESSAGE
+internal fun invalidCardForm(data: CardFormData?): GopaySDKException =
+    if (data == null || data.isEmpty) {
+        GopaySDKException(code = GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY, message = NO_CARD_DATA_MESSAGE)
     } else {
-        INVALID_CARD_FORM_DATA_MESSAGE
+        GopaySDKException(code = GopayErrorCodes.VALIDATION_INVALID_INPUT, message = INVALID_CARD_FORM_DATA_MESSAGE)
     }
-)
 
 /**
  * The message of a submit with no form on screen or with an all-empty one, typically after the
  * SDK cleared the fields following a successful encryption. Mirrors the iOS SDK's, word for word.
  */
 internal const val NO_CARD_DATA_MESSAGE =
-    "No card form data available. Please use GopayCardForm to enter card data."
+    "No card form data available. Please use PaymentCardForm to enter card data."
 
 /** The message of a submit of a form whose data fails validation. Mirrors the iOS SDK's. */
 internal const val INVALID_CARD_FORM_DATA_MESSAGE =

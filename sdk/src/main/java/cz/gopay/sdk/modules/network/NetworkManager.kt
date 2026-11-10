@@ -6,6 +6,7 @@ import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.telemetry.ApiCallTelemetryInterceptor
 import cz.gopay.sdk.telemetry.GwLoggerTelemetry
+import cz.gopay.sdk.util.SdkLog
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -29,12 +30,14 @@ internal class NetworkManager(
 
     private val baseUrl: String = gopayConfig.baseUrl.let { if (it.endsWith("/")) it else "$it/" }
 
+    private val requestTimeoutMs: Long = requestTimeoutMs(gopayConfig)
+
     /** OkHttp client with no auth interceptors — every API client clones from this. */
     private val baseClient: OkHttpClient = NetworkModule.createOkHttpClient(
         NetworkConfig(
             baseUrl = baseUrl,
-            readTimeoutSeconds = gopayConfig.requestTimeoutMs / 1000,
-            connectTimeoutSeconds = gopayConfig.requestTimeoutMs / 2000,
+            readTimeoutMs = requestTimeoutMs,
+            connectTimeoutMs = connectTimeoutMs(requestTimeoutMs),
             enableLogging = gopayConfig.debugLoggingEnabled
         )
     )
@@ -86,5 +89,29 @@ internal class NetworkManager(
         val client = apiClient(ShareableKeyInterceptor(clientId, shareableKey))
         NetworkModule.createRetrofit(client, baseUrl)
             .create(PublicApi::class.java)
+    }
+
+    internal companion object {
+        /**
+         * The timeout the HTTP client reads and writes with: [GopayConfig.requestTimeoutMs], or
+         * the default when the HTTP client cannot use it. OkHttp throws on a negative timeout
+         * and on one past `Int.MAX_VALUE` milliseconds, and reads zero as "no timeout at all",
+         * none of which a host asking for a short or a long one means.
+         */
+        fun requestTimeoutMs(config: GopayConfig): Long {
+            val asked = config.requestTimeoutMs
+            if (asked in 1..Int.MAX_VALUE) return asked
+            SdkLog.w(
+                "requestTimeoutMs = $asked is not a number of milliseconds the HTTP client can " +
+                    "use, using the default ${GopayConfig.DEFAULT_REQUEST_TIMEOUT_MS} ms"
+            )
+            return GopayConfig.DEFAULT_REQUEST_TIMEOUT_MS
+        }
+
+        /**
+         * Half of [requestTimeoutMs] for connecting, never less than a millisecond: counted in
+         * whole seconds, as before 3.0, anything under two seconds came out as zero, no timeout.
+         */
+        fun connectTimeoutMs(requestTimeoutMs: Long): Long = (requestTimeoutMs / 2).coerceAtLeast(1)
     }
 }
