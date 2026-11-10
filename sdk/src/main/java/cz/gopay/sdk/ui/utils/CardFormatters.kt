@@ -1,16 +1,14 @@
 package cz.gopay.sdk.ui.utils
 
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.OffsetMapping
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 
 /**
  * Visual transformation for card numbers (e.g., 1234 5678 9012 3456)
  */
-class CardNumberVisualTransformation : VisualTransformation {
+internal class CardNumberVisualTransformation : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val digits = text.text.filter { it.isDigit() }
         val cleanDigits = digits.take(16)
@@ -53,7 +51,7 @@ private class CardNumberOffsetMapping(
 /**
  * Visual transformation for expiration dates (MM/YY format)
  */
-class ExpirationDateVisualTransformation : VisualTransformation {
+internal class ExpirationDateVisualTransformation : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val digits = text.text.filter { it.isDigit() }.take(4)
         val formatted = when {
@@ -89,45 +87,10 @@ private class ExpirationDateOffsetMapping(
 }
 
 /**
- * Formats an expiration date as MM/YY while preserving cursor position
- */
-fun formatExpirationDate(current: TextFieldValue): TextFieldValue {
-    val digitsOnly = current.text.filter { it.isDigit() }
-    if (digitsOnly.length > 4) {
-        return current
-    }
-    val formatted = when {
-        digitsOnly.length <= 2 -> digitsOnly
-        digitsOnly.length <= 4 -> "${digitsOnly.substring(0, 2)}/${digitsOnly.substring(2)}"
-        else -> "${digitsOnly.substring(0, 2)}/${digitsOnly.substring(2, 4)}"
-    }
-    val originalCursor = current.selection.start
-    val digitsBefore = current.text.substring(0, minOf(originalCursor, current.text.length)).filter { it.isDigit() }.length
-    var newCursor = 0
-    var digitCount = 0
-    for ((index, char) in formatted.withIndex()) {
-        if (char.isDigit()) {
-            digitCount++
-            if (digitCount == digitsBefore) {
-                newCursor = index + 1
-                while (newCursor < formatted.length && !formatted[newCursor].isDigit()) {
-                    newCursor++
-                }
-                break
-            }
-        }
-    }
-    return TextFieldValue(
-        text = formatted,
-        selection = TextRange(newCursor)
-    )
-}
-
-/**
  * Visual transformation for masked card numbers (e.g., **** **** **** 1234)
  * Only shows last 4 digits if the number is valid (16 digits and Luhn valid), otherwise shows formatted as usual
  */
-class CardNumberMaskedVisualTransformation : VisualTransformation {
+internal class CardNumberMaskedVisualTransformation : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val digits = text.text.filter { it.isDigit() }
         val cleanDigits = digits.take(16)
@@ -160,7 +123,7 @@ class CardNumberMaskedVisualTransformation : VisualTransformation {
  * the same font as the digits it hides, so the line keeps its metrics whether the field is masked
  * or not and the two fields measure the same on their own.
  */
-class CvvMaskedVisualTransformation : VisualTransformation {
+internal class CvvMaskedVisualTransformation : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val digits = text.text.filter { it.isDigit() }
         val masked = "*".repeat(digits.length)

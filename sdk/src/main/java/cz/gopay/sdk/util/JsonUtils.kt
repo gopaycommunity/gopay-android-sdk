@@ -6,7 +6,7 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 /**
  * Utility class for JSON serialization and deserialization using Moshi
  */
-object JsonUtils {
+internal object JsonUtils {
     
     /**
      * Shared Moshi instance with Kotlin support

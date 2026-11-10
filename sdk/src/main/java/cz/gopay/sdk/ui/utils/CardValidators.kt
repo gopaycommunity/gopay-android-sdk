@@ -3,7 +3,7 @@ package cz.gopay.sdk.ui.utils
 /**
  * Simple input validator for card numbers that only allows digits
  */
-object CardNumberInputValidator {
+internal object CardNumberInputValidator {
     fun validateInput(input: String, maxLength: Int = 16): String {
         return input.filter { it.isDigit() }.take(maxLength)
     }
@@ -37,7 +37,7 @@ object CardNumberInputValidator {
     }
 }
 
-object ExpirationDateInputValidator {
+internal object ExpirationDateInputValidator {
     fun validateInput(input: String): String {
         return input.filter { it.isDigit() }.take(4)
     }
@@ -52,7 +52,7 @@ object ExpirationDateInputValidator {
     }
 }
 
-object CvvValidator {
+internal object CvvValidator {
     private const val MIN_CVV_LENGTH = 3
     private const val MAX_CVV_LENGTH = 3
     fun validateInput(input: String, currentCvv: String): String {
@@ -73,7 +73,7 @@ object CvvValidator {
     }
 }
 
-object CardValidator {
+internal object CardValidator {
     data class ValidationResult(
         val isValid: Boolean,
         val errorMessage: String? = null

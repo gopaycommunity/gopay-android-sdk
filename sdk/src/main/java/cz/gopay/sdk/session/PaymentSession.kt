@@ -95,7 +95,7 @@ class PaymentSession internal constructor(
     private val onClose: (PaymentSession) -> Unit,
     /** The operational data of the SDK instance that started this session; null without any. */
     private val telemetry: GwLoggerTelemetry? = null
-) : SessionTokenProvider {
+) {
 
     /** In-memory only; nulled by [close], which is the canonical "closed" signal. */
     @Volatile
@@ -204,25 +204,17 @@ class PaymentSession internal constructor(
      * [cz.gopay.sdk.modules.network.SessionAuthInterceptor] avoid re-parsing the JWT on every
      * request — expiry is captured once at re-auth time.
      */
-    override fun currentToken(): String? {
+    internal fun currentToken(): String? {
         val t = token ?: return null
         val exp = tokenExpiresAt
         if (exp != 0L && (System.currentTimeMillis() / 1000) >= exp) return null
         return t
     }
 
-    override fun invalidateToken() {
+    internal fun invalidateToken() {
         token = null
         tokenExpiresAt = 0
     }
-
-    /**
-     * Acquires a payment-scoped token from the cached secret. Public because the token-provider
-     * contract is; the session authenticates on its own, so nothing an integration does needs
-     * it. Called directly it is a public call like any other: its error reaches
-     * `errorCallback` once.
-     */
-    override suspend fun reauthenticate(): String = reportErrors(paymentId) { authenticate() }
 
     /** The re-authentication itself, reporting nothing: the call it serves does. */
     internal suspend fun authenticate(): String {
@@ -852,8 +844,7 @@ class PaymentSession internal constructor(
     /**
      * Wipes the in-memory `payment_secret` and JWT, and unregisters this session from the SDK
      * registry. Idempotent. Afterwards every method that sends a request on the session throws
-     * [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] before it sends anything, [reauthenticate]
-     * included, and so does a call already in flight that needs to re-authenticate: a token that
+     * [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] before it sends anything, and so does a call already in flight that needs to re-authenticate: a token that
      * arrives after the close is not kept. Only [handle3dsVerification], which sends nothing on
      * the session, still runs. The iOS `PaymentSession` does the same.
      */

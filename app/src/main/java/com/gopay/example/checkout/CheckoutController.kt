@@ -18,7 +18,6 @@ import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.session.AwaitChargeOptions
 import cz.gopay.sdk.session.PaymentSession
-import cz.gopay.sdk.ui.CardEncryptionResult
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -222,13 +221,12 @@ class CheckoutController {
         } catch (e: CancellationException) {
             throw e
         } catch (e: GopaySDKException) {
-            // An empty form right after a successful encryption is the SDK's cleanup at work
-            // (GPMOB-140). The gateway accepts each JWE only once, so a retry can't replay the
-            // previous one — the user has to enter the card again. Anything else, a card that
-            // fails validation (the form shows which field, validation = LIVE) or a key fetch
-            // that failed, is shown under the form.
-            cardFormError = if (e.message == CardEncryptionResult.NO_CARD_DATA_MESSAGE) {
-                "Please re-enter your card details and try again."
+            // A form the SDK refuses to submit, an empty one after a successful encryption
+            // included (the gateway accepts each JWE only once, so a retry needs the card typed
+            // again): the form shows which field is wrong (validation = LIVE). Anything else, a
+            // key fetch that failed say, is shown under the form.
+            cardFormError = if (e.errorCode == GopayErrorCodes.VALIDATION_INVALID_INPUT) {
+                "Please check your card details and try again."
             } else {
                 e.message
             }

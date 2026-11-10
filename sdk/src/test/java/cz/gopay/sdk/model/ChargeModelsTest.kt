@@ -14,12 +14,9 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
-// ChargePaymentResponse.returnUrl is deprecated, and these tests pin how it still decodes.
-@Suppress("DEPRECATION")
 class ChargeModelsTest {
 
     private val moshi = Moshi.Builder()
-        .add(ChargePaymentResponseAdapter.Factory)
         .add(KotlinJsonAdapterFactory())
         .build()
     private val adapter = moshi.adapter(ChargePaymentResponse::class.java)
@@ -186,21 +183,16 @@ class ChargeModelsTest {
     }
 
     @Test
-    fun `decodes a charge response that omits return_url`() {
-        val resp = adapter.fromJson(jsonWithoutReturnUrl)!!
+    fun `a charge decodes the same with, without, with a null and with a blank return_url`() {
+        // 3.0 no longer reads the field GoPay is removing; whatever comes in it is ignored.
+        val sdkAdapter = NetworkModule.moshi.adapter(ChargePaymentResponse::class.java)
 
-        assertNull(resp.returnUrl)
-        assertEquals("charge-abc-123", resp.id)
-        assertEquals(ChargeState.PROCESSING, resp.state)
-    }
-
-    @Test
-    fun `decodes a charge response whose return_url is explicitly null`() {
-        val resp = adapter.fromJson(jsonWithNullReturnUrl)!!
-
-        assertNull(resp.returnUrl)
-        assertEquals("charge-abc-123", resp.id)
-        assertEquals(ChargeState.PROCESSING, resp.state)
+        for (json in listOf(jsonWithoutReturnUrl, jsonWithNullReturnUrl, jsonWithBlankReturnUrl)) {
+            val resp = sdkAdapter.fromJson(json)!!
+            assertEquals("charge-abc-123", resp.id)
+            assertEquals(ChargeState.PROCESSING, resp.state)
+        }
+        assertTrue(warnings.isEmpty())
     }
 
     @Test
@@ -213,36 +205,7 @@ class ChargeModelsTest {
 
         assertEquals("pay-1", payment.id)
         assertNotNull("the charge must survive the missing field", payment.charge)
-        assertNull(payment.charge!!.returnUrl)
         assertEquals(ChargeState.PROCESSING, payment.charge!!.state)
-    }
-
-    @Test
-    fun `a charge without return_url is expected and is not reported`() {
-        // GoPay is removing the field from the charge response, so a warning would be noise.
-        val sdkAdapter = NetworkModule.moshi.adapter(ChargePaymentResponse::class.java)
-
-        val resp = sdkAdapter.fromJson(jsonWithoutReturnUrl)!!
-        adapter.fromJson(jsonWithNullReturnUrl)
-
-        assertNull(resp.returnUrl)
-        assertEquals("charge-abc-123", resp.id)
-        assertTrue(warnings.isEmpty())
-    }
-
-    @Test
-    fun `the SDK Moshi instance decodes a blank return_url as null`() {
-        // `""` is the value the nullable type exists to keep out: `url.startsWith("")` matches
-        // every URL, so a caller who trusted it would finish the verification on its first page.
-        // A plain nullable field would keep `""`, so this also pins the adapter on the instance
-        // every SDK call decodes with.
-        val sdkAdapter = NetworkModule.moshi.adapter(ChargePaymentResponse::class.java)
-
-        val resp = sdkAdapter.fromJson(jsonWithBlankReturnUrl)!!
-
-        assertNull(resp.returnUrl)
-        assertEquals("charge-abc-123", resp.id)
-        assertTrue(warnings.isEmpty())
     }
 
     @Test

@@ -21,14 +21,10 @@ import cz.gopay.sdk.service.GooglePayHelper
 import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.telemetry.GwLoggerTelemetry
 import cz.gopay.sdk.telemetry.Telemetry
-import cz.gopay.sdk.ui.CardEncryptionResult
 import cz.gopay.sdk.ui.CardFormStore
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
-import okhttp3.CertificatePinner
-import javax.net.ssl.SSLSocketFactory
-import javax.net.ssl.X509TrustManager
 
 /**
  * Main entry point for the Gopay SDK.
@@ -50,18 +46,12 @@ import javax.net.ssl.X509TrustManager
  * [clearCardFormData], and on the session `getWalletInfo`, `chargeWithWallet` and the card
  * helpers without an activity. The Google Pay names stay as aliases of the same bodies.
  */
-class GopaySDK private constructor(
-    val config: GopayConfig,
-    val sslSocketFactory: SSLSocketFactory? = null,
-    val trustManager: X509TrustManager? = null,
-    val certificatePinner: CertificatePinner? = null
-) {
+class GopaySDK private constructor(val config: GopayConfig) {
 
     /** This instance's operational data; null where it has nowhere to go. See [Telemetry]. */
     internal val telemetry: GwLoggerTelemetry? = Telemetry.create(config)
 
-    private val networkManager =
-        NetworkManager(config, sslSocketFactory, trustManager, certificatePinner, telemetry)
+    private val networkManager = NetworkManager(config, telemetry)
 
     private val cardEncryption = CardEncryption(publicApi = { networkManager.publicApi })
 
@@ -215,8 +205,7 @@ class GopaySDK private constructor(
      * **and the visible fields are emptied**, so the user sees an empty card form and your own
      * UI should move on rather than wait for further input. A failed encryption leaves
      * everything as the user typed it, since nothing has been authorized yet. A second call
-     * for the same form therefore fails with [CardEncryptionResult.NO_CARD_DATA_MESSAGE] until a
-     * new card is typed.
+     * for the same form therefore fails, as an empty form does, until a new card is typed.
      *
      * Like [encryptCardData], every call fetches the public key afresh and dates the payload by
      * the gateway's clock. A call cancelled while the key is on its way ends with the
@@ -231,10 +220,9 @@ class GopaySDK private constructor(
      * @param formId the form to read, the `formId` it was composed with. When null, the most
      *        recently active form.
      * @return JWE compact serialization (RFC 7516) ready to send to the merchant backend.
-     * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] with
-     *         [CardEncryptionResult.NO_CARD_DATA_MESSAGE] when no form is on screen or the form
-     *         is empty, and with [CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE] when what
-     *         it holds fails validation; then whatever [encryptCardData] throws.
+     * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] when no form is on
+     *         screen, the form is empty or what it holds fails validation; then whatever
+     *         [encryptCardData] throws.
      *         [GopayErrorCodes.CONFIG_SDK_NOT_INITIALIZED] comes from [getInstance] before.
      */
     suspend fun submitCardForm(formId: String? = null): String = reportErrors {

@@ -1,10 +1,7 @@
 package cz.gopay.sdk.ui
 
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
 import cz.gopay.sdk.ui.utils.CardValidator
 import cz.gopay.sdk.ui.utils.ExpirationDateInputValidator
-import cz.gopay.sdk.ui.utils.formatExpirationDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -14,46 +11,6 @@ import org.junit.Test
 import java.util.Calendar
 
 class ExpirationDateFormatterTest {
-
-    @Test
-    fun `formatExpirationDate should format digits as MM slash YY`() {
-        val input = TextFieldValue("1225")
-        val result = formatExpirationDate(input)
-        
-        assertEquals("12/25", result.text)
-    }
-
-    @Test
-    fun `formatExpirationDate should preserve cursor position`() {
-        val input = TextFieldValue("12", selection = TextRange(2))
-        val result = formatExpirationDate(input)
-        
-        assertEquals("12", result.text)
-        assertEquals(2, result.selection.start)
-        
-        // Test with slash
-        val input2 = TextFieldValue("123", selection = TextRange(3))
-        val result2 = formatExpirationDate(input2)
-        
-        assertEquals("12/3", result2.text)
-        assertEquals(4, result2.selection.start) // Cursor should be after the slash
-    }
-
-    @Test
-    fun `formatExpirationDate should not accept more than 4 digits`() {
-        val input = TextFieldValue("123456")
-        val result = formatExpirationDate(input)
-        
-        assertEquals(input, result) // Should return original unchanged
-    }
-
-    @Test
-    fun `formatExpirationDate should filter out non-digits`() {
-        val input = TextFieldValue("12ab34")
-        val result = formatExpirationDate(input)
-        
-        assertEquals("12/34", result.text)
-    }
 
     @Test
     fun `isValidLength should return true for 4 digits`() {

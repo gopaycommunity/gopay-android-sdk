@@ -51,43 +51,6 @@ data class PaymentCustomer(
 )
 
 /**
- * Additional parameter for a payment.
- * Based on components.schemas.Additional-Param from Payments.yaml.
- */
-data class AdditionalParam(
-    val name: String? = null,
-    val value: String? = null
-)
-
-/**
- * Callback URLs for a payment.
- * Based on callback object inside Payment-Create-Request in Payments.yaml.
- */
-data class PaymentCallback(
-    @Json(name = "notification_url")
-    val notificationUrl: String,
-    @Json(name = "return_url")
-    val returnUrl: String
-)
-
-/**
- * Request body for creating a payment via /eshops/{goid}/payments.
- * Based directly on components.requestBodies.Payment-Create-Request.
- */
-data class PaymentCreateRequest(
-    val amount: Long,
-    val currency: Currency,
-    @Json(name = "order_number")
-    val orderNumber: String,
-    @Json(name = "order_description")
-    val orderDescription: String? = null,
-    val customer: PaymentCustomer,
-    @Json(name = "additional_params")
-    val additionalParams: List<AdditionalParam>? = null,
-    val callback: PaymentCallback
-)
-
-/**
  * Payment state as returned by Payment-Create-Response.
  */
 enum class PaymentState {

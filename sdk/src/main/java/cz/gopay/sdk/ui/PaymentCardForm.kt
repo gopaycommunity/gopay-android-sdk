@@ -26,8 +26,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import cz.gopay.sdk.GopaySDK
-import cz.gopay.sdk.exception.GopayErrorCodes
-import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocaleStrings
 import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.telemetry.CardFormProgress
@@ -45,55 +43,12 @@ import java.util.UUID
 import kotlinx.coroutines.launch
 
 /**
- * Result of card encryption performed by the form.
- *
- * The form encrypts the entered card data into a JWE that the host app forwards to the merchant
- * backend; the merchant backend then calls `POST /cards/tokens` (which requires merchant
- * credentials and so cannot run on-device). The SDK never sees the resulting card token.
- */
-sealed class CardEncryptionResult {
-    /** JWE compact serialization (RFC 7516) suitable for submission to the merchant backend. */
-    data class Success(val jwe: String) : CardEncryptionResult()
-
-    /**
-     * @param exception what went wrong: a [GopaySDKException] with
-     *        [GopayErrorCodes.VALIDATION_INVALID_INPUT] for a form that failed validation, or the
-     *        exception `encryptCardData` threw. It reached `GopayConfig.errorCallback` once, as
-     *        an error the SDK throws would have.
-     */
-    data class Error(val message: String, val exception: Throwable? = null) : CardEncryptionResult()
-
-    companion object {
-        /**
-         * [Error.message] when submit ran on a completely empty form — typically after the SDK
-         * cleared the fields following a successful encryption (GPMOB-140). Hosts can match on
-         * this to show a "please re-enter your card" prompt: the gateway accepts each JWE only
-         * once, so a retry needs a fresh entry, not a replay of the previous JWE.
-         * [GopaySDK.submitCardForm] throws it as the message of its
-         * [GopayErrorCodes.VALIDATION_INVALID_INPUT] when no form is on screen or the form is
-         * empty. Mirrors the iOS SDK's `GopaySDKErrors.noCardFormData`, word for word.
-         */
-        const val NO_CARD_DATA_MESSAGE =
-            "No card form data available. Please use GopayCardForm to enter card data."
-
-        /**
-         * [Error.message], and the message of the [GopayErrorCodes.VALIDATION_INVALID_INPUT]
-         * from [GopaySDK.submitCardForm], when the form holds something that fails validation.
-         * Mirrors the iOS SDK's `GopaySDKErrors.invalidCardFormData`, word for word.
-         */
-        const val INVALID_CARD_FORM_DATA_MESSAGE =
-            "Card form data is invalid. Please check all fields."
-    }
-}
-
-/**
  * Input field configuration for custom labels and helper texts
  */
 data class InputFieldConfig(
     val label: String,
     val helperText: String? = null,
     val errorText: String? = null,
-    val hasError: Boolean = false,
     val placeholder: String? = null
 )
 
@@ -108,9 +63,8 @@ data class PaymentFormInputs(
     companion object {
         /**
          * Builds a [PaymentFormInputs] from a [GopayLocaleStrings], populating each field's label
-         * and placeholder from the locale. Error / helper texts are left unset — validation errors
-         * remain host-driven (see [PaymentCardForm]'s `onValidationError`), unless the form's
-         * `validation` mode renders them.
+         * and placeholder from the locale. Error / helper texts are left unset: the form's
+         * `validation` mode decides whether it renders its own.
          */
         fun from(strings: GopayLocaleStrings): PaymentFormInputs = PaymentFormInputs(
             cardNumber = InputFieldConfig(label = strings.panLabel, placeholder = strings.panPlaceholder),
@@ -127,14 +81,12 @@ data class PaymentFormInputs(
  * JWE that the parent forwards to its merchant backend. The backend (which holds merchant
  * credentials) then calls `POST /cards/tokens` to obtain the final card token.
  *
- * Submitting, the shared way: the form keeps the SDK's copy of its fields under [formId], and
- * [GopaySDK.submitCardForm] encrypts that copy into the JWE, the model the iOS `GopayCardForm`
+ * Submitting: the form keeps the SDK's copy of its fields under [formId], and
+ * [GopaySDK.submitCardForm] encrypts that copy into the JWE, the model the iOS card form
  * uses. After a successful submit the SDK's copy is dropped **and the visible fields are
  * emptied**, so the card does not outlive the JWE made from it; a failed encryption leaves
  * everything as the user typed it, since nothing has been authorized yet. The copy also goes
  * when the form leaves the composition, and on demand through [GopaySDK.clearCardFormData].
- * The older way, the submit function from [onFormReady] reporting through
- * [onEncryptionComplete] and [onValidationError], keeps working and does the same.
  *
  * A configuration change, a rotation above all, recreates the activity and the form with it.
  * The form carries a half-typed card across: it parks the card in the SDK's memory while the
@@ -163,15 +115,7 @@ data class PaymentFormInputs(
  * [localeStrings] (falling back to the SDK-wide default, then the device language, then Czech).
  * Pass [inputFields] to override the resolved labels entirely.
  *
- * @param onEncryptionComplete Callback invoked with the JWE (success) or an error, by the submit
- *                             function from [onFormReady]. Not by [GopaySDK.submitCardForm],
- *                             which returns the JWE and throws instead; leave it out then.
  * @param modifier Modifier for the form layout.
- * @param onFormReady Provides a submit function for external triggering; the same as calling
- *                    [GopaySDK.submitCardForm] with this form's [formId], reported as a
- *                    [CardEncryptionResult] rather than thrown.
- * @param onValidationError Invoked when validation errors are present, by the submit function
- *                          from [onFormReady].
  * @param locale Locale code (e.g. `"cs"`, `"de"`) for the field labels. `null` uses the SDK default.
  *              Ignored when [localeStrings] or [inputFields] is supplied.
  * @param localeStrings Explicit locale strings to use, bypassing [locale] resolution.
@@ -196,15 +140,9 @@ data class PaymentFormInputs(
  *                         seconds the card is dropped without a report, so after a rotation
  *                         the host clears a `true` it holds itself. Nothing about the card.
  */
-// The parameter order is the 2.1 one, with onEncryptionComplete first for the hosts that pass it
-// by position; giving it a default puts modifier second among the optional ones.
-@Suppress("ModifierParameter")
 @Composable
 fun PaymentCardForm(
-    onEncryptionComplete: (CardEncryptionResult) -> Unit = {},
     modifier: Modifier = Modifier,
-    onFormReady: ((suspend () -> CardEncryptionResult) -> Unit)? = null,
-    onValidationError: ((CardValidator.CardValidationResult) -> Unit)? = null,
     locale: String? = null,
     localeStrings: GopayLocaleStrings? = null,
     inputFields: PaymentFormInputs? = null,
@@ -224,7 +162,7 @@ fun PaymentCardForm(
     // The id the SDK's copy is kept under: the host's, or one minted once for this composition
     // and kept across a configuration change, so the card parked under it finds its way back.
     val resolvedFormId = rememberSaveable(formId) { formId ?: UUID.randomUUID().toString() }
-    // The submit function handed out once reads whichever id the form carries now.
+    // The departure below reads whichever id the form carries by then.
     val currentFormId by rememberUpdatedState(resolvedFormId)
     // This composition, as the store knows it: a second form under the same id, composed before
     // this one leaves, must not have its registration taken away by this one's departure.
@@ -307,20 +245,6 @@ fun PaymentCardForm(
     val expirationFocusRequester = remember { FocusRequester() }
     val cvvFocusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope()
-
-    // The older submit path: the shared submit of this form, reported through the callbacks.
-    val submitCardData: suspend () -> CardEncryptionResult = {
-        submitCardDataImpl(
-            formId = currentFormId,
-            onEncryptionComplete = onEncryptionComplete,
-            onValidationError = onValidationError
-        )
-    }
-
-    // Provide the submit function to parent if callback is provided
-    LaunchedEffect(Unit) {
-        onFormReady?.invoke(submitCardData)
-    }
 
     // The SDK's copy of the fields, under the form's id, for GopaySDK.submitCardForm. Registered
     // while the form is on screen, with the reset the SDK runs after a successful submit or
@@ -533,69 +457,4 @@ fun PaymentCardForm(
             }
         }
     }
-}
-
-/**
- * The signature 2.4 shipped, kept in the bytecode so a host compiled against it keeps running
- * without a `NoSuchMethodError`; new code sees only the primary `PaymentCardForm`.
- */
-@Deprecated("Binary compatibility with 2.4.0", level = DeprecationLevel.HIDDEN)
-@Suppress("ModifierParameter")
-@Composable
-fun PaymentCardForm(
-    onEncryptionComplete: (CardEncryptionResult) -> Unit = {},
-    modifier: Modifier = Modifier,
-    onFormReady: ((suspend () -> CardEncryptionResult) -> Unit)? = null,
-    onValidationError: ((CardValidator.CardValidationResult) -> Unit)? = null,
-    locale: String? = null,
-    localeStrings: GopayLocaleStrings? = null,
-    inputFields: PaymentFormInputs? = null,
-    theme: PaymentCardFormTheme = PaymentCardFormTheme(),
-    validation: CardFormValidationDisplay = CardFormValidationDisplay.HIDDEN,
-    formId: String? = null
-) {
-    PaymentCardForm(
-        onEncryptionComplete = onEncryptionComplete,
-        modifier = modifier,
-        onFormReady = onFormReady,
-        onValidationError = onValidationError,
-        locale = locale,
-        localeStrings = localeStrings,
-        inputFields = inputFields,
-        theme = theme,
-        validation = validation,
-        formId = formId,
-        allowsAutofill = false
-    )
-}
-
-/**
- * The signature 2.1 shipped, kept in the bytecode so a host compiled against it keeps running on
- * 2.2 without a `NoSuchMethodError`; new code sees only the primary `PaymentCardForm`.
- */
-@Deprecated("Binary compatibility with 2.1.0", level = DeprecationLevel.HIDDEN)
-@Composable
-fun PaymentCardForm(
-    onEncryptionComplete: (CardEncryptionResult) -> Unit,
-    modifier: Modifier = Modifier,
-    onFormReady: ((suspend () -> CardEncryptionResult) -> Unit)? = null,
-    onValidationError: ((CardValidator.CardValidationResult) -> Unit)? = null,
-    locale: String? = null,
-    localeStrings: GopayLocaleStrings? = null,
-    inputFields: PaymentFormInputs? = null,
-    theme: PaymentCardFormTheme = PaymentCardFormTheme()
-) {
-    PaymentCardForm(
-        onEncryptionComplete = onEncryptionComplete,
-        modifier = modifier,
-        onFormReady = onFormReady,
-        onValidationError = onValidationError,
-        locale = locale,
-        localeStrings = localeStrings,
-        inputFields = inputFields,
-        theme = theme,
-        validation = CardFormValidationDisplay.HIDDEN,
-        formId = null,
-        allowsAutofill = false
-    )
 }

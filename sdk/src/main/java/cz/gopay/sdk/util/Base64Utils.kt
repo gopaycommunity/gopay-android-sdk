@@ -3,7 +3,7 @@ package cz.gopay.sdk.util
 /**
  * Base64 utility that works in both Android runtime and unit test environments
  */
-object Base64Utils {
+internal object Base64Utils {
 
     private const val JAVA_BASE64_CLASS = "java.util.Base64"
     

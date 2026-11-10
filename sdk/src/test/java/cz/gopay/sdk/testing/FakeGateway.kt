@@ -6,7 +6,6 @@ import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.BrowserDataDetected
-import cz.gopay.sdk.model.CardFormUrl
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.NetworkModule
@@ -101,7 +100,6 @@ internal class FakeGateway {
                             BrowserDataDetected(ip = "192.0.2.1", userAgent = userAgent ?: "", acceptHeader = "*/*")
                         )
                         override suspend fun getPublicKey(): retrofit2.Response<Jwk> = throw UnsupportedOperationException()
-                        override suspend fun getCardFormUrl(): retrofit2.Response<CardFormUrl> = throw UnsupportedOperationException()
                     }
                 },
                 telemetry = sdkTelemetry

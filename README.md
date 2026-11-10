@@ -551,9 +551,8 @@ A second charge on a payment that already has one is refused with `PAYMENT_013`;
 stands, so read its state rather than charging again. The emptied form is not an invitation to
 type the card again, and the card cannot be shown again: the SDK keeps no copy of it. A failed
 encryption leaves everything as the user typed it, since nothing has been authorized yet. A second
-submit on the emptied form fails with `VALIDATION_INVALID_INPUT` and the message
-`CardEncryptionResult.NO_CARD_DATA_MESSAGE`; a form that fails validation with
-`CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE`. The gateway accepts each JWE **once** and
+submit on the emptied form fails with `VALIDATION_INVALID_INPUT`, and so does a form that fails
+validation. The gateway accepts each JWE **once** and
 its payload expires 10 minutes after creation. A charge that never reached the gateway leaves the
 JWE unused, so keep it until the charge is through: it can be charged again until it expires, and
 [After a network error](#after-a-network-error) says how to tell. Otherwise, to retry, have the
@@ -590,8 +589,8 @@ its `formId` reports, and it reports `false` as it leaves the screen. The iOS fo
 through its `isValid` binding.
 
 **Messages for the user come from the form.** The `message` of the `VALIDATION_INVALID_INPUT` that
-`submitCardForm` throws, and the messages `onValidationError` reports, are in English and meant
-for you as a developer, for logs; do not show them to the user. To tell the user what is wrong
+`submitCardForm` throws is in English and meant for you as a developer, for logs; do not show it
+to the user. To tell the user what is wrong
 with the card, use `LIVE` or `ON_SUBMIT`, where the form shows its own errors in the user's
 language. With `HIDDEN`, take the texts from the locale strings, as
 [Localizing the form](#localizing-the-form) shows.
@@ -844,51 +843,7 @@ the SDK keeps nothing on disk. Three things follow:
 
 The form validates input, sets `FLAG_SECURE` unless your app is debuggable, and never exposes
 raw card data to the host. Theming is controlled by `PaymentCardFormTheme`. Submitting goes
-through `GopaySDK.submitCardForm(formId)` as shown under [The card form](#the-card-form); the
-callbacks below are the older, Android-only way of doing the same, and keep working.
-
-```kotlin
-import androidx.compose.runtime.Composable
-import cz.gopay.sdk.ui.CardEncryptionResult
-import cz.gopay.sdk.ui.PaymentCardForm
-
-@Composable
-fun MyCardSheet(onJwe: (String) -> Unit, onError: (CardEncryptionResult.Error) -> Unit) {
-    PaymentCardForm(
-        onEncryptionComplete = { result ->
-            when (result) {
-                is CardEncryptionResult.Success -> onJwe(result.jwe)
-                is CardEncryptionResult.Error -> onError(result)   // result.message is for logs
-            }
-        }
-    )
-}
-```
-
-`onValidationError { … }` reports the fields that failed validation for inline error display
-of your own, when `validation` is left at `HIDDEN`; its messages are English, so take the texts the
-user sees from the locale strings (see [The card form](#the-card-form)). To submit from a button
-of your own, take the submit function from `onFormReady`. Its type is
-`(suspend () -> CardEncryptionResult) -> Unit`: the form hands you a `suspend` function once,
-and each call validates the fields, encrypts them and returns the result (it also goes to
-`onEncryptionComplete`); it is `submitCardForm` for this form, with the exception returned inside
-`CardEncryptionResult.Error` instead of thrown.
-
-```kotlin
-var submit by remember { mutableStateOf<(suspend () -> CardEncryptionResult)?>(null) }
-val scope = rememberCoroutineScope()
-
-PaymentCardForm(onFormReady = { submit = it })
-Button(onClick = {
-    scope.launch {
-        when (val result = submit?.invoke()) {
-            is CardEncryptionResult.Success -> viewModel.payWithJwe(result.jwe)
-            is CardEncryptionResult.Error -> onError(result)
-            null -> Unit
-        }
-    }
-}) { Text("Pay") }
-```
+through `GopaySDK.submitCardForm(formId)` as shown under [The card form](#the-card-form).
 
 ### Theming the form
 
@@ -913,7 +868,6 @@ parameter by parameter.
 
 ```kotlin
 PaymentCardForm(
-    onEncryptionComplete = { … },
     theme = PaymentCardFormTheme(
         labelColor = Color(0xFF4B5E68),
         labelFontSize = 11.sp,
@@ -1072,7 +1026,7 @@ Set a preferred locale globally on the config, or per form:
 GopaySDK.initialize(GopayConfig(environment = …, locale = "de"))
 
 // Per-form override (wins over the global default)
-PaymentCardForm(onEncryptionComplete = { … }, locale = "cs")
+PaymentCardForm(locale = "cs")
 ```
 
 Add your own translation with the same structure and select it by code:
@@ -1089,12 +1043,11 @@ GopaySDK.initialize(
     GopayConfig(environment = …, customLocales = mapOf("en" to brandEnglish))
 )
 // or at runtime: GopayLocales.register("en", brandEnglish)
-PaymentCardForm(onEncryptionComplete = { … }, locale = "en")
+PaymentCardForm(locale = "en")
 ```
 
 Validation error strings are localized too. With `validation = LIVE` or `ON_SUBMIT` the form
-shows them itself; with the default `HIDDEN` read them from the resolved locale in your
-`onValidationError` handler:
+shows them itself; with the default `HIDDEN` read them from the resolved locale:
 
 ```kotlin
 val strings = GopaySDK.getInstance().currentLocaleStrings(preferred = "cs")
@@ -1262,14 +1215,11 @@ sheet; rethrow it.
 session throws, once per error, for central logging, on whatever thread the call ended on; the
 two outcomes of a payment window, `PAYMENT_TIMEOUT` and `PAYMENT_CANCELLED`, and a
 `CancellationException` stay out, and nothing that is not a `GopaySDKException` goes in, not an
-exception you construct yourself. The error inside a `CardEncryptionResult.Error` is reported
-the same way. The rule is the same on iOS and spelled out at the top of `ERROR_CODES.md`. It is
-not a substitute for catching the exception at the call.
+exception you construct yourself. The rule is the same on iOS and spelled out at the top of
+`ERROR_CODES.md`. It is not a substitute for catching the exception at the call.
 
 Every code, with its causes and what to do about it, is in
-[`sdk/docs/ERROR_CODES.md`](sdk/docs/ERROR_CODES.md). The codes are shared with the iOS SDK. Codes
-neither SDK throws stay in `GopayErrorCodes` for 2.0, deprecated, so code written against 1.x that
-names them still compiles; 3.0 removes them. ERROR_CODES marks them.
+[`sdk/docs/ERROR_CODES.md`](sdk/docs/ERROR_CODES.md). The codes are shared with the iOS SDK.
 
 ### After a network error
 
@@ -1336,7 +1286,7 @@ listed in [`sdk/docs/API_3_0.md`](sdk/docs/API_3_0.md).
 | `GopaySDK.isWalletAvailable(activity, info?)` | alias: `isGooglePayAvailable(activity, info)`; variant without an instance: `GopaySDK.isWalletAvailable(context, environment, info?)` | can the device pay with the platform wallet |
 | `session.getWalletInfo()` | alias: `getGooglePayInfo()` | the wallet configuration for the payment |
 | `session.chargeWithWallet(activity, browserData?, challengePreference?)` | alias: `chargeWithGooglePay(...)` | the managed wallet sheet and charge |
-| `PaymentCardForm(formId)` + `submitCardForm(formId)` + `clearCardFormData(formId)` | older path: `onFormReady` / `onEncryptionComplete` / `onValidationError`, the same submit reported as a result | the card form model, now on Android too |
+| `PaymentCardForm(formId)` + `submitCardForm(formId)` + `clearCardFormData(formId)` | — | the card form model, now on Android too |
 | `PaymentCardForm(validation)` with `HIDDEN`, `LIVE`, `ON_SUBMIT` | — | the validation display modes, now on Android too |
 | `PaymentCardForm(allowsAutofill)`, off by default | — | whether autofill may fill and save the card number and expiry; never the CVV |
 | `PaymentCardForm(onValidityChange)` | iOS: the `isValid` binding | whether the card in the form passes its validation, as it changes |

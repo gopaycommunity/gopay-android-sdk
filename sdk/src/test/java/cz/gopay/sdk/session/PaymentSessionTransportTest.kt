@@ -106,8 +106,7 @@ class PaymentSessionTransportTest {
             "chargeWithCardToken" to { session.chargeWithCardToken("tok", browserData) },
             "chargeWithEncryptedCard" to { session.chargeWithEncryptedCard("jwe", browserData) },
             "chargeWithWallet" to { session.chargeWithWallet(mock<Activity>()) },
-            "chargeWithGooglePay" to { session.chargeWithGooglePay(mock<Activity>()) },
-            "reauthenticate" to { session.reauthenticate() }
+            "chargeWithGooglePay" to { session.chargeWithGooglePay(mock<Activity>()) }
         )
         for ((name, call) in calls) {
             val e = assertThrows(name, GopaySDKException::class.java) { runBlocking { call() } }
@@ -272,21 +271,6 @@ class PaymentSessionTransportTest {
         assertSame(e, received.single().first)
         assertSame("reported where the public call ended", Thread.currentThread(), received.single().second)
         assertNoCrash()
-    }
-
-    @Test
-    fun `reauthenticate called directly on a closed session reports AUTH_013 once`() {
-        val received = mutableListOf<GopaySDKException>()
-        ErrorReporter.setErrorCallback { received.add(it) }
-        val session = session(Gateway { chain -> response(chain, 500, "{}") })
-        session.close()
-
-        val e = assertThrows(GopaySDKException::class.java) {
-            runBlocking { session.reauthenticate() }
-        }
-
-        assertEquals(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, e.errorCode)
-        assertEquals(listOf(e), received)
     }
 
     @Test

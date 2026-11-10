@@ -84,25 +84,16 @@ data class BrowserData(
  * its own, derived by the gateway from the request that fetched them. Maps to
  * `Browser-Data-Detected`. The SDK merges it into the charge's [BrowserData].
  */
-data class BrowserDataDetected(
+internal data class BrowserDataDetected(
     val ip: String,
     @Json(name = "user_agent") val userAgent: String,
     @Json(name = "accept_header") val acceptHeader: String
 )
 
 /**
- * Header fields embedded in an Apple Pay payment token. Maps to the nested `header` object on
- * `Apple-Pay-Input` in Payments.yaml.
- */
-data class ApplePayHeader(
-    val ephemeralPublicKey: String,
-    val publicKeyHash: String,
-    val transactionId: String
-)
-
-/**
  * Card-payment input. Discriminated `oneOf` over `input_type`. Maps to `Payment-Card-Input`
- * (`CARD_TOKEN | GOOGLE_PAY | APPLE_PAY | ENCRYPTED_CARD`).
+ * (`CARD_TOKEN | GOOGLE_PAY | APPLE_PAY | ENCRYPTED_CARD`); the SDK has no input for
+ * `APPLE_PAY`, which only the iOS SDK sends.
  *
  * Use the [Companion] factories; the constructor is open so the SDK can add new variants
  * without breaking callers. `payload` belongs to the `ENCRYPTED_CARD` variant — a JWE produced
@@ -117,10 +108,6 @@ data class PaymentCardInput(
     val signature: String? = null,
     val intermediateSigningKey: IntermediateSigningKey? = null,
     val signedMessage: String? = null,
-    // APPLE_PAY
-    val data: String? = null,
-    val version: String? = null,
-    val header: ApplePayHeader? = null,
     // ENCRYPTED_CARD
     val payload: String? = null
 ) {
@@ -147,19 +134,6 @@ data class PaymentCardInput(
             signature = signature,
             intermediateSigningKey = intermediateSigningKey,
             signedMessage = signedMessage
-        )
-
-        fun applePay(
-            data: String,
-            signature: String,
-            version: String,
-            header: ApplePayHeader
-        ): PaymentCardInput = PaymentCardInput(
-            inputType = "APPLE_PAY",
-            data = data,
-            signature = signature,
-            version = version,
-            header = header
         )
     }
 }
@@ -273,33 +247,16 @@ data class ChargeAction(
 /**
  * Response for POST/GET `/payments/{payment_id}/charge`, and the value of
  * `Payment-Details.charge` returned by `GET /payments/{payment_id}`. Maps to
- * `Payment-Charge-Status-Response` in Payments.yaml. Per the spec only `id`, `state`, and
- * `return_url` are required; instrument details and follow-up action are absent in early
- * states, and `fail_reason` is only present when `state == FAILED`.
+ * `Payment-Charge-Status-Response` in Payments.yaml. Instrument details and follow-up action
+ * are absent in early states, and `fail_reason` is only present when `state == FAILED`.
  *
- * GoPay is removing `return_url` from the charge response, whatever the spec says, so
- * [returnUrl] is deprecated and decodes as null when it is missing; see
- * [ChargePaymentResponseAdapter].
+ * The `return_url` the charge response used to repeat is not read: GoPay is removing it. The
+ * address [cz.gopay.sdk.session.PaymentSession.handle3dsVerification] needs is the one your
+ * backend created the payment with, `callback.return_url`.
  */
 data class ChargePaymentResponse(
     val id: String,
     val state: ChargeState,
-    /**
-     * The `return_url` the charge response used to repeat. GoPay is removing it from the charge
-     * response, so do not rely on it; 2.0 keeps the field so code that reads it still compiles.
-     *
-     * The address [cz.gopay.sdk.session.PaymentSession.handle3dsVerification] needs is the one
-     * your backend created the payment with, `callback.return_url`, and the app gets it from its
-     * backend together with `payment_id` and `payment_secret`. Without one the SDK waits for
-     * [cz.gopay.sdk.GopaySDK.CHARGE_RETURN_URL], and the payment then has to have been created
-     * with that address. A blank value decodes as null too: `url.startsWith("")` matches every
-     * URL, so the first page of a challenge would read as a finished verification.
-     */
-    @Deprecated(
-        "GoPay is removing return_url from the charge response; do not rely on it. Pass " +
-            "handle3dsVerification the callback.return_url your backend created the payment with."
-    )
-    @Json(name = "return_url") val returnUrl: String? = null,
     @Json(name = "payment_instrument") val paymentInstrument: PaymentInstrumentData? = null,
     val action: ChargeAction? = null,
     @Json(name = "fail_reason") val failReason: String? = null

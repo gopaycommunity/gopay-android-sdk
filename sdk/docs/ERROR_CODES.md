@@ -2,9 +2,7 @@
 
 This document provides a comprehensive reference for all error codes used in the Gopay SDK. Each error code follows the pattern `DOMAIN_XXX` where `DOMAIN` represents the functional area and `XXX` is a unique 3-digit identifier.
 
-Codes marked "the SDK does not throw this code" are never thrown by either SDK. Their constants in
-`GopayErrorCodes` stay deprecated for 2.0, so code written against 1.x that names them still
-compiles with a warning, and 3.0 removes them.
+3.0 removed the codes the SDK never threw; the codes below are the whole contract, the same on both platforms.
 
 The codes are a **shared cross-platform contract**: they mirror the iOS SDK's `GopaySDKError.Code`
 so both platforms report the same code for the same condition. Never add, rename, or repurpose a
@@ -14,8 +12,7 @@ Every code the SDK throws also says whether **a charge may exist** on the gatewa
 whether the call is **safe to retry**. A charge is created by `charge` and the `chargeWith*` calls;
 `awaitChargeState`, `handle3dsVerification` and the reads come after one. Where the answer is "read
 the charge state first", ask your backend or `getChargeState()` before charging again, because the
-gateway may have created the charge even though the answer never reached the device. Codes the SDK
-does not throw carry neither line.
+gateway may have created the charge even though the answer never reached the device.
 
 ## The `errorCallback` rule
 
@@ -23,15 +20,13 @@ does not throw carry neither line.
 the exception at the call. The rule is the same on both platforms:
 
 - Every `GopaySDKException` a public call of `GopaySDK` or of a `PaymentSession` throws reaches the
-  callback **once**, `PaymentSession.reauthenticate()` called directly included. A call made of
+  callback **once**. A call made of
   several steps, such as `chargeWithWallet`, which reads the wallet configuration and then
   charges, or `awaitChargeState`, which reads the charge again and again, reports the one error
   it ends with, not each step on the way; a re-authentication the session runs in the middle of
   a call is one of those steps. An error wrapped into another on the way out, the gateway's 401
   behind `AUTH_010` or the browser-data fetch behind a charge error, is reported as the one you
   catch; the inner one is its `cause`.
-- An error the SDK returns instead of throwing, the `GopaySDKException` inside
-  `CardEncryptionResult.Error` from the card form's own submit function, is reported the same way.
 - Two codes never reach it, because they are outcomes of a payment window rather than failures:
   `PAYMENT_007` (the charge is still undecided) and `PAYMENT_011` (the sheet or the 3DS screen
   closed early).
@@ -50,96 +45,10 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **NETWORK_XXX**: Network connectivity and HTTP errors  
 - **CONFIG_XXX**: Configuration and initialization errors
 - **PAYMENT_XXX**: Payment processing errors
-- **CARD_XXX**: Card tokenization errors
 - **VALIDATION_XXX**: Input validation errors
-- **SECURITY_XXX**: Security-related errors
 - **INTERNAL_XXX**: Internal SDK errors
 
 ## Authentication Errors (AUTH_XXX)
-
-### AUTH_001: Access Token Expired
-- **Description**: The access token has expired and needs to be refreshed
-- **Common Causes**: 
-  - Token lifetime exceeded
-  - System clock drift
-- **Developer Action**: 
-  - The SDK will automatically attempt to refresh the token
-  - If refresh fails, re-authenticate the user
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### AUTH_002: Refresh Token Expired  
-- **Description**: The refresh token has expired, requiring full re-authentication
-- **Common Causes**:
-  - Long period of inactivity
-  - Token revoked on server side
-- **Developer Action**: 
-  - Redirect user to authentication flow
-  - Clear stored tokens
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### AUTH_003: Both Tokens Expired
-- **Description**: Both access and refresh tokens are expired
-- **Common Causes**:
-  - Extended period of inactivity
-  - Tokens manually cleared
-- **Developer Action**:
-  - Redirect user to authentication flow
-  - Clear stored tokens
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### AUTH_004: Token Refresh Failed
-- **Description**: Failed to refresh the access token using the refresh token
-- **Common Causes**:
-  - Network connectivity issues
-  - Server-side token validation failure
-  - Invalid refresh token
-- **Developer Action**:
-  - Check network connectivity
-  - If persistent, redirect to authentication flow
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### AUTH_005: Invalid Authentication Response
-- **Description**: The authentication response format is invalid or malformed
-- **Common Causes**:
-  - Server API changes
-  - Network corruption
-  - Invalid server response
-- **Developer Action**:
-  - Retry authentication
-  - Check server API documentation
-  - Contact support if persistent
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0. A 2xx answer without a body, which 1.x reported here, is `INTERNAL_003`
-
-### AUTH_006: Invalid Client ID
-- **Description**: Cannot extract client ID from the access token
-- **Common Causes**:
-  - Malformed JWT token
-  - Token not issued by expected server
-- **Developer Action**:
-  - Re-authenticate user
-  - Verify token source
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### AUTH_007: No Tokens Available
-- **Description**: No access token or refresh token is available
-- **Common Causes**:
-  - User not authenticated
-  - Tokens manually cleared
-  - First-time app usage
-- **Developer Action**:
-  - Redirect user to authentication flow
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### AUTH_008: Invalid Credentials
-- **Description**: Authentication failed due to invalid credentials
-- **Common Causes**:
-  - Wrong username/password
-  - Account suspended
-  - Invalid API keys
-- **Developer Action**:
-  - Prompt user to re-enter credentials
-  - Check account status
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### AUTH_009: Payment Token Expired
 - **Description**: The payment-scoped JWT expired and could not be re-acquired from the cached payment credentials
@@ -261,18 +170,6 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **A charge may exist**: Possibly, when the call was a charge: read the charge state first. As with `NETWORK_004`, a failed retry on a fresh connection can follow a first attempt that reached the gateway. On iOS this stays "No"
 - **Safe to retry**: Once the certificate problem is gone, behind a captive portal once the user is through it; when the call was a charge, after reading the charge state
 
-### NETWORK_006: Certificate Pinning Failed
-- **Description**: Certificate pinning validation failed
-- **Common Causes**:
-  - Certificate rotation
-  - Man-in-the-middle attack
-  - Network proxy
-- **Developer Action**:
-  - Update certificate pins
-  - Verify network security
-  - Check for proxy settings
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
 ### NETWORK_007: Network I/O Error
 - **Description**: General network input/output error
 - **Common Causes**:
@@ -287,18 +184,6 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **Safe to retry**: Read the charge state first when the call was a charge; any other call can be retried
 - **Note**: Any transport failure that is not a timeout, a missing connection or a certificate failure, a TLS connection reset or dropped midway included. The `IOException` is the exception's `cause`. No call lets a transport failure through bare.
 
-### NETWORK_008: Request Cancelled
-- **Description**: Network request was cancelled
-- **Common Causes**:
-  - User cancelled operation
-  - App backgrounded
-  - Timeout reached
-- **Developer Action**:
-  - Handle cancellation gracefully
-  - Provide user feedback
-  - Allow retry if appropriate
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
 ## Configuration Errors (CONFIG_XXX)
 
 ### CONFIG_001: SDK Not Initialized
@@ -312,50 +197,6 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **A charge may exist**: No
 - **Safe to retry**: Yes, after `initialize`
 - **Note**: never reported through `errorCallback`, see the rule at the top. The iOS SDK throws the same code from the same three calls since 2.2
-
-### CONFIG_002: Invalid Configuration Parameter
-- **Description**: Invalid configuration parameter provided
-- **Common Causes**:
-  - Invalid environment setting
-  - Malformed URLs
-  - Invalid timeout values
-- **Developer Action**:
-  - Verify configuration parameters
-  - Check documentation for valid values
-  - Use provided constants where available
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### CONFIG_003: Missing Required Parameter
-- **Description**: Required configuration parameter is missing
-- **Common Causes**:
-  - Incomplete configuration object
-  - Null values for required fields
-- **Developer Action**:
-  - Provide all required configuration parameters
-  - Check configuration builder usage
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### CONFIG_004: Missing Application Context
-- **Description**: Cannot obtain Android application context
-- **Common Causes**:
-  - SDK used before Application.onCreate()
-  - Missing ContentProvider in manifest
-  - Library usage without manual context
-- **Developer Action**:
-  - Ensure proper app initialization
-  - Use manual context initialization if needed
-  - Check manifest configuration
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### CONFIG_005: Invalid Environment
-- **Description**: Invalid environment configuration
-- **Common Causes**:
-  - Unsupported environment value
-  - Custom environment misconfiguration
-- **Developer Action**:
-  - Use predefined Environment constants
-  - Verify custom environment settings
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### CONFIG_006: Invalid Base URL
 - **Description**: Invalid API base URL provided
@@ -372,30 +213,6 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **Note**: thrown by `Environment.DEVELOPMENT` for an empty URL or one without an `http(s)` scheme, and by `GopaySDK.initialize` for a URL the HTTP client refuses, say one with a space in the host, with that refusal as the `cause`; nothing is sent either way, and a failed `initialize` leaves the SDK as an earlier one set it up. From `Environment.DEVELOPMENT(url)` the code is thrown by the constructor, before `initialize`, and is not reported; from `initialize` it is, to that config's own `errorCallback`. `SANDBOX` and `PRODUCTION` carry their own hosts and cannot hit this. The iOS SDK throws it when the first request is built instead
 
 ## Payment Errors (PAYMENT_XXX)
-
-### PAYMENT_001: Invalid Payment Method ID
-- **Description**: Invalid payment method ID provided
-- **Common Causes**:
-  - Non-existent payment method
-  - Typo in method ID
-  - Outdated method reference
-- **Developer Action**:
-  - Verify payment method ID
-  - Refresh available payment methods
-  - Check for typos
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### PAYMENT_002: Invalid Payment Amount
-- **Description**: Invalid payment amount (negative, zero, or too large)
-- **Common Causes**:
-  - Negative amount
-  - Zero amount
-  - Amount exceeds limits
-- **Developer Action**:
-  - Validate amount before processing
-  - Check payment limits
-  - Ensure positive, non-zero values
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### PAYMENT_003: Payment Processing Failed
 - **Description**: Payment processing failed
@@ -424,18 +241,6 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **A charge may exist**: No
 - **Safe to retry**: Not on this device: hide the wallet button and offer another method
 - **Note**: The SDK raises it when the wallet cannot show its sheet on the device, e.g. Google Play services are missing, disabled or outdated (Apple Pay not set up on iOS). Hide the wallet button. On iOS it also covers an app missing the Apple Pay capability or merchant ID; on Android anything Google Pay returns as an error, other than Google Play services missing, disabled or outdated, is `PAYMENT_003`.
-
-### PAYMENT_005: Insufficient Funds
-- **Description**: Insufficient funds for the payment
-- **Common Causes**:
-  - Low account balance
-  - Credit limit reached
-  - Temporary holds on funds
-- **Developer Action**:
-  - Inform user of insufficient funds
-  - Suggest adding funds
-  - Offer alternative payment methods
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### PAYMENT_006: Charge Failed
 - **Description**: The charge ended `FAILED`. Thrown by `awaitChargeState()` only, which polls the charge for you; the manual path reads the same state from `getChargeState()` without an error
@@ -535,151 +340,19 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **Safe to retry**: No: read the charge state instead
 - **Note**: a contract of the SDK over the gateway's documented 409, the same on both platforms since 2.7; until then the same answer was `NETWORK_002` with HTTP 409. `httpContext.statusCode` is 409 and `httpContext.gatewayError` carries the gateway's error body
 
-## Card Errors (CARD_XXX)
-
-### CARD_001: Card Tokenization Failed
-- **Description**: Card tokenization failed
-- **Common Causes**:
-  - The merchant backend rejected or failed the `POST /cards/tokens` call
-- **Developer Action**:
-  - Handle tokenization failures on your backend and surface a retry to the user
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
 ## Validation Errors (VALIDATION_XXX)
-
-### VALIDATION_001: Invalid JWT Format
-- **Description**: JWT token format is invalid
-- **Common Causes**:
-  - Malformed token structure
-  - Missing token parts
-  - Invalid encoding
-- **Developer Action**:
-  - Re-authenticate user
-  - Verify token source
-  - Check token handling code
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### VALIDATION_002: Missing Required Parameter
-- **Description**: Required parameter is missing
-- **Common Causes**:
-  - Null parameter values
-  - Empty required fields
-  - Incomplete API calls
-- **Developer Action**:
-  - Provide all required parameters
-  - Check API documentation
-  - Validate inputs before API calls
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### VALIDATION_003: Invalid Parameter Format
-- **Description**: Parameter format is invalid
-- **Common Causes**:
-  - Wrong data type
-  - Invalid format string
-  - Encoding issues
-- **Developer Action**:
-  - Verify parameter format
-  - Check data type requirements
-  - Use proper encoding
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### VALIDATION_004: Parameter Out of Range
-- **Description**: Parameter value is outside allowed range
-- **Common Causes**:
-  - Value too large or small
-  - Exceeds system limits
-  - Invalid enum value
-- **Developer Action**:
-  - Check parameter limits
-  - Validate ranges before API calls
-  - Use allowed values only
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### VALIDATION_005: Invalid Email Format
-- **Description**: Email address format is invalid
-- **Common Causes**:
-  - Missing @ symbol
-  - Invalid domain
-  - Special characters
-- **Developer Action**:
-  - Validate email format
-  - Use email validation libraries
-  - Prompt user to correct
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### VALIDATION_006: Invalid Phone Format
-- **Description**: Phone number format is invalid
-- **Common Causes**:
-  - Missing country code
-  - Invalid characters
-  - Wrong length
-- **Developer Action**:
-  - Validate phone format
-  - Use phone validation libraries
-  - Provide format examples
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ### VALIDATION_007: Invalid Input
 - **Description**: Invalid input data was provided to an SDK call
 - **Common Causes**:
   - Empty `paymentId` / `paymentSecret` passed to `startPaymentSession`
   - `encryptCardData` called with a card that fails validation: the PAN is not 13 to 19 digits, the month is not `01` to `12`, the year is not 2 to 4 digits, or the CVV is not 3 or 4 digits. The same rules apply on iOS
-  - `submitCardForm` called while no `PaymentCardForm` holds a card (after a successful submit, or before one was typed), with `CardEncryptionResult.NO_CARD_DATA_MESSAGE`, or while the held card is invalid, with `CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE`. The form's own submit function returns the same exception inside `CardEncryptionResult.Error`
+  - `submitCardForm` called while no `PaymentCardForm` holds a card (after a successful submit, or before one was typed), or while the held card is invalid
   - `awaitChargeState()` called with an `intervalMs` or `initialTimeoutMs` that is not positive, or in `ThreeDSMode.AUTOMATIC` without an `activity`; nothing is sent
 - **Developer Action**:
-  - Validate before calling, and let the form show its own validation state (`validation = LIVE` or `ON_SUBMIT`) or read it from `onValidationError`
+  - Validate before calling, and let the form show its own validation state (`validation = LIVE` or `ON_SUBMIT`)
 - **A charge may exist**: No: nothing is sent
 - **Safe to retry**: Yes, with valid input
-
-## Security Errors (SECURITY_XXX)
-
-### SECURITY_001: Certificate Validation Failed
-- **Description**: SSL certificate validation failed
-- **Common Causes**:
-  - Expired certificate
-  - Self-signed certificate
-  - Certificate chain issues
-- **Developer Action**:
-  - Check certificate validity
-  - Update certificate configuration
-  - Verify certificate chain
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### SECURITY_002: SSL Context Failed
-- **Description**: SSL context initialization failed
-- **Common Causes**:
-  - Invalid SSL configuration
-  - Missing security providers
-  - Incompatible TLS versions
-- **Developer Action**:
-  - Check SSL configuration
-  - Update security providers
-  - Verify TLS compatibility
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### SECURITY_003: Trust Manager Failed
-- **Description**: Trust manager configuration failed
-- **Common Causes**:
-  - Invalid trust store
-  - Missing certificates
-  - Configuration errors
-- **Developer Action**:
-  - Verify trust manager setup
-  - Check certificate store
-  - Review security configuration
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
-### SECURITY_004: Security Policy Violation
-- **Description**: Security policy violation detected
-- **Common Causes**:
-  - Insecure network
-  - Policy enforcement
-  - Security constraints
-- **Developer Action**:
-  - Review security policies
-  - Use secure connections
-  - Update security settings
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ## Internal Errors (INTERNAL_XXX)
 
@@ -695,18 +368,6 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **A charge may exist**: From the encryption or the token request, no: both fail before a charge is sent. From the 3DS screen failing to start, the charge exists already
 - **Safe to retry**: Yes for the encryption and the token request; for the 3DS screen, read the charge state first
 
-### INTERNAL_002: Not Implemented
-- **Description**: Feature is not yet implemented
-- **Common Causes**:
-  - Using preview features
-  - Incomplete SDK version
-  - Platform limitations
-- **Developer Action**:
-  - Check SDK documentation
-  - Use alternative approaches
-  - Wait for feature implementation
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
-
 ### INTERNAL_003: Serialization Error
 - **Description**: Data serialization/deserialization failed
 - **Common Causes**:
@@ -721,18 +382,6 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **A charge may exist**: Yes, when the call was a charge: the gateway answered and only its answer could not be read
 - **Safe to retry**: Read the charge state first when the call was a charge; any other call can be retried
 - **Note**: a new value in one of the response enums is not a decoding error: it decodes as `UNKNOWN` and the original value goes to the debug log
-
-### INTERNAL_004: Concurrency Error
-- **Description**: Thread safety or concurrency error
-- **Common Causes**:
-  - Race conditions
-  - Improper synchronization
-  - Concurrent access issues
-- **Developer Action**:
-  - Review threading usage
-  - Ensure proper synchronization
-  - Use SDK from main thread when required
-- **Note**: the SDK does not throw this code. The constant is deprecated and will be removed in 3.0
 
 ## Error Handling Best Practices
 
@@ -775,8 +424,7 @@ suspend fun readChargeBeforeRetrying(session: PaymentSession) {
 ```
 
 The codes worth a branch of their own are the ones in the README's
-[Error handling](../../README.md#error-handling); every code the SDK does not throw is marked so
-above.
+[Error handling](../../README.md#error-handling).
 
 ### 3. Implement Error Reporting
 ```kotlin

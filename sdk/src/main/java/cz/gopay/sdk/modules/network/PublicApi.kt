@@ -1,7 +1,6 @@
 package cz.gopay.sdk.modules.network
 
 import cz.gopay.sdk.model.BrowserDataDetected
-import cz.gopay.sdk.model.CardFormUrl
 import cz.gopay.sdk.model.Jwk
 import retrofit2.Response
 import retrofit2.http.GET
@@ -23,13 +22,6 @@ internal interface PublicApi {
     @GET("cards/public-key")
     @Headers("Accept: application/json")
     suspend fun getPublicKey(): Response<Jwk>
-
-    /**
-     * Returns the URL of the hosted card input form. Maps to `GET /cards/card-form-url`.
-     */
-    @GET("cards/card-form-url")
-    @Headers("Accept: application/json")
-    suspend fun getCardFormUrl(): Response<CardFormUrl>
 
     /**
      * Returns the address, User-Agent and Accept headers of this very request, as the gateway

@@ -16,7 +16,7 @@ import androidx.compose.ui.unit.dp
  * even while empty, so the form does not shift when a message appears.
  */
 @Composable
-fun HelperText(error: String?, helperText: String?, theme: PaymentCardFormTheme) {
+internal fun HelperText(error: String?, helperText: String?, theme: PaymentCardFormTheme) {
     val text = error ?: helperText
     if (text == null && theme.errorMinHeight <= 0.dp) return
     Box(

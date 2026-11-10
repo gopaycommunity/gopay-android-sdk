@@ -4,7 +4,6 @@ import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.BrowserDataDetected
 import cz.gopay.sdk.model.CardData
-import cz.gopay.sdk.model.CardFormUrl
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.util.SdkLog
@@ -175,8 +174,6 @@ class CardEncryptionTest {
             return key()
         }
 
-        override suspend fun getCardFormUrl(): Response<CardFormUrl> =
-            throw UnsupportedOperationException()
 
         override suspend fun getBrowserData(userAgent: String?): Response<BrowserDataDetected> =
             throw UnsupportedOperationException()

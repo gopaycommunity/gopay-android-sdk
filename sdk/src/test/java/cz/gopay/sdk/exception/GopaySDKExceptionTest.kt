@@ -97,19 +97,6 @@ class GopaySDKExceptionTest {
     }
 
     @Test
-    fun `the 2_0_0 constructor is still in the bytecode for hosts compiled against it`() {
-        val compat = GopaySDKException::class.java.getConstructor(
-            String::class.java, String::class.java, Throwable::class.java,
-            HttpErrorContext::class.java, Map::class.java
-        )
-
-        val e = compat.newInstance("AUTH_001", "boom", null, null, null)
-
-        assertEquals("AUTH_001", e.errorCode)
-        assertNull(e.chargeState)
-    }
-
-    @Test
     fun `HttpErrorContext toString omits the response body but keeps method and url`() {
         val ctx = HttpErrorContext(
             statusCode = 400,

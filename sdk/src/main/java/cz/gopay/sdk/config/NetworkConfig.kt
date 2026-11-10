@@ -9,7 +9,7 @@ import javax.net.ssl.X509TrustManager
  * Configuration class for SDK network settings
  * Allows customization of SSL/TLS, certificate pinning, and other HTTP client settings
  */
-data class NetworkConfig(
+internal data class NetworkConfig(
     /** Base URL for the API */
     val baseUrl: String,
     

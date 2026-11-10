@@ -8,7 +8,8 @@ import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.model.CardData
 import cz.gopay.sdk.telemetry.TelemetryCapture
-import cz.gopay.sdk.ui.CardEncryptionResult
+import cz.gopay.sdk.ui.INVALID_CARD_FORM_DATA_MESSAGE
+import cz.gopay.sdk.ui.NO_CARD_DATA_MESSAGE
 import cz.gopay.sdk.ui.CardFormData
 import cz.gopay.sdk.ui.CardFormHandlers
 import cz.gopay.sdk.ui.CardFormStore
@@ -235,7 +236,7 @@ class GopaySDKTest {
         }
 
         assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, e.errorCode)
-        assertEquals(CardEncryptionResult.NO_CARD_DATA_MESSAGE, e.message)
+        assertEquals(NO_CARD_DATA_MESSAGE, e.message)
         assertEquals(listOf(e), reported)
     }
 
@@ -248,12 +249,12 @@ class GopaySDKTest {
 
         CardFormStore.update("form-1", formOwner, CardFormData())
         val empty = assertThrows(GopaySDKException::class.java) { runBlocking { sdk.submitCardForm("form-1") } }
-        assertEquals(CardEncryptionResult.NO_CARD_DATA_MESSAGE, empty.message)
+        assertEquals(NO_CARD_DATA_MESSAGE, empty.message)
 
         CardFormStore.update("form-1", formOwner, CardFormData("4532015112830366", "1230", "12"))
         val invalid = assertThrows(GopaySDKException::class.java) { runBlocking { sdk.submitCardForm("form-1") } }
         assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, invalid.errorCode)
-        assertEquals(CardEncryptionResult.INVALID_CARD_FORM_DATA_MESSAGE, invalid.message)
+        assertEquals(INVALID_CARD_FORM_DATA_MESSAGE, invalid.message)
 
         assertEquals("ON_SUBMIT shows its errors whether or not the submit passes", 2, attempts)
         assertEquals(listOf(empty, invalid), reported)

@@ -69,9 +69,7 @@ class GooglePayIntegrationTest {
         )
 
         assertEquals(null, input.cardToken)
-        assertEquals(null, input.data)
-        assertEquals(null, input.version)
-        assertEquals(null, input.header)
+        assertEquals(null, input.payload)
     }
 
     private fun buildFullGooglePayInfoResponse() = GooglePayInfoResponse(

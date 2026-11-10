@@ -12,75 +12,6 @@ import org.junit.Test
 class PaymentCardFormTest {
 
     @Test
-    fun `the 2_1_0 PaymentCardForm signature is still in the bytecode for hosts compiled against it`() {
-        // A Composable's JVM signature carries the Composer and two Int bitmasks (changed,
-        // defaults) after its own parameters; adding validation and formId changed it, so the
-        // 2.1.0 shape is kept as a hidden overload. getMethod throws if it is gone.
-        val compat = Class.forName("cz.gopay.sdk.ui.PaymentCardFormKt").getMethod(
-            "PaymentCardForm",
-            Function1::class.java,                                  // onEncryptionComplete
-            androidx.compose.ui.Modifier::class.java,               // modifier
-            Function1::class.java,                                  // onFormReady
-            Function1::class.java,                                  // onValidationError
-            String::class.java,                                     // locale
-            cz.gopay.sdk.locales.GopayLocaleStrings::class.java,    // localeStrings
-            PaymentFormInputs::class.java,                          // inputFields
-            PaymentCardFormTheme::class.java,                       // theme
-            androidx.compose.runtime.Composer::class.java,
-            Int::class.javaPrimitiveType,
-            Int::class.javaPrimitiveType
-        )
-
-        assertTrue(compat.isAnnotationPresent(Deprecated::class.java))
-    }
-
-    @Test
-    fun `the 2_4_0 PaymentCardForm signature is still in the bytecode for hosts compiled against it`() {
-        // Adding allowsAutofill changed the JVM signature again, so the 2.4.0 shape is kept as a
-        // hidden overload too. The parameter list is the one javap shows for the 2.4.0 release.
-        val compat = Class.forName("cz.gopay.sdk.ui.PaymentCardFormKt").getMethod(
-            "PaymentCardForm",
-            Function1::class.java,                                  // onEncryptionComplete
-            androidx.compose.ui.Modifier::class.java,               // modifier
-            Function1::class.java,                                  // onFormReady
-            Function1::class.java,                                  // onValidationError
-            String::class.java,                                     // locale
-            cz.gopay.sdk.locales.GopayLocaleStrings::class.java,    // localeStrings
-            PaymentFormInputs::class.java,                          // inputFields
-            PaymentCardFormTheme::class.java,                       // theme
-            CardFormValidationDisplay::class.java,                  // validation
-            String::class.java,                                     // formId
-            androidx.compose.runtime.Composer::class.java,
-            Int::class.javaPrimitiveType,
-            Int::class.javaPrimitiveType
-        )
-
-        assertTrue(compat.isAnnotationPresent(Deprecated::class.java))
-    }
-
-    @Test
-    fun cardEncryptionResult_success_carriesJwe() {
-        val jwe = "header.encryptedKey.iv.ciphertext.tag"
-
-        val result = CardEncryptionResult.Success(jwe)
-
-        assertTrue("Result should be Success", result is CardEncryptionResult.Success)
-        assertEquals("JWE should match", jwe, result.jwe)
-    }
-
-    @Test
-    fun cardEncryptionResult_error_carriesMessageAndCause() {
-        val errorMessage = "Public key fetch failed"
-        val exception = RuntimeException("Network failure")
-
-        val result = CardEncryptionResult.Error(errorMessage, exception)
-
-        assertTrue("Result should be Error", result is CardEncryptionResult.Error)
-        assertEquals("Error message should match", errorMessage, result.message)
-        assertEquals("Exception should match", exception, result.exception)
-    }
-
-    @Test
     fun paymentCardFormTheme_defaultValues_areCorrect() {
         // An unthemed form is deliberately unstyled: it takes the platform's own type sizes, the
         // host's color scheme for every color it leaves unspecified, and leaves the padding around
@@ -395,7 +326,6 @@ class PaymentCardFormTest {
         assertEquals("Label should be set", "Test Label", config.label)
         assertNull("Helper text should be null by default", config.helperText)
         assertNull("Error text should be null by default", config.errorText)
-        assertFalse("Has error should be false by default", config.hasError)
         assertNull("Placeholder should be null by default", config.placeholder)
     }
 } 

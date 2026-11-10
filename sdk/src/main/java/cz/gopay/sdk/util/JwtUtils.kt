@@ -3,7 +3,7 @@ package cz.gopay.sdk.util
 /**
  * Utility class for JWT token operations
  */
-object JwtUtils {
+internal object JwtUtils {
     
     /**
      * Checks if a JWT token is expired

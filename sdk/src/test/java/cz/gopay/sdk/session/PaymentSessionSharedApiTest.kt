@@ -2,7 +2,6 @@ package cz.gopay.sdk.session
 
 import cz.gopay.sdk.model.BrowserData
 import cz.gopay.sdk.model.BrowserDataDetected
-import cz.gopay.sdk.model.CardFormUrl
 import cz.gopay.sdk.model.ChallengePreference
 import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargePaymentResponse
@@ -116,7 +115,6 @@ class PaymentSessionSharedApiTest {
                 return Response.success(BrowserDataDetected(ip = "198.51.100.7", userAgent = "ua", acceptHeader = "*/*"))
             }
             override suspend fun getPublicKey(): Response<Jwk> = throw UnsupportedOperationException()
-            override suspend fun getCardFormUrl(): Response<CardFormUrl> = throw UnsupportedOperationException()
         }
 
         override suspend fun token(authorization: String, grantType: String, scope: String?): Response<TokenResponse> =

@@ -6,12 +6,9 @@ import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.telemetry.ApiCallTelemetryInterceptor
 import cz.gopay.sdk.telemetry.GwLoggerTelemetry
-import okhttp3.CertificatePinner
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
-import javax.net.ssl.SSLSocketFactory
-import javax.net.ssl.X509TrustManager
 
 /**
  * Builds and holds the auth-separated API clients for the Gopay SDK.
@@ -27,9 +24,6 @@ import javax.net.ssl.X509TrustManager
  */
 internal class NetworkManager(
     private val gopayConfig: GopayConfig,
-    private val sslSocketFactory: SSLSocketFactory? = null,
-    private val trustManager: X509TrustManager? = null,
-    private val certificatePinner: CertificatePinner? = null,
     private val telemetry: GwLoggerTelemetry? = null
 ) {
 
@@ -41,10 +35,7 @@ internal class NetworkManager(
             baseUrl = baseUrl,
             readTimeoutSeconds = gopayConfig.requestTimeoutMs / 1000,
             connectTimeoutSeconds = gopayConfig.requestTimeoutMs / 2000,
-            enableLogging = gopayConfig.debug,
-            sslSocketFactory = sslSocketFactory,
-            trustManager = trustManager,
-            certificatePinner = certificatePinner
+            enableLogging = gopayConfig.debug
         )
     )
 

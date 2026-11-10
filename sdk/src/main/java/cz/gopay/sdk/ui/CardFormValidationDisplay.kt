@@ -9,7 +9,7 @@ enum class CardFormValidationDisplay {
     /**
      * Render no inline errors; display is host-driven (the default, and the only behaviour
      * before 2.2). Read the localized strings with `GopaySDK.currentLocaleStrings(...)` to show
-     * your own, from `onValidationError` or from the `VALIDATION_007` a submit throws.
+     * your own, from the `VALIDATION_007` a submit throws.
      */
     HIDDEN,
 
@@ -21,7 +21,7 @@ enum class CardFormValidationDisplay {
 
     /**
      * Show errors only once a submit was attempted, through
-     * [cz.gopay.sdk.GopaySDK.submitCardForm] or the form's own submit function: an empty
+     * [cz.gopay.sdk.GopaySDK.submitCardForm]: an empty
      * required field shows the locale's `requiredErrorMessage`, an invalid one the field's
      * pattern message. The form hides them again when it empties its fields, after a
      * successful submit or [cz.gopay.sdk.GopaySDK.clearCardFormData].

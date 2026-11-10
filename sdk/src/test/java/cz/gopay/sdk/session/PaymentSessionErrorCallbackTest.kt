@@ -7,7 +7,6 @@ import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.exception.reportErrors
 import cz.gopay.sdk.model.BrowserData
 import cz.gopay.sdk.model.BrowserDataDetected
-import cz.gopay.sdk.model.CardFormUrl
 import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.ChargeState
@@ -192,7 +191,6 @@ class PaymentSessionErrorCallbackTest {
         val publicApi: PublicApi = object : PublicApi {
             override suspend fun getBrowserData(userAgent: String?): Response<BrowserDataDetected> = browserData()
             override suspend fun getPublicKey(): Response<Jwk> = throw UnsupportedOperationException()
-            override suspend fun getCardFormUrl(): Response<CardFormUrl> = throw UnsupportedOperationException()
         }
 
         override suspend fun token(authorization: String, grantType: String, scope: String?): Response<TokenResponse> =

@@ -29,19 +29,6 @@ class GopaySDKException(
     val chargeState: ChargePaymentResponse? = null
 ) : Exception(message, cause) {
 
-    /**
-     * The constructor 2.0.0 shipped, kept in the bytecode so a host compiled against 2.0.0 keeps
-     * running on 2.1 without a `NoSuchMethodError`; new code sees only the primary one.
-     */
-    @Deprecated("Binary compatibility with 2.0.0", level = DeprecationLevel.HIDDEN)
-    constructor(
-        errorCode: String,
-        message: String,
-        cause: Throwable? = null,
-        httpContext: HttpErrorContext? = null,
-        additionalData: Map<String, Any>? = null
-    ) : this(errorCode, message, cause, httpContext, additionalData, null)
-
     /** Set by [ErrorReporter.report] the first time, so the callback hears of this one once. */
     internal val reported = AtomicBoolean(false)
 

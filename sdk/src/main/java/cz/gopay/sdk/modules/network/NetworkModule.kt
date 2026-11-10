@@ -5,7 +5,6 @@ import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import cz.gopay.sdk.model.ChargePaymentResponseAdapter
 import cz.gopay.sdk.model.PaymentCreateResponseAdapter
 import cz.gopay.sdk.model.UnknownEnumAdapter
 import okhttp3.OkHttpClient
@@ -90,7 +89,6 @@ internal object NetworkModule {
      * it, and the unknown-enum adapter wraps the standard enum adapter for every enum the gateway sends.
      */
     internal val moshi: Moshi = Moshi.Builder()
-        .add(ChargePaymentResponseAdapter.Factory)
         .add(PaymentCreateResponseAdapter.Factory)
         .add(UnknownEnumAdapter.Factory)
         .add(KotlinJsonAdapterFactory())
