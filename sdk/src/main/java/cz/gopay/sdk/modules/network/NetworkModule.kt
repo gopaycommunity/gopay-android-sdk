@@ -38,19 +38,6 @@ internal object NetworkModule {
             builder.addInterceptor(loggingInterceptor())
         }
 
-        // Add custom SSL factory and trust manager if provided
-        if (config.sslSocketFactory != null && config.trustManager != null) {
-            builder.sslSocketFactory(config.sslSocketFactory, config.trustManager)
-        }
-
-        // Add certificate pinning if configured
-        config.certificatePinner?.let { builder.certificatePinner(it) }
-
-        // Add any custom interceptors
-        config.interceptors.forEach { interceptor ->
-            builder.addInterceptor(interceptor)
-        }
-
         return builder.build()
     }
 

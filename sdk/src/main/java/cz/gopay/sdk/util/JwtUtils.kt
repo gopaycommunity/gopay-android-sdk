@@ -6,24 +6,6 @@ package cz.gopay.sdk.util
 internal object JwtUtils {
     
     /**
-     * Checks if a JWT token is expired
-     *
-     * @param token The JWT token to check
-     * @return true if the token is expired, false otherwise
-     */
-    fun isTokenExpired(token: String): Boolean {
-        val exp = try {
-            extractLongFromJson(decodePayload(token), "exp")
-        } catch (e: Exception) {
-            // Token can't be decoded — treat as expired (safe default).
-            return true
-        }
-        // No `exp` claim means the token doesn't declare an expiry.
-        if (exp == null) return false
-        return (System.currentTimeMillis() / 1000) >= exp
-    }
-
-    /**
      * Extracts the `exp` claim (Unix seconds) from a JWT payload. Returns `0L` when the claim is
      * absent or the token can't be decoded — callers should treat 0 as "no known expiry".
      *
@@ -55,31 +37,6 @@ internal object JwtUtils {
         
         val decodedBytes = Base64Utils.decodeUrlSafe(paddedPayload)
         return String(decodedBytes)
-    }
-    
-    /**
-     * Extracts the client ID from a JWT token's sub field
-     * 
-     * @param token The JWT token
-     * @return The client ID (sub field) if present, null otherwise
-     */
-    fun getClientId(token: String): String? {
-        return try {
-            val payloadJson = decodePayload(token)
-            extractStringFromJson(payloadJson, "sub")
-        } catch (e: Exception) {
-            null
-        }
-    }
-    
-    /**
-     * Extracts a string value from a JSON string
-     */
-    private fun extractStringFromJson(json: String, key: String): String? {
-        val pattern = "\"$key\"\\s*:\\s*\"([^\"]*)\""
-        val regex = Regex(pattern)
-        val matchResult = regex.find(json)
-        return matchResult?.groupValues?.get(1)?.takeIf { it.isNotEmpty() }
     }
     
     /**

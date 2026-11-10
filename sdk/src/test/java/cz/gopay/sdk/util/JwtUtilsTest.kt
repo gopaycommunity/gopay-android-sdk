@@ -1,101 +1,23 @@
 package cz.gopay.sdk.util
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Base64
 
 class JwtUtilsTest {
 
     @Test
-    fun testIsTokenExpired_withValidToken() {
-        // Given a JWT token that expires in the future (1 hour from now)
-        val futureExp = (System.currentTimeMillis() / 1000) + 3600 // 1 hour from now
-        val token = createTestJwtToken(exp = futureExp)
-        
-        // When checking if token is expired
-        val isExpired = JwtUtils.isTokenExpired(token)
-        
-        // Then it should not be expired
-        assertFalse("Token should not be expired", isExpired)
+    fun `the expiry is the exp claim, in seconds`() {
+        assertEquals(1_900_000_000L, JwtUtils.expirationSecondsOrZero(createTestJwtToken(exp = 1_900_000_000L)))
     }
-    
+
     @Test
-    fun testIsTokenExpired_withExpiredToken() {
-        // Given a JWT token that expired 1 hour ago
-        val pastExp = (System.currentTimeMillis() / 1000) - 3600 // 1 hour ago
-        val token = createTestJwtToken(exp = pastExp)
-        
-        // When checking if token is expired
-        val isExpired = JwtUtils.isTokenExpired(token)
-        
-        // Then it should be expired
-        assertTrue("Token should be expired", isExpired)
+    fun `a token without exp, or one that cannot be read, has no known expiry`() {
+        assertEquals(0L, JwtUtils.expirationSecondsOrZero(createTestJwtToken(sub = "client")))
+        assertEquals(0L, JwtUtils.expirationSecondsOrZero("not.a.jwt"))
+        assertEquals(0L, JwtUtils.expirationSecondsOrZero("only-one-part"))
     }
-    
-    @Test
-    fun testIsTokenExpired_withNoExpiration() {
-        // Given a JWT token with no expiration time
-        val token = createTestJwtToken(exp = null)
-        
-        // When checking if token is expired
-        val isExpired = JwtUtils.isTokenExpired(token)
-        
-        // Then it should not be considered expired
-        assertFalse("Token without expiration should not be expired", isExpired)
-    }
-    
-    @Test
-    fun testIsTokenExpired_withMalformedToken() {
-        // Given a malformed JWT token
-        val malformedToken = "invalid.token"
-        
-        // When checking if token is expired
-        val isExpired = JwtUtils.isTokenExpired(malformedToken)
-        
-        // Then it should be considered expired (safe default)
-        assertTrue("Malformed token should be considered expired", isExpired)
-    }
-    
-    @Test
-    fun testGetClientId_withValidToken() {
-        // Given a JWT token with sub field
-        val clientId = "test_client_123"
-        val token = createTestJwtToken(sub = clientId)
-        
-        // When extracting client ID
-        val extractedClientId = JwtUtils.getClientId(token)
-        
-        // Then it should return the correct client ID
-        assertEquals("Should extract correct client ID", clientId, extractedClientId)
-    }
-    
-    @Test
-    fun testGetClientId_withNoClientId() {
-        // Given a JWT token without sub field
-        val token = createTestJwtToken(sub = null)
-        
-        // When extracting client ID
-        val extractedClientId = JwtUtils.getClientId(token)
-        
-        // Then it should return null
-        assertNull("Should return null when no client ID", extractedClientId)
-    }
-    
-    @Test
-    fun testGetClientId_withMalformedToken() {
-        // Given a malformed JWT token
-        val malformedToken = "invalid.token"
-        
-        // When extracting client ID
-        val extractedClientId = JwtUtils.getClientId(malformedToken)
-        
-        // Then it should return null
-        assertNull("Should return null for malformed token", extractedClientId)
-    }
-    
+
     /**
      * Helper method to create a test JWT token with specified claims
      */

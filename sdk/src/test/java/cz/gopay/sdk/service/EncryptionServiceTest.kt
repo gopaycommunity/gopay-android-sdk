@@ -4,7 +4,7 @@ import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.model.JweHeader
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.util.Base64Utils
-import cz.gopay.sdk.util.JsonUtils
+import cz.gopay.sdk.modules.network.NetworkModule
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import org.junit.Assert.assertEquals
@@ -60,7 +60,7 @@ class EncryptionServiceTest {
         val jwe = service.createJweEncryptedPayload(cardData, jwk, testClientId, issuedAt)
         val headerJson = String(Base64Utils.decodeUrlSafe(jwe.split(".")[0]), Charsets.UTF_8)
 
-        val header = JsonUtils.fromJson<JweHeader>(headerJson)
+        val header = NetworkModule.moshi.adapter(JweHeader::class.java).fromJson(headerJson)
         assertNotNull("Header must deserialize", header)
         assertEquals("RSA-OAEP-256", header!!.alg)
         assertEquals("A256GCM", header.enc)

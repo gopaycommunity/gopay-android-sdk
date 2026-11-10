@@ -1,6 +1,5 @@
 package cz.gopay.sdk.modules.network
 
-import cz.gopay.sdk.util.JsonUtils
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -39,7 +38,7 @@ class TokenResponseTest {
             {"access_token":"abc.def.ghi","token_type":"Bearer","scope":"payment-all","expires_in":1800}
         """.trimIndent()
 
-        val parsed = JsonUtils.fromJson<TokenResponse>(json)
+        val parsed = NetworkModule.moshi.adapter(TokenResponse::class.java).fromJson(json)
 
         assertNotNull(parsed)
         assertEquals("abc.def.ghi", parsed!!.accessToken)

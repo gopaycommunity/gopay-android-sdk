@@ -27,9 +27,6 @@ internal object ActivityWatch {
         if (watched.add(application)) application.registerActivityLifecycleCallbacks(Callbacks)
     }
 
-    /** Whether [ensure] ran for some application. */
-    val isWatching: Boolean get() = watched.isNotEmpty()
-
     @VisibleForTesting
     fun reset() = watched.clear()
 

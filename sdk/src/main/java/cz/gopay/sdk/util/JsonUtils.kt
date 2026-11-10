@@ -4,7 +4,7 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 
 /**
- * Utility class for JSON serialization and deserialization using Moshi
+ * Utility class for JSON serialization using Moshi
  */
 internal object JsonUtils {
     
@@ -35,32 +35,9 @@ internal object JsonUtils {
     }
     
     /**
-     * Converts a JSON string to an object
-     * 
-     * @param json The JSON string to deserialize
-     * @param clazz The class type to deserialize to
-     * @return The deserialized object, or null if deserialization fails
-     */
-    fun <T> fromJson(json: String, clazz: Class<T>): T? {
-        return try {
-            val adapter = moshi.adapter(clazz)
-            adapter.fromJson(json)
-        } catch (e: Exception) {
-            null
-        }
-    }
-    
-    /**
      * Inline reified version of toJson for easier usage
      */
     inline fun <reified T> toJson(value: T?): String? {
         return toJson(value, T::class.java)
-    }
-    
-    /**
-     * Inline reified version of fromJson for easier usage
-     */
-    inline fun <reified T> fromJson(json: String): T? {
-        return fromJson(json, T::class.java)
     }
 } 

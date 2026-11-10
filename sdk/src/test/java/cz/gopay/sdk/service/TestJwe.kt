@@ -3,7 +3,7 @@ package cz.gopay.sdk.service
 import cz.gopay.sdk.model.CardJwePayload
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.util.Base64Utils
-import cz.gopay.sdk.util.JsonUtils
+import cz.gopay.sdk.modules.network.NetworkModule
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.interfaces.RSAPublicKey
@@ -61,7 +61,7 @@ internal class TestJwe(keySize: Int = 2048) {
             aes.doFinal(Base64Utils.decodeUrlSafe(parts[3]) + Base64Utils.decodeUrlSafe(parts[4])),
             Charsets.UTF_8
         )
-        return requireNotNull(JsonUtils.fromJson<CardJwePayload>(plaintext)) {
+        return requireNotNull(NetworkModule.moshi.adapter(CardJwePayload::class.java).fromJson(plaintext)) {
             "Payload must deserialize"
         }
     }
