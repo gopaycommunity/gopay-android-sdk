@@ -1,5 +1,6 @@
 package com.gopay.example.checkout
 
+import com.gopay.example.DemoRedaction
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -223,10 +224,11 @@ private fun friendlyInputType(raw: String): String = when (raw) {
 /**
  * The SDK's models are Moshi data classes, not something the app can serialize on its own — Moshi
  * isn't on the app's compile classpath. Breaking the generated `toString()` across lines is enough
- * to correlate what the shopper saw with what the API returned.
+ * to correlate what the shopper saw with what the API returned. The payment's secret and the
+ * customer's e-mail and phone number are hidden first, see [DemoRedaction].
  */
 private fun prettyPrint(value: Any): String =
-    value.toString()
+    DemoRedaction.hide(value.toString())
         .replace(", ", ",\n")
         .replace("(", "(\n  ")
         .replace(")", "\n)")

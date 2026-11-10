@@ -225,7 +225,7 @@ class CheckoutController {
             // a retry needs the card typed again. A card that fails validation (the form shows
             // which field, validation = LIVE) or a key fetch that failed is shown under the form.
             cardFormError = if (e.code == GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY) {
-                "Please re-enter your card details and try again."
+                "Please enter your card details and try again."
             } else {
                 e.message
             }

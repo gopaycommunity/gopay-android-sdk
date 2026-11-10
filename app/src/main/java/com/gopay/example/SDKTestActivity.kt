@@ -99,7 +99,7 @@ fun SDKTestScreen() {
     var jwe by remember { mutableStateOf("") }
     var pending3dsUrl by remember { mutableStateOf<String?>(null) }
     // The callback.return_url the payment was created with; handle3dsVerification watches for it.
-    // Blank leaves the SDK waiting for GopaySDK.CHARGE_RETURN_URL.
+    // Blank leaves the SDK waiting for GopaySDK.chargeReturnUrl.
     var returnUrl by remember { mutableStateOf("") }
     var responseText by remember { mutableStateOf("Ready.") }
     var busyLabel by remember { mutableStateOf<String?>(null) }
@@ -108,7 +108,10 @@ fun SDKTestScreen() {
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    fun log(message: String) {
+    fun log(text: String) {
+        // The secret and the customer's contacts never reach the box or Logcat, whatever a
+        // response or an error message carries.
+        val message = DemoRedaction.hide(text)
         // Mirrored to Logcat because the response box is cleared on every new action, which loses
         // the trail exactly when a run needs reconstructing afterwards.
         Log.i(LOG_TAG, message)
@@ -284,7 +287,7 @@ fun SDKTestScreen() {
                     paymentSecret = created.paymentSecret
                     returnUrl = created.returnUrl
                     // The secret goes into the field below and nowhere else: a console is copied around.
-                    log("// merchant backend created a 1 CZK payment\npayment_id: ${created.paymentId}\npayment_secret: filled into the field below, not printed\nreturn_url: ${created.returnUrl}")
+                    log("// merchant backend created a 1 CZK payment\npayment_id: ${created.paymentId}\npayment_secret: ${DemoRedaction.HIDDEN}, filled into the field below\nreturn_url: ${created.returnUrl}")
                 }
             }
             LabeledField("payment_id", paymentId, enabled = !isBusy) { paymentId = it }
@@ -683,7 +686,8 @@ fun CardFormSection(isBusy: Boolean, onError: (String) -> Unit, onJwe: (String) 
                     errorMessage = null
                     try {
                         // Validates the form, fetches the public key, encrypts, and empties the
-                        // form on success. VALIDATION_007 names an empty or invalid form.
+                        // form on success. VALIDATION_008 names an empty form, VALIDATION_007
+                        // an invalid one.
                         onJwe(GopaySDK.getInstance().submitCardForm(CONSOLE_CARD_FORM_ID))
                     } catch (e: CancellationException) {
                         throw e

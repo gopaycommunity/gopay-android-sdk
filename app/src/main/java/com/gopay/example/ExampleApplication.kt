@@ -15,7 +15,7 @@ class ExampleApplication : Application() {
         GopaySDK.initialize(this, config)
 
         println("✅ Gopay SDK initialized")
-        println("GopayEnvironment: ${config.environment}")
-        println("Debug: ${config.debugLoggingEnabled}")
+        println("Environment: ${config.environment}")
+        println("Debug logging: ${config.debugLoggingEnabled}")
     }
 }
