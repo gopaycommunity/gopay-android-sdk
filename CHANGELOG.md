@@ -1,3 +1,35 @@
+# 3.0.0 (2026-11-12)
+
+
+* feat!: give an empty card form its own code and the submit flag to the host GPMOB-201 51dcdb3
+* feat!: give the public API the names it shares with iOS GPMOB-201 5542403
+* feat!: remove what 3.0 takes out of the public API GPMOB-201 0e57a90
+
+
+### Bug Fixes
+
+* hide the customer's e-mail and phone number in what the demo prints GPMOB-201 a2ce415
+* keep the demo's checkout and its running payment over a rotation GPMOB-201 eca24ed
+* mask the customer's e-mail and phone number in the debug HTTP log GPMOB-201 9e46e74
+* read the browser data from a named Activity that is in the background GPMOB-201 8f44a01
+
+
+### Features
+
+* call the payment's gateway address gatewayUrl, as iOS does GPMOB-201 dd6d6db
+* finish the shape shared with iOS in four places GPMOB-201 39a6ecf
+* let a Java class implement PaymentSessionApi without the 2.x call forms GPMOB-201 fe26c44
+* let an app replace the payment session in its tests GPMOB-201 d047ca2
+* name the card data GopayCardData and the QR models Qr…, as iOS does GPMOB-201 8c07643
+* take the Context in initialize and follow the screen in front GPMOB-201 c63dcdc
+
+
+### BREAKING CHANGES
+
+* an empty card form throws VALIDATION_008 instead of VALIDATION_007, and QrPaymentDetails.recipient is no longer nullable.
+* Environment is GopayEnvironment; Environment.SANDBOX, Environment.PRODUCTION and Environment.DEVELOPMENT(url) do not compile until renamed. GopayConfig.copy(debug = …) and DEVELOPMENT(customUrl = …) have no alias either.
+* everything listed under "Removed" in sdk/docs/API_3_0.md is gone from the public API.
+
 # 2.7.0 (2026-11-09)
 
 
