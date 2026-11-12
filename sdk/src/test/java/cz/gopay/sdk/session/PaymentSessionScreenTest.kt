@@ -3,20 +3,37 @@ package cz.gopay.sdk.session
 import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.content.res.Configuration
+import android.content.res.Resources
+import android.os.LocaleList
+import android.util.DisplayMetrics
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.BrowserData
+import cz.gopay.sdk.model.BrowserDataDetected
 import cz.gopay.sdk.model.ChargeAction
 import cz.gopay.sdk.model.ChargeActionType
+import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.ChargeState
+import cz.gopay.sdk.model.GooglePayAllowedMethod
+import cz.gopay.sdk.model.GooglePayDataRequest
+import cz.gopay.sdk.model.GooglePayGatewayParameters
+import cz.gopay.sdk.model.GooglePayInfoResponse
+import cz.gopay.sdk.model.GooglePayMerchantInfo
+import cz.gopay.sdk.model.GooglePayMethodParameters
+import cz.gopay.sdk.model.GooglePayTokenizationSpec
+import cz.gopay.sdk.model.GooglePayTransactionInfo
+import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.PaymentApi
+import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.modules.network.TokenResponse
 import cz.gopay.sdk.ui.ForegroundScreen
+import cz.gopay.sdk.ui.GooglePayBridge
 import cz.gopay.sdk.ui.PaymentVerificationBridge
 import cz.gopay.sdk.ui.SdkScreens
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +63,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import retrofit2.Response
+import java.util.Locale
 
 /**
  * The calls that open a screen, with the Activity optional: which screen they open from, what
@@ -599,8 +617,90 @@ class PaymentSessionScreenTest {
         assertEquals(ChargeState.SUCCEEDED, charged.state)
     }
 
+    @Test
+    fun `initialized without a Context, Google Pay reads the browser data from its Activity paused under the sheet`() = screenTest {
+        // The deprecated initialize(config): ForegroundScreen.install is never called.
+        val owners = mutableListOf<Long>()
+        SdkScreens.startGooglePay = { screen, _, _, ownerId ->
+            wallets += screen
+            owners += ownerId
+        }
+        val sent = argumentCaptor<ChargePaymentRequest>()
+        val api = mock<PaymentApi> {
+            onBlocking { getGooglePayInfo(any()) }.thenReturn(Response.success(walletInfo()))
+            onBlocking { chargePayment(any(), sent.capture()) }.thenReturn(Response.success(succeeded()))
+        }
+        val named = activityWithConfiguration()
+
+        val call = async { session(api, publicApi = gatewayBrowserData()).chargeWithWallet(named) }
+        runCurrent()
+        assertEquals("started from the named Activity", listOf(named), wallets)
+
+        // The launcher comes up over it, so the named one is paused, and the user authorizes.
+        ForegroundScreen.paused(named)
+        val owner = GooglePayBridge.currentOwner(owners.single())!!
+        GooglePayBridge.attach(owner) {}
+        GooglePayBridge.report(owner, Result.success(GOOGLE_PAY_TOKEN))
+        runCurrent()
+
+        assertEquals("not CONFIG_004 after the user paid", ChargeState.SUCCEEDED, call.await().state)
+        val browser = sent.firstValue.paymentInstrument.browserData
+        assertEquals("cs-CZ", browser.language)
+        assertEquals(1080, browser.screenWidth)
+        assertEquals(2400, browser.screenHeight)
+        assertEquals("198.51.100.7", browser.ip)
+        assertTrue(reported.isEmpty())
+    }
+
+    /** A plain Activity whose configuration `deviceDefault` can read on the stubbed android.jar. */
+    private fun activityWithConfiguration(): Activity {
+        val locales = mock<LocaleList> {
+            on { isEmpty }.thenReturn(false)
+            on { get(0) }.thenReturn(Locale.forLanguageTag("cs-CZ"))
+        }
+        val configuration = mock<Configuration> { on { getLocales() }.thenReturn(locales) }
+        val metrics = mock<DisplayMetrics>().apply {
+            widthPixels = 1080
+            heightPixels = 2400
+        }
+        val resources = mock<Resources> {
+            on { getConfiguration() }.thenReturn(configuration)
+            on { displayMetrics }.thenReturn(metrics)
+        }
+        return mock { on { getResources() }.thenReturn(resources) }
+    }
+
+    /** What `GET /cards/browser-data` answers: the address only the gateway can see. */
+    private fun gatewayBrowserData(): PublicApi = object : PublicApi {
+        override suspend fun getBrowserData(userAgent: String?): Response<BrowserDataDetected> =
+            Response.success(BrowserDataDetected(ip = "198.51.100.7", userAgent = userAgent ?: "ua", acceptHeader = "*/*"))
+
+        override suspend fun getPublicKey(): Response<Jwk> = throw UnsupportedOperationException()
+    }
+
+    private fun walletInfo() = GooglePayInfoResponse(
+        environment = "TEST",
+        paymentDataRequest = GooglePayDataRequest(
+            apiVersion = 2, apiVersionMinor = 0,
+            allowedPaymentMethods = listOf(
+                GooglePayAllowedMethod(
+                    type = "CARD",
+                    parameters = GooglePayMethodParameters(listOf("PAN_ONLY"), listOf("VISA")),
+                    tokenizationSpecification = GooglePayTokenizationSpec(
+                        "PAYMENT_GATEWAY", GooglePayGatewayParameters("gopay", "1")
+                    )
+                )
+            ),
+            transactionInfo = GooglePayTransactionInfo("CZK", "CZ", "FINAL", "1.00"),
+            merchantInfo = GooglePayMerchantInfo("Shop")
+        )
+    )
+
     /** A live session, opened the way the SDK opens one, over a faked payment API. */
-    private suspend fun session(api: PaymentApi = mock()): PaymentSession =
+    private suspend fun session(
+        api: PaymentApi = mock(),
+        publicApi: PublicApi? = null
+    ): PaymentSession =
         PaymentSession.Factory(
             authApi = object : AuthApi {
                 override suspend fun token(
@@ -611,10 +711,16 @@ class PaymentSessionScreenTest {
                     Response.success(TokenResponse(accessToken = "jwt", tokenType = "Bearer"))
             },
             paymentApiBuilder = { api },
-            publicApi = { throw UnsupportedOperationException() }
+            publicApi = { publicApi ?: throw UnsupportedOperationException() }
         ).create(paymentId = "pay-1", paymentSecret = "secret", scope = PaymentSession.DEFAULT_SCOPE) {}
 
     private companion object {
         const val URL = "https://acs.bank.example/challenge/1"
+
+        /** The PaymentData the launcher hands back, with its token as an escaped JSON string. */
+        const val GOOGLE_PAY_TOKEN = """{"apiVersion":2,"apiVersionMinor":0,"paymentMethodData":{"type":"CARD",""" +
+            """"tokenizationData":{"type":"PAYMENT_GATEWAY","token":"{\"protocolVersion\":\"ECv2\",""" +
+            """\"signature\":\"sig\",\"intermediateSigningKey\":{\"signedKey\":\"key\",""" +
+            """\"signatures\":[\"s1\"]},\"signedMessage\":\"msg\"}"}}}"""
     }
 }

@@ -261,6 +261,44 @@ class ForegroundScreenTest {
     }
 
     @Test
+    fun `the device configuration is read from a named Activity in the background when there is no Context`() {
+        // The deprecated initialize(config), and the named one paused under the Google Pay sheet.
+        val named = activity()
+        ForegroundScreen.resumed(named)
+        ForegroundScreen.paused(named)
+
+        assertNull("nothing to open from", ForegroundScreen.screenFor(named))
+        assertSame("but alive, so enough to read from", named, ForegroundScreen.contextFor(named))
+    }
+
+    @Test
+    fun `a named Activity that is finishing or destroyed is not read from, and without the Context there is nothing`() {
+        assertNull(ForegroundScreen.contextFor(activity(finishing = true)))
+        assertNull(ForegroundScreen.contextFor(activity(destroyed = true)))
+        assertNull(ForegroundScreen.contextFor(null))
+
+        ForegroundScreen.install(context)
+        assertSame(application, ForegroundScreen.contextFor(activity(destroyed = true)))
+    }
+
+    @Test
+    fun `the device configuration is read from the screen in front before a named Activity in the background`() {
+        val system = installedCallbacks()
+        val named = activity()
+        system.onActivityResumed(named)
+        system.onActivityPaused(named)
+        val inFront = activity()
+        system.onActivityResumed(inFront)
+
+        assertSame(inFront, ForegroundScreen.contextFor(named))
+        assertSame(inFront, ForegroundScreen.contextFor(null))
+
+        system.onActivityPaused(inFront)
+        assertSame("then the named one, before the application Context", named, ForegroundScreen.contextFor(named))
+        assertSame(application, ForegroundScreen.contextFor(null))
+    }
+
+    @Test
     fun `waiting with a named Activity in the background ends when it, or another screen, comes to the front`() = runTest {
         val system = installedCallbacks()
         val named = activity()

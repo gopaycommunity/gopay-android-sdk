@@ -140,6 +140,16 @@ internal object ForegroundScreen {
         changes.mapNotNull { screenFor(named) }.first()
 
     /**
+     * The Context to read the device configuration from, the language and the screen size:
+     * the screen to open from, [screenFor], otherwise [named] while it is alive, in the
+     * background too, otherwise the application Context; null when there is none of them.
+     * Reading needs no screen in front, only an Activity that is not finishing or destroyed:
+     * the one a wallet charge names is paused under the Google Pay sheet when the charge reads it.
+     */
+    fun contextFor(named: Activity?): Context? =
+        screenFor(named) ?: named?.takeIf(::isAlive) ?: appContext
+
+    /**
      * Refuses a call that names no usable Activity when the SDK has no Context to find one with:
      * it was initialized through the deprecated `initialize(config)` only.
      *

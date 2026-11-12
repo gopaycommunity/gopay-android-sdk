@@ -15,8 +15,9 @@ import java.util.TimeZone
 
 /**
  * Best-effort [BrowserData] derived from the device, as the iOS `BrowserData.deviceDefault()`
- * is. Read from [activity] when one is named and still alive, otherwise from the screen in
- * front, otherwise from the application Context `GopaySDK.initialize(context, config)` was given.
+ * is. Read from [activity] when one is named and in front, otherwise from the screen that is,
+ * otherwise from [activity] while it is still alive in the background, otherwise from the
+ * application Context `GopaySDK.initialize(context, config)` was given.
  *
  * A top-level extension on the empty companion rather than a companion member, and the only
  * `android.*` import in `model/`: the price of the call reading `BrowserData.deviceDefault(...)`
@@ -39,12 +40,11 @@ import java.util.TimeZone
  *
  * @param activity optional, as `presenting` is on iOS: the screen to read the configuration of.
  * @throws GopaySDKException [GopayErrorCodes.CONFIG_MISSING_CONTEXT] when there is no Context
- *         to read from: no [activity], no screen in front, and the SDK was initialized through
- *         the deprecated `initialize(config)`.
+ *         to read from: no screen in front, no [activity] or one that is finishing or
+ *         destroyed, and the SDK was initialized through the deprecated `initialize(config)`.
  */
 fun BrowserData.Companion.deviceDefault(activity: Activity? = null): BrowserData = reportErrors {
-    val context: Context = ForegroundScreen.screenFor(activity)
-        ?: ForegroundScreen.appContext
+    val context: Context = ForegroundScreen.contextFor(activity)
         ?: throw ForegroundScreen.missingContext("BrowserData.deviceDefault()")
     deviceDefault(context)
 }
