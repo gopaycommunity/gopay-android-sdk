@@ -49,7 +49,9 @@ class CheckoutMessagesTest {
         val unread = CheckoutController.Outcome(
             state = ChargeState.UNKNOWN,
             response = null,
-            message = "Couldn't check the payment: [NETWORK_004] No internet connection"
+            message = "Couldn't check the payment: [NETWORK_004] No internet connection",
+            paymentId = "payment-1",
+            unread = true
         )
 
         assertTrue(unread.isUnread)
@@ -59,12 +61,31 @@ class CheckoutMessagesTest {
     }
 
     @Test
+    fun `an error that ended the wait for a charge whose state was read is not a state that could not be read`() {
+        // A challenge that could not be shown, a session that lost its token: the state is known.
+        val unfinished = CheckoutController.Outcome(
+            state = ChargeState.ACTION_REQUIRED,
+            response = ChargePaymentResponse(id = "ch-1", state = ChargeState.ACTION_REQUIRED),
+            message = "[PAYMENT_010] 3DS verification could not be loaded",
+            paymentId = "payment-1"
+        )
+
+        assertFalse(unfinished.isUnread)
+        assertTrue(unfinished.isUnfinished)
+        assertEquals("Payment not finished", resultTitle(unfinished))
+        assertEquals(
+            "The payment was sent, but it isn't finished yet. Refresh before paying again.",
+            resultSubtitle(unfinished)
+        )
+    }
+
+    @Test
     fun `a charge still being decided, a paid one and a failed one keep their texts`() {
         val pending = CheckoutController.Outcome(
-            ChargeState.PROCESSING, ChargePaymentResponse(id = "ch-1", state = ChargeState.PROCESSING), null
+            ChargeState.PROCESSING, ChargePaymentResponse(id = "ch-1", state = ChargeState.PROCESSING), null, "payment-1"
         )
-        val paid = CheckoutController.Outcome(ChargeState.SUCCEEDED, null, null)
-        val failed = CheckoutController.Outcome(ChargeState.FAILED, null, "Insufficient funds")
+        val paid = CheckoutController.Outcome(ChargeState.SUCCEEDED, null, null, "payment-1")
+        val failed = CheckoutController.Outcome(ChargeState.FAILED, null, "Insufficient funds", "payment-1")
 
         assertFalse(pending.isUnread)
         assertEquals("Payment pending", resultTitle(pending))
