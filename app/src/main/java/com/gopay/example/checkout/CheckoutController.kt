@@ -1,6 +1,5 @@
 package com.gopay.example.checkout
 
-import androidx.annotation.VisibleForTesting
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -13,30 +12,42 @@ import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.model.ChallengePreference
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.ChargeState
+import cz.gopay.sdk.model.PaymentOutcome
+import cz.gopay.sdk.model.PaymentState
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.session.AwaitChargeOptions
-import cz.gopay.sdk.session.PaymentSession
+import cz.gopay.sdk.session.PaymentSessionApi
 import kotlinx.coroutines.CancellationException
 
 /**
  * Owns the whole checkout flow. This is the file to read if you want to see, in one place, how an
  * integration wires the SDK together:
  *
- *     create payment (your server) -> startPaymentSession -> charge(...) -> awaitChargeState()
+ *     the checkout opens:  create payment (your server) -> startPaymentSession
+ *     the shopper pays:    charge(...) -> awaitChargeState()
  *
- * Every payment method funnels into the same [runCharge] tail, because 3DS and result handling are
- * identical regardless of how the card data arrived: `awaitChargeState` polls the charge and runs
- * the 3DS challenge itself.
+ * The payment and its session are there from the moment the checkout opens ([open]), as on the
+ * web gateway, so the SDK has the payment ready before the shopper pays. Every payment method
+ * then charges that one session and funnels into the same [runCharge] tail, because 3DS and
+ * result handling are identical regardless of how the card data arrived: `awaitChargeState`
+ * polls the charge and runs the 3DS challenge itself.
  *
- * Each tap of the pay button starts that sequence from the top with a brand-new payment — a
- * payment is single-use, so a retry after a decline needs a new one.
+ * A payment is single-use, so a retry after a decline needs a new one. The checkout creates it
+ * as soon as the decline is known, behind the result screen, so it is ready again by the time
+ * the shopper picks another method. The pay button never creates a payment itself.
+ *
+ * A checkout left open for long is not handled here: the SDK renews the session's token as
+ * needed, and a payment nobody charged expires at the gateway after an hour, after which a
+ * charge fails and the shopper starts over.
  *
  * A plain state holder. [CheckoutHolder], a `ViewModel` of the checkout Activity, keeps it, so the
  * state and a payment under way survive a rotation; they do not survive the death of the process.
  */
 @Stable
-class CheckoutController {
+class CheckoutController internal constructor(private val services: CheckoutServices) {
+
+    constructor() : this(LiveCheckoutServices)
 
     enum class Method(
         val title: String,
@@ -54,9 +65,9 @@ class CheckoutController {
         GOOGLE_PAY(
             title = "Google Pay",
             subtitle = "Pay with your saved Google account",
-            sdkNote = "isWalletAvailable() asks Google Pay, then chargeWithWallet() presents the sheet " +
-                "configured from the gateway's /google-pay/info and charges the resulting token. " +
-                "The Google Pay names stay as aliases."
+            sdkNote = "GopaySDK.isWalletAvailable() asks the device whether this row is shown. " +
+                "chargeWithWallet() then reads the gateway's /google-pay/info, presents the sheet " +
+                "configured from it and charges the resulting token."
         ),
         SAVED_CARD(
             title = "Saved card",
@@ -75,8 +86,12 @@ class CheckoutController {
     data class Outcome(
         val state: ChargeState,
         val response: ChargePaymentResponse?,
-        /** Populated when the flow failed before the gateway returned a charge. */
-        val message: String?
+        /** What went wrong, when something did: the decline's reason, or the error that ended the wait. */
+        val message: String?,
+        /** The payment this is the result of. A declined one is replaced, so the checkout's own moves on. */
+        val paymentId: String,
+        /** The state itself could not be read; [state] is then the last one known, if any. */
+        val unread: Boolean = false
     ) {
         val isSuccess: Boolean get() = state == ChargeState.SUCCEEDED
         val isFailure: Boolean get() = state == ChargeState.FAILED
@@ -86,7 +101,13 @@ class CheckoutController {
          * The charge went out and its state could not be read, a network error above all: not
          * the same as a charge the bank has not confirmed yet, and the result screen says so.
          */
-        val isUnread: Boolean get() = isPending && message != null
+        val isUnread: Boolean get() = isPending && unread
+
+        /**
+         * The state was read and the charge is not decided, but waiting for it ended in an
+         * error, a challenge that could not be shown for one: neither unread nor simply pending.
+         */
+        val isUnfinished: Boolean get() = isPending && !unread && message != null
     }
 
     val cart = DemoCart.sample
@@ -97,9 +118,10 @@ class CheckoutController {
     /** Non-null while a network call or a presented SDK sheet is in flight; carries the status. */
     var busyLabel by mutableStateOf<String?>(null)
     /**
-     * Transient, non-fatal message: a payment window closed before anything was charged, or
-     * Google Pay reported unavailable before its sheet was offered. A `PAYMENT_004` from the sheet
-     * itself is a failed payment and goes to the result screen instead.
+     * Transient, non-fatal message: a payment window closed, or anything that went wrong before
+     * a charge existed, a card that could not be tokenized or a wallet sheet that failed
+     * (`PAYMENT_003`, `PAYMENT_004`). The payment is still there to be paid, so there is no
+     * result to show.
      */
     var banner by mutableStateOf<String?>(null)
     /** Inline validation / encryption error shown under the card form. */
@@ -110,7 +132,18 @@ class CheckoutController {
     var paymentId by mutableStateOf<String?>(null)
         private set
 
-    private var session: PaymentSession? = null
+    /** True while [open] creates the payment and starts its session. */
+    var isOpening by mutableStateOf(false)
+        private set
+    /** Why [open] failed. The checkout shows it with "Try again", which calls [open] once more. */
+    var openError by mutableStateOf<String?>(null)
+        private set
+    /** Whether the Google Pay row is offered; the device decides, when the checkout opens. */
+    var isWalletAvailable by mutableStateOf(false)
+        private set
+
+    /** The session of the checkout's payment; every method charges this one. */
+    private var session by mutableStateOf<PaymentSessionApi?>(null)
 
     /** The `callback.return_url` the current payment was created with, from the backend. */
     private var paymentReturnUrl: String? = null
@@ -118,12 +151,35 @@ class CheckoutController {
     /** Whether the current attempt's charge has gone out, which decides what a closed window means. */
     private var chargeSent = false
 
+    /** The payment was declined or given up: [replaceSpentPayment] opens a new one. */
+    private var paymentIsOver = false
+
+    /** [finish] was called: an [open] still on its way keeps no session. */
+    private var hasLeft = false
+
+    /** [lookForWallet] has asked the device. */
+    private var walletLookedFor = false
+
     val isBusy: Boolean get() = busyLabel != null
 
+    /** There is a payment to pay and nothing in flight. Until then the pay button stays disabled. */
+    val canPay: Boolean get() = session != null && !isBusy
+
+    /**
+     * Whether the checkout may be left. Leaving closes the session, so not while a payment runs:
+     * its result would have nowhere to go. Leaving while the checkout still opens is fine.
+     */
+    val canLeave: Boolean get() = !isBusy
+
+    /** The methods on offer: Google Pay only where the device can pay with it. */
+    val methods: List<Method>
+        get() = Method.entries.filter { it != Method.GOOGLE_PAY || isWalletAvailable }
+
     val payButtonTitle: String
-        get() = when (selectedMethod) {
-            Method.BANK_TRANSFER -> "Show transfer details"
-            Method.GOOGLE_PAY -> "Pay with Google Pay"
+        get() = when {
+            isOpening -> "Preparing your order…"
+            selectedMethod == Method.BANK_TRANSFER -> "Show transfer details"
+            selectedMethod == Method.GOOGLE_PAY -> "Pay with Google Pay"
             else -> "Pay ${cart.formatted(cart.total)}"
         }
 
@@ -144,29 +200,62 @@ class CheckoutController {
         qrDetails = null
     }
 
-    /** Lets a unit test give Refresh a session; the demo opens one only against the gateway. */
-    @VisibleForTesting
-    internal fun setSessionForTest(session: PaymentSession) {
-        this.session = session
-    }
-
     // region Actions
+
+    /**
+     * Creates the payment on the merchant backend and starts its session. Called once when the
+     * checkout opens, by [CheckoutHolder], and again by "Try again" when that failed. It opens
+     * nothing while a session is there or being opened, so calling it twice costs no second payment.
+     *
+     * The card form can be filled in the meantime; only the pay button waits.
+     */
+    suspend fun open() {
+        if (session != null || isOpening) return
+        isOpening = true
+        openError = null
+        try {
+            lookForWallet()
+            val created = services.createPayment(amount = cart.total, currency = cart.currency)
+            // The shopper left while the backend answered: there is nobody to open it for.
+            if (hasLeft) return
+            val started = services.startPaymentSession(
+                paymentId = created.paymentId,
+                paymentSecret = created.paymentSecret
+            )
+            // Or left while the session started: it is closed rather than kept by nobody.
+            if (hasLeft) {
+                started.close()
+                return
+            }
+            session = started
+            paymentId = created.paymentId
+            paymentReturnUrl = created.returnUrl
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            openError = "Couldn't prepare your order: ${describe(e)}"
+        } finally {
+            isOpening = false
+        }
+    }
 
     suspend fun pay() {
         // The label is the lock. A second tap can land before the pay button has redrawn
         // disabled, so it is taken here, before the first suspension, and a second pay() that
         // finds it held sends nothing.
         if (isBusy) return
-        busyLabel = "Preparing your order…"
+        // No payment, no pay: the button is disabled until open() has one, and never makes one.
+        val current = session ?: return
+        busyLabel = "Processing…"
         banner = null
         cardFormError = null
         chargeSent = false
         try {
             when (selectedMethod) {
-                Method.CARD -> payWithNewCard()
-                Method.GOOGLE_PAY -> payWithGooglePay()
-                Method.SAVED_CARD -> payWithSavedCard()
-                Method.BANK_TRANSFER -> showBankTransfer()
+                Method.CARD -> payWithNewCard(current)
+                Method.GOOGLE_PAY -> payWithGooglePay(current)
+                Method.SAVED_CARD -> payWithSavedCard(current)
+                Method.BANK_TRANSFER -> showBankTransfer(current)
             }
         } catch (e: CancellationException) {
             // The checkout's own scope going away, not the user: nothing left to show it on.
@@ -174,15 +263,17 @@ class CheckoutController {
         } catch (e: GopaySDKException) {
             // Once the charge went out, no error may lead to a new payment: the charge decides.
             if (chargeSent || e.code == GopayErrorCodes.PAYMENT_CANCELLED) {
-                afterInterruptedCharge(session, e)
-                return
+                afterInterruptedCharge(current, e)
+            } else {
+                // Nothing was charged, so nothing failed: the same payment waits for another try.
+                banner = describe(e)
             }
-            fail("[${e.code}] ${e.message}")
         } catch (e: Exception) {
-            fail(e.message ?: "Something went wrong")
+            banner = describe(e)
         } finally {
             busyLabel = null
         }
+        replaceSpentPayment()
     }
 
     /** Called from the result screen's "Try another method". */
@@ -191,8 +282,16 @@ class CheckoutController {
         cardFormError = null
     }
 
-    /** Called when the checkout is dismissed for good. */
+    /**
+     * Called when the checkout is dismissed for good. A payment the shopper did not pay stays
+     * `CREATED` and the gateway cancels it after an hour; the merchant backend does nothing.
+     */
     fun finish() {
+        hasLeft = true
+        closeSession()
+    }
+
+    private fun closeSession() {
         session?.close()
         session = null
         paymentId = null
@@ -214,27 +313,24 @@ class CheckoutController {
             // the one on screen, rather than in the checkout's banner behind it.
             afterInterruptedCharge(current, e)
         } catch (e: Exception) {
-            outcome = Outcome(
-                state = outcome?.state ?: ChargeState.UNKNOWN,
-                response = outcome?.response,
-                message = "Couldn't check the payment: ${e.message}"
-            )
+            outcome = unread(current, outcome?.response, e)
         } finally {
             busyLabel = null
         }
+        replaceSpentPayment()
     }
 
     // endregion
 
     // region Flows
 
-    private suspend fun payWithNewCard() {
+    private suspend fun payWithNewCard(current: PaymentSessionApi) {
         // The SDK's card form has no pay button of its own: it keeps the card under CARD_FORM_ID
         // and the checkout's pay button asks the SDK to encrypt it, the same call as on iOS.
-        // Submit validates locally before it encrypts, so an invalid card costs no payment.
+        // Submit validates locally before it encrypts, so an invalid card is never sent.
         busyLabel = "Checking your card…"
         val jwe = try {
-            GopaySDK.getInstance().submitCardForm(CARD_FORM_ID)
+            services.submitCardForm(CARD_FORM_ID)
         } catch (e: CancellationException) {
             throw e
         } catch (e: GopaySDKException) {
@@ -250,7 +346,6 @@ class CheckoutController {
             return
         }
 
-        val current = startNewSession()
         busyLabel = "Authorizing…"
         runCharge(current) {
             current.chargeWithEncryptedCard(
@@ -260,32 +355,25 @@ class CheckoutController {
         }
     }
 
-    private suspend fun payWithGooglePay() {
-        // Unlike Apple Pay's static availability check, Google Pay readiness is answered from the
-        // gateway's per-payment info — so the payment has to exist before we can ask.
-        val current = startNewSession()
-
-        busyLabel = "Checking Google Pay…"
-        val info = current.getWalletInfo()
-        if (!GopaySDK.isWalletAvailable(info)) {
-            banner = "Google Pay isn't available on this device."
-            return
-        }
-
+    private suspend fun payWithGooglePay(current: PaymentSessionApi) {
+        // The device said it can pay with Google Pay, which is why this row is on offer. The
+        // gateway's info for this payment is asked only now that the shopper chose the wallet,
+        // by chargeWithWallet itself, which configures the sheet from it. When the gateway
+        // refuses that (a 4xx), nothing was charged: pay() shows it in the banner and the
+        // payment stays. A 5xx or an answer that never came looks the same from here as a
+        // charge call that ended so, and the checkout cannot tell which of the two calls it
+        // was. So it goes the careful way of runCharge: the payment is read first, and only
+        // when that says nothing was charged does the banner follow.
         busyLabel = "Waiting for Google Pay…"
         runCharge(current) { current.chargeWithWallet() }
     }
 
-    private suspend fun payWithSavedCard() {
+    private suspend fun payWithSavedCard(current: PaymentSessionApi) {
         // Stands in for a card the shopper saved on a previous order. In a real integration your
         // server holds the token; here we mint one on the fly from a known test card.
         busyLabel = "Loading saved card…"
-        val jwe = GopaySDK.getInstance().encryptCardData(
-            GopayCardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
-        )
-        val token = MerchantBackendSimulator.tokenizeCard(jwe)
+        val token = services.savedCardToken()
 
-        val current = startNewSession()
         busyLabel = "Authorizing…"
         runCharge(current) {
             current.chargeWithCardToken(
@@ -295,10 +383,21 @@ class CheckoutController {
         }
     }
 
-    private suspend fun showBankTransfer() {
-        val current = startNewSession()
+    private suspend fun showBankTransfer(current: PaymentSessionApi) {
         busyLabel = "Fetching transfer details…"
         qrDetails = current.getQrPaymentInfo(QrCodeFormat.PNG)
+    }
+
+    /**
+     * Asks Google Pay on the device whether it can pay, which decides whether the wallet row is
+     * shown. The gateway is not asked: its info belongs to the moment the shopper picks the
+     * wallet, and [payWithGooglePay] leaves it to `chargeWithWallet`. Asked once per checkout;
+     * the answer does not depend on the payment.
+     */
+    private suspend fun lookForWallet() {
+        if (walletLookedFor) return
+        walletLookedFor = true
+        isWalletAvailable = services.isWalletAvailable()
     }
 
     /**
@@ -308,7 +407,7 @@ class CheckoutController {
      * request may have reached it.
      */
     private suspend fun runCharge(
-        session: PaymentSession,
+        current: PaymentSessionApi,
         charge: suspend () -> ChargePaymentResponse
     ) {
         try {
@@ -318,7 +417,7 @@ class CheckoutController {
             throw e
         }
         chargeSent = true
-        outcome = settle(session)
+        outcome = settle(current)
     }
 
     /**
@@ -331,13 +430,14 @@ class CheckoutController {
      * that ends `FAILED` arrives as `PAYMENT_006` with the state attached; one still in flight
      * after the initial timeout (30 s) as `PAYMENT_007`. Both become an outcome here: the result
      * screen shows "failed", or "pending" with a Refresh button that re-enters this method. A
-     * closed challenge (`PAYMENT_011`) and every other error propagate to the caller.
+     * declined payment is over, so it is marked for [replaceSpentPayment]. A closed challenge
+     * (`PAYMENT_011`) and every other error propagate to the caller.
      */
-    private suspend fun settle(session: PaymentSession): Outcome {
+    private suspend fun settle(current: PaymentSessionApi): Outcome {
         busyLabel = "Confirming payment…"
         var lastRead: ChargePaymentResponse? = null
         return try {
-            val charge = session.awaitChargeState(
+            val charge = current.awaitChargeState(
                 AwaitChargeOptions(
                     // The address the payment was created with, not the charge response's, which
                     // GoPay is removing.
@@ -350,109 +450,148 @@ class CheckoutController {
                     onActionRequired = { busyLabel = "Verifying with your bank…" }
                 )
             )
-            Outcome(charge.state, charge, null)
+            Outcome(charge.state, charge, null, current.paymentId)
         } catch (e: GopaySDKException) {
             when (e.code) {
-                GopayErrorCodes.PAYMENT_DECLINED ->
-                    Outcome(ChargeState.FAILED, e.chargeState, e.chargeState?.failReason ?: e.message)
+                GopayErrorCodes.PAYMENT_DECLINED -> {
+                    paymentIsOver = true
+                    Outcome(ChargeState.FAILED, e.chargeState, e.chargeState?.failReason ?: e.message, current.paymentId)
+                }
                 // Not decided yet: the pending screen, whose Refresh waits again.
                 GopayErrorCodes.PAYMENT_TIMEOUT ->
-                    Outcome(lastRead?.state ?: ChargeState.PROCESSING, lastRead, null)
+                    Outcome(lastRead?.state ?: ChargeState.PROCESSING, lastRead, null, current.paymentId)
                 else -> throw e
             }
         }
     }
 
     /**
-     * Creates a *fresh* payment on the simulated merchant backend and opens a session for it.
-     *
-     * Called on every pay attempt, not once per checkout. A payment is single-use: once it has been
-     * charged the gateway won't accept another charge on the same `payment_id`, so reusing the
-     * session would leave the shopper stuck after a decline with no way to try another method. A
-     * real shop behaves the same way — a retry means a new payment.
+     * Opens a new payment in place of one that is over, declined or given up at the bank's
+     * challenge: the old session is closed and [open] runs again. Called at the end of [pay] and
+     * [refreshChargeState], after the result is on screen, so the shopper waits for nothing and
+     * does not leave the checkout; "Try another method" finds the new payment ready or on its way.
      */
-    private suspend fun startNewSession(): PaymentSession {
-        session?.close()
-        session = null
-
-        busyLabel = "Preparing your order…"
-        val created = MerchantBackendSimulator.createPayment(
-            amount = cart.total,
-            currency = cart.currency
-        )
-        val started = GopaySDK.getInstance().startPaymentSession(
-            paymentId = created.paymentId,
-            paymentSecret = created.paymentSecret
-        )
-        session = started
-        paymentId = created.paymentId
-        paymentReturnUrl = created.returnUrl
-        return started
+    private suspend fun replaceSpentPayment() {
+        if (!paymentIsOver) return
+        paymentIsOver = false
+        closeSession()
+        open()
     }
 
     /**
      * The charge was interrupted: a payment window closed before it finished (`PAYMENT_011`), or
-     * waiting for the charge failed with anything but a result (`NETWORK_*`, `PAYMENT_008`,
-     * `PAYMENT_010`, `AUTH_*`, …). Closing the Google Pay sheet sends no charge, so a soft banner
-     * is all it takes. Once the charge went out the issuer may have authorised it already, so
-     * offering a new payment could charge the shopper twice, and the charge decides first: a
-     * result is shown, an undecided charge is waited for again, and only a charge the gateway
-     * does not have (`PAYMENT_012`) or that did not go through gets the banner. When the charge
-     * cannot be read, the pending screen offers Refresh rather than a new payment. The iOS demo
-     * does the same.
+     * the charge call or the wait for it failed with anything but a result (`PAYMENT_013`,
+     * `NETWORK_*`, `PAYMENT_008`, `PAYMENT_010`, `AUTH_*`, …). Closing the Google Pay sheet sends
+     * no charge, so a soft banner is all it takes and the payment stays. Once the charge went out
+     * the issuer may have authorised it already, so offering a new payment could charge the
+     * shopper twice, and the payment decides first, read in one call with `getPaymentOutcome()`:
+     *
+     * - paid: the result;
+     * - declined: the result, and a new payment behind it;
+     * - not decided: waited for again with `awaitChargeState`, which also shows a 3DS challenge
+     *   the interrupted charge never got to (`ACTION_REQUIRED`). Only when the shopper closed
+     *   that challenge is the payment given up for a new one;
+     * - not charged: the banner. The payment stays unless the gateway has ended it.
+     *
+     * When the payment cannot be read, the result screen says so and offers Refresh rather than
+     * a new payment. The iOS demo does the same.
      */
-    private suspend fun afterInterruptedCharge(
-        session: PaymentSession?,
-        error: GopaySDKException
-    ) {
-        val cancelled = if (error.code == GopayErrorCodes.PAYMENT_CANCELLED) {
+    private suspend fun afterInterruptedCharge(current: PaymentSessionApi, error: GopaySDKException) {
+        val cancelledByShopper = error.code == GopayErrorCodes.PAYMENT_CANCELLED
+        val notice = if (cancelledByShopper) {
             "Payment cancelled. Pick a method and try again."
         } else {
-            "[${error.code}] ${error.message}. Pick a method and try again."
+            "${describe(error)}. Pick a method and try again."
         }
-        if (!chargeSent || session == null) {
-            banner = cancelled
+        if (!chargeSent) {
+            banner = notice
             return
         }
         busyLabel = "Checking the payment…"
-        // The last charge read, which the pending screen falls back to if reading fails later.
-        var lastRead: ChargePaymentResponse? = null
-        try {
-            val charge = session.getChargeState().also { lastRead = it }
-            when (charge.state) {
-                ChargeState.SUCCEEDED -> outcome = Outcome(charge.state, charge, null)
-                ChargeState.REQUESTED, ChargeState.PROCESSING, ChargeState.UNKNOWN ->
-                    outcome = settle(session)
-                else -> {
-                    // Not through: back to the checkout, also from the pending screen's Refresh.
-                    outcome = null
-                    banner = cancelled
-                }
-            }
+        val read = try {
+            current.getPaymentOutcome()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            val noCharge = e is GopaySDKException && e.code == GopayErrorCodes.PAYMENT_NOT_FOUND
-            if (noCharge) {
-                // The gateway has no charge on this payment: nothing went out.
+            // The charge may be through, so no new payment: the result screen and its Refresh,
+            // with the reason where that screen shows it rather than behind it in a banner.
+            outcome = unread(current, outcome?.response, e)
+            return
+        }
+        val charge = read.charge
+        when (read.outcome) {
+            PaymentOutcome.Outcome.PAID ->
+                outcome = Outcome(ChargeState.SUCCEEDED, charge, null, current.paymentId)
+
+            PaymentOutcome.Outcome.DECLINED -> {
+                outcome = Outcome(ChargeState.FAILED, charge, null, current.paymentId)
+                paymentIsOver = true
+            }
+
+            PaymentOutcome.Outcome.NOT_CHARGED -> {
+                // Nothing went out: back to the checkout, also from the result screen's Refresh.
                 outcome = null
-                banner = cancelled
+                banner = notice
+                val ended = read.payment.state == PaymentState.CANCELED ||
+                    read.payment.state == PaymentState.TIMEOUTED
+                if (ended) paymentIsOver = true
+            }
+
+            PaymentOutcome.Outcome.UNDECIDED -> when {
+                // The shopper closed the bank's challenge: this payment will not be paid.
+                cancelledByShopper && charge?.state == ChargeState.ACTION_REQUIRED -> {
+                    outcome = null
+                    banner = notice
+                    paymentIsOver = true
+                }
+                // No charge, and a payment in a state this SDK does not know: nothing to wait
+                // for here, so the pending screen and its Refresh.
+                charge == null -> outcome = Outcome(ChargeState.UNKNOWN, null, null, current.paymentId)
+                else -> waitAgain(current, charge)
+            }
+        }
+    }
+
+    /**
+     * Waits for a charge that is not decided after an interruption. A challenge the shopper
+     * closes on the way is read like any other closed challenge. Any other error leaves the
+     * result screen with the last state read and its Refresh: as a state that could not be
+     * read when the reading itself failed on the network, as a payment not finished otherwise.
+     */
+    private suspend fun waitAgain(current: PaymentSessionApi, lastRead: ChargePaymentResponse?) {
+        try {
+            outcome = settle(current)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (e is GopaySDKException && e.code == GopayErrorCodes.PAYMENT_CANCELLED) {
+                afterInterruptedCharge(current, e)
                 return
             }
-            // The charge may be through, so no new payment: the pending screen and its Refresh,
-            // with the reason where the result screen shows it rather than behind it in a banner.
-            val reason = if (e is GopaySDKException) "[${e.code}] ${e.message}" else e.message
+            if (e is GopaySDKException && e.code.startsWith("NETWORK_")) {
+                outcome = unread(current, lastRead, e)
+                return
+            }
             outcome = Outcome(
                 state = lastRead?.state ?: ChargeState.UNKNOWN,
                 response = lastRead,
-                message = "Couldn't check the payment: $reason"
+                message = describe(e),
+                paymentId = current.paymentId
             )
         }
     }
 
-    private fun fail(message: String) {
-        outcome = Outcome(ChargeState.FAILED, null, message)
-    }
+    /** The result of a payment whose state could not be read; [lastRead] is what was known before. */
+    private fun unread(current: PaymentSessionApi, lastRead: ChargePaymentResponse?, error: Exception) = Outcome(
+        state = lastRead?.state ?: ChargeState.UNKNOWN,
+        response = lastRead,
+        message = "Couldn't check the payment: ${describe(error)}",
+        paymentId = current.paymentId,
+        unread = true
+    )
+
+    private fun describe(error: Exception): String =
+        if (error is GopaySDKException) "[${error.code}] ${error.message}" else error.message ?: "Something went wrong"
 
     // endregion
 
@@ -479,3 +618,46 @@ internal val TRANSPORT_CODES = setOf(
     GopayErrorCodes.NETWORK_SSL_ERROR,
     GopayErrorCodes.NETWORK_IO_ERROR
 )
+
+/**
+ * What the checkout asks of the world outside it: the merchant backend, and the calls of the SDK
+ * that belong to no payment session. [LiveCheckoutServices] is the real thing; a unit test hands
+ * [CheckoutController] its own, with a session of its own behind [startPaymentSession].
+ */
+internal interface CheckoutServices {
+    /** Your server's part: creates the payment and returns what the app needs of it. */
+    suspend fun createPayment(amount: Int, currency: String): MerchantBackendSimulator.CreatedPayment
+
+    suspend fun startPaymentSession(paymentId: String, paymentSecret: String): PaymentSessionApi
+
+    /** Whether Google Pay can pay on this device; the gateway is not asked. */
+    suspend fun isWalletAvailable(): Boolean
+
+    /** Validates and encrypts what the card form under [formId] holds, into a JWE. */
+    suspend fun submitCardForm(formId: String): String
+
+    /** The token of the shopper's saved card, which a real backend keeps from an earlier order. */
+    suspend fun savedCardToken(): String
+}
+
+/** The SDK and the simulated merchant backend. */
+internal object LiveCheckoutServices : CheckoutServices {
+
+    override suspend fun createPayment(amount: Int, currency: String) =
+        MerchantBackendSimulator.createPayment(amount = amount, currency = currency)
+
+    override suspend fun startPaymentSession(paymentId: String, paymentSecret: String): PaymentSessionApi =
+        GopaySDK.getInstance().startPaymentSession(paymentId = paymentId, paymentSecret = paymentSecret)
+
+    override suspend fun isWalletAvailable(): Boolean = GopaySDK.isWalletAvailable()
+
+    override suspend fun submitCardForm(formId: String): String =
+        GopaySDK.getInstance().submitCardForm(formId)
+
+    override suspend fun savedCardToken(): String {
+        val jwe = GopaySDK.getInstance().encryptCardData(
+            GopayCardData(cardPan = "4444444444444448", expMonth = "12", expYear = "28", cvv = "123")
+        )
+        return MerchantBackendSimulator.tokenizeCard(jwe)
+    }
+}

@@ -1,5 +1,6 @@
 package com.gopay.example.checkout
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,6 +35,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -54,8 +56,8 @@ import kotlinx.coroutines.launch
 
 /**
  * A deliberately ordinary-looking e-shop checkout. Everything payment-related is real: the amounts
- * come from [DemoCart], the payment is created through `MerchantBackendSimulator`, and each method
- * drives the actual SDK call (see [CheckoutController]).
+ * come from [DemoCart], the payment is created through `MerchantBackendSimulator` when the
+ * checkout opens, and each method drives the actual SDK call (see [CheckoutController]).
  */
 @Composable
 fun CheckoutScreen(holder: CheckoutHolder, onClose: () -> Unit) {
@@ -64,12 +66,17 @@ fun CheckoutScreen(holder: CheckoutHolder, onClose: () -> Unit) {
     val scope = holder.scope
     val model = holder.controller
 
+    // Leaving closes the session, and a payment under way would be left with nobody to show its
+    // result to: while one runs, neither the system's Back nor the arrow in the header leaves.
+    BackHandler(enabled = !model.canLeave) {}
+
     val outcome = model.outcome
     if (outcome != null) {
         CheckoutResultScreen(
             outcome = outcome,
             cart = model.cart,
-            paymentId = model.paymentId,
+            // The payment the result is of. After a decline the checkout already holds the next one.
+            paymentId = outcome.paymentId,
             isRefreshing = model.isBusy,
             onRefresh = { scope.launch { model.refreshChargeState() } },
             onRetry = { model.resumeShopping() },
@@ -99,6 +106,7 @@ fun CheckoutScreen(holder: CheckoutHolder, onClose: () -> Unit) {
             .imePadding()
     ) {
         CheckoutHeader(
+            canGoBack = model.canLeave,
             onBack = {
                 model.finish()
                 onClose()
@@ -115,15 +123,19 @@ fun CheckoutScreen(holder: CheckoutHolder, onClose: () -> Unit) {
         ) {
             OrderSummary(model.cart)
             PaymentMethods(model)
-            TrustFooter()
+            TrustFooter(paymentId = model.paymentId)
         }
 
-        PayBar(model = model, onPay = { scope.launch { model.pay() } })
+        PayBar(
+            model = model,
+            onPay = { scope.launch { model.pay() } },
+            onOpenAgain = { scope.launch { model.open() } }
+        )
     }
 }
 
 @Composable
-private fun CheckoutHeader(onBack: () -> Unit) {
+private fun CheckoutHeader(canGoBack: Boolean, onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -133,6 +145,7 @@ private fun CheckoutHeader(onBack: () -> Unit) {
     ) {
         IconButton(
             onClick = onBack,
+            enabled = canGoBack,
             modifier = Modifier
                 .size(38.dp)
                 .background(CheckoutTheme.surface, CircleShape)
@@ -141,7 +154,7 @@ private fun CheckoutHeader(onBack: () -> Unit) {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Back",
-                tint = CheckoutTheme.ink,
+                tint = if (canGoBack) CheckoutTheme.ink else CheckoutTheme.inkMuted,
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -281,7 +294,8 @@ private fun PaymentMethods(model: CheckoutController) {
             modifier = Modifier.padding(bottom = 4.dp)
         )
 
-        CheckoutController.Method.entries.forEachIndexed { index, method ->
+        // Google Pay is on the list only where the device can pay with it.
+        model.methods.forEachIndexed { index, method ->
             if (index > 0) Divider(color = CheckoutTheme.hairline)
             PaymentMethodRow(
                 method = method,
@@ -317,7 +331,7 @@ private fun PaymentMethods(model: CheckoutController) {
 }
 
 @Composable
-private fun TrustFooter() {
+private fun TrustFooter(paymentId: String?) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -342,11 +356,16 @@ private fun TrustFooter() {
             color = CheckoutTheme.inkMuted,
             textAlign = TextAlign.Center
         )
+        // The payment the checkout opened, there to be seen from the start: it stays the same
+        // through an attempt that charged nothing and changes when a declined one is replaced.
+        paymentId?.let {
+            Text("Payment $it", fontSize = 11.5.sp, color = CheckoutTheme.inkMuted, textAlign = TextAlign.Center)
+        }
     }
 }
 
 @Composable
-private fun PayBar(model: CheckoutController, onPay: () -> Unit) {
+private fun PayBar(model: CheckoutController, onPay: () -> Unit, onOpenAgain: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -355,6 +374,30 @@ private fun PayBar(model: CheckoutController, onPay: () -> Unit) {
             .padding(top = 10.dp, bottom = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // The payment could not be created or its session started: nothing to pay until it is,
+        // so the pay button below stays disabled and this is the way on.
+        model.openError?.let { error ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(CheckoutTheme.danger.copy(alpha = 0.10f), RoundedCornerShape(12.dp))
+                    .padding(start = 12.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Info,
+                    contentDescription = null,
+                    tint = CheckoutTheme.danger,
+                    modifier = Modifier.size(15.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(error, fontSize = 13.sp, color = CheckoutTheme.danger, modifier = Modifier.weight(1f))
+                TextButton(onClick = onOpenAgain) {
+                    Text("Try again", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = CheckoutTheme.danger)
+                }
+            }
+        }
+
         model.banner?.let { banner ->
             Row(
                 modifier = Modifier
@@ -374,11 +417,13 @@ private fun PayBar(model: CheckoutController, onPay: () -> Unit) {
             }
         }
 
+        // While the checkout's payment is being opened the button says so and waits; the form
+        // above can be filled in the meantime.
         val busy = model.busyLabel
         PrimaryButton(
             text = busy ?: model.payButtonTitle,
-            enabled = !model.isBusy,
-            leading = if (busy != null) {
+            enabled = model.canPay,
+            leading = if (busy != null || model.isOpening) {
                 {
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),

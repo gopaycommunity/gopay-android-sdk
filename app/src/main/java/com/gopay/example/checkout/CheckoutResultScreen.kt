@@ -44,13 +44,15 @@ import cz.gopay.sdk.model.ChargeState
 
 /**
  * Terminal screen of the checkout: succeeded, failed, or still pending. The pending case is real —
- * a charge can sit in PROCESSING after 3DS, so the screen offers `getChargeState()` on demand.
+ * a charge can sit in PROCESSING after 3DS, so the screen offers to wait for it again on demand.
+ * Behind a failed result the checkout is already opening the next payment, so "Try another
+ * method" only goes back to it.
  */
 @Composable
 fun CheckoutResultScreen(
     outcome: CheckoutController.Outcome,
     cart: DemoCart,
-    paymentId: String?,
+    paymentId: String,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
@@ -108,7 +110,7 @@ fun CheckoutResultScreen(
                 details.scheme?.let { ReceiptRow("Scheme", it.name.lowercase().replaceFirstChar(Char::uppercase)) }
                 ReceiptRow("Input", friendlyInputType(details.inputType))
             }
-            paymentId?.let { ReceiptRow("Payment", it) }
+            ReceiptRow("Payment", paymentId)
             ReceiptRow("Charge state", outcome.state.name)
             outcome.message?.takeIf { it.isNotBlank() && !outcome.isSuccess }?.let {
                 ReceiptRow("Reason", it, valueColor = CheckoutTheme.danger)
@@ -209,7 +211,9 @@ private fun ReceiptRow(label: String, value: String, valueColor: Color = Checkou
 internal fun resultTitle(outcome: CheckoutController.Outcome): String = when {
     outcome.isSuccess -> "Payment complete"
     outcome.isFailure -> "Payment failed"
+    // Only where the state itself could not be read; an error that ended the wait is not that.
     outcome.isUnread -> "Couldn't check the payment"
+    outcome.isUnfinished -> "Payment not finished"
     else -> "Payment pending"
 }
 
@@ -219,6 +223,7 @@ internal fun resultSubtitle(outcome: CheckoutController.Outcome): String = when 
     outcome.isFailure -> outcome.message ?: "The bank declined the charge. No money was taken."
     outcome.isUnread -> "The payment was sent, but we couldn't read its state, so we don't know " +
         "yet whether it went through. Refresh before paying again."
+    outcome.isUnfinished -> "The payment was sent, but it isn't finished yet. Refresh before paying again."
     else -> "We polled the gateway and the bank hasn't confirmed yet. A real shop would also " +
         "get the final state on its notification URL."
 }
