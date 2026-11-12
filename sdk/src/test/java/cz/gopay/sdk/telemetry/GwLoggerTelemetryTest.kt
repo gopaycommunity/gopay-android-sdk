@@ -8,6 +8,7 @@ import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.exception.HttpErrorContext
 import cz.gopay.sdk.modules.network.SessionAuthInterceptor
 import cz.gopay.sdk.modules.network.SessionTokenProvider
+import cz.gopay.sdk.testing.SharedSdkState
 import okhttp3.Call
 import okhttp3.FormBody
 import okhttp3.Interceptor
@@ -24,6 +25,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import java.io.IOException
 
@@ -32,6 +34,9 @@ import java.io.IOException
  * payment. Every event a test sends is also checked against the gw-logger schema.
  */
 class GwLoggerTelemetryTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     private val capture = TelemetryCapture()
     private var clock = 0L

@@ -7,11 +7,13 @@ import cz.gopay.sdk.model.ChargePaymentRequest
 import cz.gopay.sdk.telemetry.GwLoggerSchema
 import cz.gopay.sdk.telemetry.JsonText
 import cz.gopay.sdk.testing.FakeGateway
+import cz.gopay.sdk.testing.SharedSdkState
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
 /**
@@ -22,6 +24,9 @@ import org.junit.Test
  * Any other 4xx, and a 404 on any other route, stays `NETWORK_002`. The iOS SDK maps the same statuses on the same routes.
  */
 class PaymentSessionGatewayCodesTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     private val gateway = FakeGateway()
 

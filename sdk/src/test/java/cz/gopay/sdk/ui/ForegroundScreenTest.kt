@@ -7,6 +7,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.testing.SharedSdkState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -20,6 +21,7 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
@@ -37,6 +39,9 @@ import java.lang.ref.WeakReference
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ForegroundScreenTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     private val application = mock<Application>()
     private val context = mock<Context> { on { applicationContext }.thenReturn(application) }

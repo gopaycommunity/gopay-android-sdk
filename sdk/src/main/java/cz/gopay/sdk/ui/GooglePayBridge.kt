@@ -1,6 +1,7 @@
 package cz.gopay.sdk.ui
 
 import android.app.Activity
+import androidx.annotation.VisibleForTesting
 import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.wallet.AutoResolveHelper
 import cz.gopay.sdk.exception.GopayErrorCodes
@@ -113,6 +114,15 @@ internal object GooglePayBridge {
     fun clear(owner: Owner) {
         val current = pending.get() ?: return
         if (current.owner === owner) pending.compareAndSet(current, null)
+    }
+
+    /**
+     * Frees the bridge without a word to anyone, for a test to start from an empty one: the
+     * request an earlier test left here is dropped, its caller and its launcher untouched.
+     */
+    @VisibleForTesting
+    internal fun reset() {
+        pending.set(null)
     }
 
     /**

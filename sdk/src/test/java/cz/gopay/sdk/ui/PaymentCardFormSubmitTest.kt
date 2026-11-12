@@ -4,6 +4,7 @@ import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.GopayCardData
+import cz.gopay.sdk.testing.SharedSdkState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -16,6 +17,7 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 
 /**
@@ -25,6 +27,9 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PaymentCardFormSubmitTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     private val reported = mutableListOf<GopaySDKException>()
     private var resets = 0

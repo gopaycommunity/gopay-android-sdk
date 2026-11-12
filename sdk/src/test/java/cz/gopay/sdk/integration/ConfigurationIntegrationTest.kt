@@ -5,17 +5,22 @@ import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.telemetry.TelemetryCapture
+import cz.gopay.sdk.testing.SharedSdkState
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 
 /**
  * Integration tests covering GopaySDK initialization and config propagation.
  */
 class ConfigurationIntegrationTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     @Before
     fun setUp() {

@@ -8,6 +8,7 @@ import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.locales.GopayLocales
 import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.telemetry.TelemetryCapture
+import cz.gopay.sdk.testing.SharedSdkState
 import cz.gopay.sdk.ui.INVALID_CARD_FORM_DATA_MESSAGE
 import cz.gopay.sdk.ui.NO_CARD_DATA_MESSAGE
 import cz.gopay.sdk.ui.CardFormData
@@ -35,6 +36,7 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
 /**
@@ -42,6 +44,9 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class GopaySDKTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     private val formOwner = Any()
 

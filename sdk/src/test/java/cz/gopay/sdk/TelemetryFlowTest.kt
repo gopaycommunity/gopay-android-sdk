@@ -14,6 +14,7 @@ import cz.gopay.sdk.telemetry.CardFormProgress
 import cz.gopay.sdk.telemetry.CardFormSteps
 import cz.gopay.sdk.telemetry.GwLoggerSchema
 import cz.gopay.sdk.telemetry.TelemetryCapture
+import cz.gopay.sdk.testing.SharedSdkState
 import cz.gopay.sdk.ui.CardFormData
 import cz.gopay.sdk.ui.CardFormHandlers
 import cz.gopay.sdk.ui.CardFormStore
@@ -31,6 +32,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.mockito.kotlin.mock
 import retrofit2.Response
@@ -43,6 +45,9 @@ import java.io.IOException
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TelemetryFlowTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     private val capture = TelemetryCapture()
     private val formOwner = Any()

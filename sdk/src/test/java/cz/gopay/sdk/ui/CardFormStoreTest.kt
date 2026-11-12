@@ -3,6 +3,7 @@ package cz.gopay.sdk.ui
 import android.app.Activity
 import android.app.Application
 import cz.gopay.sdk.model.GopayCardData
+import cz.gopay.sdk.testing.SharedSdkState
 import cz.gopay.sdk.util.SdkLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -15,6 +16,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
@@ -27,6 +29,9 @@ import org.mockito.kotlin.whenever
 /** The SDK's copy of the forms on screen, which `submitCardForm(formId)` reads. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class CardFormStoreTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     private val a = CardFormData("4532015112830366", "1230", "123")
     private val b = CardFormData("4444444444444448", "1228", "321")

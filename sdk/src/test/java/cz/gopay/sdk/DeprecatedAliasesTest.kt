@@ -35,11 +35,13 @@ import cz.gopay.sdk.model.deviceDefault
 import cz.gopay.sdk.session.AwaitChargeOptions
 import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.modules.network.NetworkModule
+import cz.gopay.sdk.testing.SharedSdkState
 import cz.gopay.sdk.ui.CardFormValidationDisplay
 import cz.gopay.sdk.ui.PaymentCardFormValidationDisplay
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
 /**
@@ -56,6 +58,9 @@ import org.junit.Test
  */
 @Suppress("DEPRECATION")
 class DeprecatedAliasesTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     @Test
     fun `GopayConfig with debug is the config with debugLoggingEnabled`() {

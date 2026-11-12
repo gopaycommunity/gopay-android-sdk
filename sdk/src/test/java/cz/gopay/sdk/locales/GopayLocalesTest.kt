@@ -1,5 +1,6 @@
 package cz.gopay.sdk.locales
 
+import cz.gopay.sdk.testing.SharedSdkState
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -7,10 +8,14 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import java.util.Locale
 
 class GopayLocalesTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     // GopayLocales is a JVM-wide singleton, so also reset before each test: a prior test class in
     // the same run (e.g. GopaySDKTest, via GopaySDK.initialize) could otherwise leave it dirty.

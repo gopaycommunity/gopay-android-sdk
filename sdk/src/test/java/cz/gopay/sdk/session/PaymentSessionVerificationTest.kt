@@ -6,12 +6,14 @@ import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.TokenResponse
+import cz.gopay.sdk.testing.SharedSdkState
 import cz.gopay.sdk.ui.PaymentVerificationBridge
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
+import org.junit.Rule
 import org.junit.Test
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verifyNoInteractions
@@ -24,6 +26,9 @@ import retrofit2.Response
  * gets reported.
  */
 class PaymentSessionVerificationTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     private val activity = mock<Activity> { on { hasWindowFocus() }.thenReturn(true) }
 

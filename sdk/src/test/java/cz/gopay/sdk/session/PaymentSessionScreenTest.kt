@@ -32,6 +32,7 @@ import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.modules.network.TokenResponse
+import cz.gopay.sdk.testing.SharedSdkState
 import cz.gopay.sdk.ui.ForegroundScreen
 import cz.gopay.sdk.ui.GooglePayBridge
 import cz.gopay.sdk.ui.PaymentVerificationBridge
@@ -54,6 +55,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
@@ -74,6 +76,9 @@ import java.util.Locale
 @OptIn(ExperimentalCoroutinesApi::class)
 class PaymentSessionScreenTest {
 
+    @get:Rule
+    val sharedState = SharedSdkState()
+
     private val application = mock<Application>()
     private val context = mock<Context> { on { applicationContext }.thenReturn(application) }
 
@@ -83,6 +88,15 @@ class PaymentSessionScreenTest {
     /** The id each challenge was started for, which travels in its intent. */
     private val challengeOwners = mutableListOf<Long>()
     private val wallets = mutableListOf<Activity>()
+
+    /**
+     * Every screen a test made, held for as long as the test runs. `ForegroundScreen` keeps the
+     * screen in front by a weak reference, as it must for a real Activity, which the system
+     * holds while it is resumed. A mock handed straight to `resumed()` is held by nobody, so a
+     * garbage collection in the middle of a test took the screen in front away: the challenge
+     * then waited for a screen instead of opening, in whichever test the collection fell into.
+     */
+    private val screens = mutableListOf<Activity>()
     private val reported = mutableListOf<GopaySDKException>()
 
     private val startVerification = SdkScreens.startVerification
@@ -123,6 +137,7 @@ class PaymentSessionScreenTest {
     /** A screen of the host; one not [inFront] is one the watch saw go to the background. */
     private fun activity(finishing: Boolean = false, inFront: Boolean = true): Activity {
         val activity = mock<Activity> { on { isFinishing }.thenReturn(finishing) }
+        screens += activity
         if (!inFront) {
             ForegroundScreen.resumed(activity)
             ForegroundScreen.paused(activity)
@@ -137,6 +152,7 @@ class PaymentSessionScreenTest {
             on { applicationContext }.thenReturn(application)
         }
         whenever((activity as LifecycleOwner).lifecycle).thenReturn(lifecycle)
+        screens += activity
         return activity
     }
 

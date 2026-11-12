@@ -10,11 +10,13 @@ import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.modules.network.AuthApi
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.TokenResponse
+import cz.gopay.sdk.testing.SharedSdkState
 import cz.gopay.sdk.ui.ForegroundScreen
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Rule
 import org.junit.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
@@ -32,6 +34,9 @@ import retrofit2.Response
  * is covered in [ChargePollerTest].
  */
 class PaymentSessionAwaitChargeTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     @Test
     fun `automatic mode without an activity and without the Context is CONFIG_004 before the first read`() {

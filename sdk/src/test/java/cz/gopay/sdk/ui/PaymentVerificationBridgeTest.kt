@@ -2,6 +2,7 @@ package cz.gopay.sdk.ui
 
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.testing.SharedSdkState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -23,6 +24,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.Rule
 import org.junit.Test
 
 /**
@@ -32,6 +34,9 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PaymentVerificationBridgeTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     private lateinit var owner: PaymentVerificationBridge.Owner
 

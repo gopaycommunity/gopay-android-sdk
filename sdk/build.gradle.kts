@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
@@ -55,6 +57,14 @@ android {
             withSourcesJar()
             withJavadocJar()
         }
+    }
+}
+
+// A failed test says which check failed and where in the log of the run itself: the pipeline
+// keeps the log, not the HTML report.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        exceptionFormat = TestExceptionFormat.FULL
     }
 }
 

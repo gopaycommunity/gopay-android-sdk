@@ -4,6 +4,7 @@ import android.app.Activity
 import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.gms.wallet.AutoResolveHelper
 import cz.gopay.sdk.exception.GopayErrorCodes
+import cz.gopay.sdk.testing.SharedSdkState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import java.util.concurrent.atomic.AtomicBoolean
@@ -22,6 +23,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
 /**
@@ -29,6 +31,9 @@ import org.junit.Test
  * no report from a request that is already over can reach the one after it.
  */
 class GooglePayBridgeTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     private val owners = mutableListOf<GooglePayBridge.Owner>()
 
@@ -122,20 +127,27 @@ class GooglePayBridgeTest {
 
     @Test
     fun `a launcher that attaches while the call gives up on it is closed, never left with no caller`() {
-        // Two real threads, the limit cut to a millisecond so the two keep crossing. Whatever
-        // the order, a call that gave up must not leave a launcher that was told it may stay
-        // and was not closed: that one would go on to show a sheet nobody waits for.
+        // Two real threads, the limit cut to a millisecond. Whatever the order, a call that gave
+        // up must not leave a launcher that was told it may stay and was not closed: that one
+        // would go on to show a sheet nobody waits for.
+        //
+        // How long the launcher takes is steered by the round before, not set against the
+        // clock: one that made it takes a little longer next time, one that was given up on is
+        // quicker. So the two keep crossing on a machine of any speed, and the limit does run
+        // out in some rounds wherever a millisecond's limit really ends here; a fixed time for
+        // the launcher made it every round on a machine whose timers fire late.
         val limit = SdkScreens.showTimeoutMs
         SdkScreens.showTimeoutMs = 1
+        var launcherNanos = 1_000_000L
         var gaveUp = 0
         try {
             repeat(3_000) { round ->
                 val owner = GooglePayBridge.register(CompletableDeferred())!!
                 val closed = AtomicBoolean(false)
                 val mayStay = AtomicBoolean(false)
+                val takes = launcherNanos
                 val launcher = Thread {
-                    // About when the limit runs out, a little earlier or later each round.
-                    val until = System.nanoTime() + 900_000 + (round % 7) * 40_000
+                    val until = System.nanoTime() + takes
                     while (System.nanoTime() < until) Thread.onSpinWait()
                     mayStay.set(GooglePayBridge.attach(owner) { closed.set(true) })
                 }
@@ -147,8 +159,10 @@ class GooglePayBridgeTest {
                     gaveUp++
                     assertTrue("round $round: left on screen with no caller", !mayStay.get() || closed.get())
                     assertNull(GooglePayBridge.currentOwner(owner.id))
+                    launcherNanos = takes - takes / 10
                 } else {
                     assertFalse("round $round: closed under a caller that goes on", closed.get())
+                    launcherNanos = minOf(takes + takes / 10 + 20_000, SLOWEST_LAUNCHER_NANOS)
                 }
                 GooglePayBridge.clear(owner)
             }
@@ -266,5 +280,13 @@ class GooglePayBridgeTest {
         assertFalse(GooglePayBridge.isUnavailable(CommonStatusCodes.DEVELOPER_ERROR))
         assertFalse(GooglePayBridge.isUnavailable(CommonStatusCodes.INTERNAL_ERROR))
         assertFalse(GooglePayBridge.isUnavailable(null))
+    }
+
+    private companion object {
+        /**
+         * As slow as the steered launcher gets, a thousand times the limit: reached only where
+         * the limit never ran out before, and by then it does.
+         */
+        const val SLOWEST_LAUNCHER_NANOS = 1_000_000_000L
     }
 }

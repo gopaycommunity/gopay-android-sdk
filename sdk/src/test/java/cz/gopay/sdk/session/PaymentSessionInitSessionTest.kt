@@ -19,6 +19,7 @@ import cz.gopay.sdk.telemetry.GwLoggerSchema
 import cz.gopay.sdk.telemetry.JsonText
 import cz.gopay.sdk.telemetry.TelemetryCapture
 import cz.gopay.sdk.testing.SETTLE_TIMEOUT_MS
+import cz.gopay.sdk.testing.SharedSdkState
 import cz.gopay.sdk.testing.awaitSettled
 import cz.gopay.sdk.testing.drain
 import cz.gopay.sdk.testing.settle
@@ -38,6 +39,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -61,6 +63,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * pause anywhere.
  */
 class PaymentSessionInitSessionTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     private val crashes = Collections.synchronizedList(mutableListOf<Throwable>())
     private val dispatcherThreads = Executors.newCachedThreadPool()

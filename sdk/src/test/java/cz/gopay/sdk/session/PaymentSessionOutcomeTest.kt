@@ -8,12 +8,14 @@ import cz.gopay.sdk.model.PaymentState
 import cz.gopay.sdk.telemetry.GwLoggerSchema
 import cz.gopay.sdk.telemetry.JsonText
 import cz.gopay.sdk.testing.FakeGateway
+import cz.gopay.sdk.testing.SharedSdkState
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 
 /**
@@ -23,6 +25,9 @@ import org.junit.Test
  * table.
  */
 class PaymentSessionOutcomeTest {
+
+    @get:Rule
+    val sharedState = SharedSdkState()
 
     private val gateway = FakeGateway()
 

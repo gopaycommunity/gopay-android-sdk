@@ -63,6 +63,15 @@ internal object PaymentVerificationBridge {
     fun currentOwner(): Owner? = pending.get()?.owner
 
     /**
+     * Frees the bridge without a word to anyone, for a test to start from an empty one: the
+     * verification an earlier test left here is dropped, its caller and its challenge untouched.
+     */
+    @VisibleForTesting
+    internal fun reset() {
+        pending.set(null)
+    }
+
+    /**
      * Registers how to close the activity serving [owner], so [dismiss] can take it off the
      * screen. A recreated activity attaches again and replaces the one before it.
      *
