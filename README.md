@@ -35,7 +35,14 @@ forward; the backend submits the JWE and gets back the card token.
 └────────┘ ────────────────────────────► └────────┘ ────────────────────────► └────────┘
    │      charge / status / GP / 3DS via payment_credentials JWT (direct)         ▲
    └──────────────────────────────────────────────────────────────────────────────┘
+
+When the checkout opens:  your backend creates the payment  →  startPaymentSession(paymentId, paymentSecret)
+When the customer pays:   chargeWith…(…)  →  awaitChargeState()
 ```
+
+Create the payment and start its session when the checkout opens, not when the customer taps Pay.
+The SDK then has the payment ready before the customer pays, for a card and for a wallet button
+alike. The hosted gateway on the web works the same way.
 
 - Per-payment `PaymentSession` with eager auth, single-flight Mutex re-auth on 401, and one
   bounded retry. Multiple sessions can run concurrently — credentials never leak between them.
@@ -249,10 +256,11 @@ Activity, and one that does not fails with `CONFIG_MISSING_CONTEXT` (`CONFIG_004
 
 ### 3. Show the card form and charge
 
-The first card payment needs the keys above and a payment your backend has created;
-[Your backend](#your-backend) says what it does and what it hands the app. Cards to try are in
-[Testing on the sandbox](#testing-on-the-sandbox). `PaymentCardForm` collects the card,
-`submitCardForm` encrypts it into a JWE, `chargeWithEncryptedCard` sends the charge and
+The first card payment needs the keys above and a payment your backend creates when the checkout
+opens; [Your backend](#your-backend) says what it does and what it hands the app. Cards to try are in
+[Testing on the sandbox](#testing-on-the-sandbox). `startPaymentSession` opens the payment's
+session when the checkout appears. When the customer taps Pay, `submitCardForm` encrypts the card
+`PaymentCardForm` collected into a JWE, `chargeWithEncryptedCard` sends the charge and
 `awaitChargeState` waits for the result, running the 3DS challenge when the bank asks for one.
 
 Every session call is a `suspend` function. Run them in a scope that outlives a rotation, such as a
@@ -274,6 +282,7 @@ import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.session.AwaitChargeOptions
+import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.ui.PaymentCardFormValidationDisplay
 import cz.gopay.sdk.ui.PaymentCardForm
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -284,13 +293,15 @@ const val CARD_FORM_ID = "checkout-card"
 @Composable
 fun CheckoutScreen(viewModel: CheckoutViewModel, onPay: () -> Unit) {
     val status by viewModel.status.collectAsState()
+    val ready by viewModel.ready.collectAsState()
     // imePadding keeps the fields and the Pay button above the keyboard; see The card form.
     Column(Modifier.imePadding()) {
         PaymentCardForm(
             formId = CARD_FORM_ID,
             validation = PaymentCardFormValidationDisplay.LIVE   // localized errors as the user types
         )
-        Button(onClick = onPay) { Text("Pay") }
+        // The card can be typed while the session opens; only the button waits for it.
+        Button(onClick = onPay, enabled = ready) { Text("Pay") }
         Text(status)
     }
 }
@@ -299,18 +310,40 @@ class CheckoutViewModel : ViewModel() {
     // What the checkout tells the user.
     val status = MutableStateFlow("")
 
-    // paymentId, paymentSecret and returnUrl (its callback.return_url) come from YOUR backend
-    // after it creates the payment.
-    fun pay(paymentId: String, paymentSecret: String, returnUrl: String) {
+    // True while there is an open session and no payment under way: the Pay button follows it.
+    val ready = MutableStateFlow(false)
+
+    private var session: PaymentSession? = null
+    private var opening = false
+
+    // Call when the checkout opens, and again with a new payment after a declined one.
+    // paymentId and paymentSecret come from YOUR backend, which creates the payment at that
+    // moment. The session starts with the checkout, not with the Pay button, and once: the
+    // ViewModel outlives a rotation, so a recreated screen that calls this again starts nothing.
+    fun open(paymentId: String, paymentSecret: String) {
+        if (session != null || opening) return
+        opening = true
         viewModelScope.launch {
-            // The session first: when it cannot start, the card is still in the form.
-            val session = try {
-                GopaySDK.getInstance().startPaymentSession(paymentId, paymentSecret)
+            try {
+                session = GopaySDK.getInstance().startPaymentSession(paymentId, paymentSecret)
+                ready.value = true
             } catch (e: GopaySDKException) {
                 Log.w("Checkout", "The payment session did not start", e)   // the code is for you
                 status.value = "The payment could not start, try again"
-                return@launch
+            } finally {
+                opening = false
             }
+        }
+    }
+
+    // Call when the customer taps Pay. returnUrl is the payment's callback.return_url, which
+    // your backend hands the app with the payment.
+    fun pay(returnUrl: String) {
+        val session = session ?: return
+        // Taken before anything is sent: a second tap finds it false and sends nothing.
+        if (!ready.value) return
+        ready.value = false
+        viewModelScope.launch {
             var charged = false
             try {
                 // The card the form holds, encrypted into a JWE; the form empties itself.
@@ -334,11 +367,14 @@ class CheckoutViewModel : ViewModel() {
                 // screen in front, until the charge is SUCCEEDED.
                 session.awaitChargeState(AwaitChargeOptions(returnUrl = returnUrl))
                 status.value = "Paid"
+                endPayment()
             } catch (e: GopaySDKException) {
                 Log.w("Checkout", "The payment did not complete", e)   // the code is for you
+                // The charge ended FAILED, so this payment is over: close its session, ask your
+                // backend for a new payment and call open() with it.
+                if (e.code == GopayErrorCodes.PAYMENT_DECLINED) endPayment()
                 status.value = when {
-                    // The charge ended FAILED. e.chargeState carries it, with failReason when the
-                    // gateway sends one. Paying again needs a new payment.
+                    // e.chargeState carries the charge, with failReason when the gateway sends one.
                     e.code == GopayErrorCodes.PAYMENT_DECLINED -> "Payment declined"
                     // Still undecided after 30 s, or the user closed the 3DS screen: the charge
                     // was sent, so read its state again or ask your backend before offering a
@@ -354,15 +390,30 @@ class CheckoutViewModel : ViewModel() {
                     else -> "The payment failed"
                 }
             } finally {
-                session.close()   // wipes the secret + JWT from memory
+                // Pay again only while the payment can still be paid.
+                ready.value = this@CheckoutViewModel.session != null
             }
         }
     }
+
+    // The payment was paid or declined: its session is done with.
+    private fun endPayment() {
+        session?.close()   // wipes the secret + JWT from memory
+        session = null
+    }
+
+    // The checkout is left for good.
+    override fun onCleared() = endPayment()
 }
 ```
 
 That is the whole of a card payment in the app. Your backend creates the payment and settles it;
-what the app reports is not proof of payment (see [Your backend](#your-backend)).
+what the app reports is not proof of payment (see [Your backend](#your-backend)). The session
+starts when the checkout opens, so the SDK has the payment ready before the customer pays, and a
+session that cannot start leaves the card in the form. A wallet button and a saved card charge the
+same session. A payment is paid once: after a declined charge, ask your backend for a new payment
+and start its session right away. `PaymentCardForm` also works without a payment and a session;
+that is for encrypting a card to tokenize and save it (see [Card form → JWE](#card-form--jwe)).
 
 Prefer `chargeWithCardToken` / `chargeWithEncryptedCard` / `chargeWithWallet` over the raw
 `charge(ChargePaymentRequest)`: the spec requires `browser_data` on every card charge, and the
@@ -453,7 +504,9 @@ When a session starts, the SDK also tells GoPay that the Android SDK, and which 
 works with the payment, and GoPay sets the payment's language from the languages set on the
 device: the one ranked highest among those GoPay supports, or English. Nothing to configure.
 `startPaymentSession` does not wait for this, and if it fails, as it does for a payment that is no
-longer `CREATED`, nothing throws and `errorCallback` is not called.
+longer `CREATED`, nothing throws and `errorCallback` is not called. This is why the session starts
+when the checkout opens: the SDK gets the payment ready while the customer is still choosing how to
+pay.
 
 | Method | Maps to |
 | --- | --- |
@@ -901,7 +954,10 @@ the SDK keeps nothing on disk. Three things follow:
   `initialize` has run and an Activity has resumed, which `Application.onCreate` takes care of. Keep the payment `id` in saved state
   (`SavedStateHandle`, `onSaveInstanceState`), never `payment_secret`, and when your screen comes
   back with an `id` but no result, ask your backend for the payment's state before offering to pay
-  again. Your backend learns it from the notification and `GET /payments/{id}`.
+  again. Your backend learns it from the notification and `GET /payments/{id}`. When the system
+  destroys only the 3DS screen in the background and your process lives on, the call does not
+  return either, and a verification started meanwhile fails with `PAYMENT_008`; cancelling the
+  call's coroutine ends it.
 - **The card form keeps a half-typed card across a configuration change.** When a rotation, a
   switch to dark mode or another configuration change recreates your activity, the form parks the
   card in the SDK's memory and the form that comes back under the same `formId` takes it over, so
@@ -1133,13 +1189,19 @@ val strings = GopaySDK.getInstance().currentLocaleStrings(preferred = "cs")
 ## Google Pay flow
 
 ```kotlin
-val info = session.getWalletInfo()
-if (GopaySDK.isWalletAvailable(info)) {
-    session.chargeWithWallet()
-    // returnUrl: the callback.return_url your backend created the payment with.
-    val finalState = session.awaitChargeState(AwaitChargeOptions(returnUrl = returnUrl))
-}
+// When the checkout opens: the device decides whether to show the button.
+val showGooglePay = GopaySDK.isWalletAvailable()
+
+// When the customer taps the Google Pay button.
+session.chargeWithWallet()
+// returnUrl: the callback.return_url your backend created the payment with.
+val finalState = session.awaitChargeState(AwaitChargeOptions(returnUrl = returnUrl))
 ```
+
+Show the Google Pay button by the device check alone, and ask for the wallet's configuration only
+once the customer has picked the wallet. `chargeWithWallet()` fetches it itself, so you do not call
+`getWalletInfo()` when the checkout opens. A payment the wallet cannot pay then fails before a
+charge exists: show the error and keep the payment and its session.
 
 `isWalletAvailable`, `getWalletInfo` and `chargeWithWallet` are the wallet's names shared with
 the iOS SDK, where they ask Apple Pay; `isGooglePayAvailable`, `getGooglePayInfo` and
