@@ -154,8 +154,11 @@ class CheckoutController internal constructor(private val services: CheckoutServ
     /** The payment was declined or given up: [replaceSpentPayment] opens a new one. */
     private var paymentIsOver = false
 
-    /** [finish] was called: an [open] still on its way keeps no session. */
+    /** [finish] was called: an [open] still on its way keeps no session, and a payment no result. */
     private var hasLeft = false
+
+    /** `awaitChargeState` said the charge needs a 3DS challenge and has not read a state since. */
+    private var isWaitingForChallenge by mutableStateOf(false)
 
     /** [lookForWallet] has asked the device. */
     private var walletLookedFor = false
@@ -168,8 +171,14 @@ class CheckoutController internal constructor(private val services: CheckoutServ
     /**
      * Whether the checkout may be left. Leaving closes the session, so not while a payment runs:
      * its result would have nowhere to go. Leaving while the checkout still opens is fine.
+     *
+     * The one running state that can be left is the wait for the bank's 3DS challenge. The
+     * challenge is a screen of its own on top of the checkout, so while it is there the
+     * checkout's Back cannot be reached. It can be reached only when the system destroyed that
+     * screen in the background and the app lived on: the wait then never ends by itself, and
+     * leaving is the only way out short of killing the app. [finish] says what leaving does.
      */
-    val canLeave: Boolean get() = !isBusy
+    val canLeave: Boolean get() = !isBusy || isWaitingForChallenge
 
     /** The methods on offer: Google Pay only where the device can pay with it. */
     val methods: List<Method>
@@ -210,7 +219,7 @@ class CheckoutController internal constructor(private val services: CheckoutServ
      * The card form can be filled in the meantime; only the pay button waits.
      */
     suspend fun open() {
-        if (session != null || isOpening) return
+        if (session != null || isOpening || hasLeft) return
         isOpening = true
         openError = null
         try {
@@ -261,15 +270,17 @@ class CheckoutController internal constructor(private val services: CheckoutServ
             // The checkout's own scope going away, not the user: nothing left to show it on.
             throw e
         } catch (e: GopaySDKException) {
-            // Once the charge went out, no error may lead to a new payment: the charge decides.
-            if (chargeSent || e.code == GopayErrorCodes.PAYMENT_CANCELLED) {
-                afterInterruptedCharge(current, e)
-            } else {
+            when {
+                // The shopper left during the wait for 3DS and the closed session ended it:
+                // not an error to show on a checkout nobody is in, and nothing to read.
+                hasLeft -> Unit
+                // Once the charge went out, no error may lead to a new payment: the charge decides.
+                chargeSent || e.code == GopayErrorCodes.PAYMENT_CANCELLED -> afterInterruptedCharge(current, e)
                 // Nothing was charged, so nothing failed: the same payment waits for another try.
-                banner = describe(e)
+                else -> banner = describe(e)
             }
         } catch (e: Exception) {
-            banner = describe(e)
+            if (!hasLeft) banner = describe(e)
         } finally {
             busyLabel = null
         }
@@ -285,6 +296,12 @@ class CheckoutController internal constructor(private val services: CheckoutServ
     /**
      * Called when the checkout is dismissed for good. A payment the shopper did not pay stays
      * `CREATED` and the gateway cancels it after an hour; the merchant backend does nothing.
+     *
+     * Left during the wait for 3DS ([canLeave]), a payment is still running. Closing the session
+     * ends its polling, and [CheckoutHolder] then cancels the coroutine, which ends a wait for a
+     * challenge screen that is gone. Whatever that payment still reports is dropped: no error,
+     * no result and no new payment on a checkout nobody is in. The charge itself is the
+     * gateway's and the merchant backend's to settle.
      */
     fun finish() {
         hasLeft = true
@@ -311,9 +328,9 @@ class CheckoutController internal constructor(private val services: CheckoutServ
         } catch (e: GopaySDKException) {
             // The charge is out: read it, and show what went wrong on the result screen, which is
             // the one on screen, rather than in the checkout's banner behind it.
-            afterInterruptedCharge(current, e)
+            if (!hasLeft) afterInterruptedCharge(current, e)
         } catch (e: Exception) {
-            outcome = unread(current, outcome?.response, e)
+            if (!hasLeft) outcome = unread(current, outcome?.response, e)
         } finally {
             busyLabel = null
         }
@@ -445,9 +462,15 @@ class CheckoutController internal constructor(private val services: CheckoutServ
                     onStateChange = { state ->
                         lastRead = state
                         // Back from "Verifying with your bank…" once the challenge is answered.
-                        if (state.state != ChargeState.ACTION_REQUIRED) busyLabel = "Confirming payment…"
+                        if (state.state != ChargeState.ACTION_REQUIRED) {
+                            isWaitingForChallenge = false
+                            busyLabel = "Confirming payment…"
+                        }
                     },
-                    onActionRequired = { busyLabel = "Verifying with your bank…" }
+                    onActionRequired = {
+                        isWaitingForChallenge = true
+                        busyLabel = "Verifying with your bank…"
+                    }
                 )
             )
             Outcome(charge.state, charge, null, current.paymentId)
@@ -462,6 +485,8 @@ class CheckoutController internal constructor(private val services: CheckoutServ
                     Outcome(lastRead?.state ?: ChargeState.PROCESSING, lastRead, null, current.paymentId)
                 else -> throw e
             }
+        } finally {
+            isWaitingForChallenge = false
         }
     }
 
@@ -472,7 +497,7 @@ class CheckoutController internal constructor(private val services: CheckoutServ
      * does not leave the checkout; "Try another method" finds the new payment ready or on its way.
      */
     private suspend fun replaceSpentPayment() {
-        if (!paymentIsOver) return
+        if (!paymentIsOver || hasLeft) return
         paymentIsOver = false
         closeSession()
         open()

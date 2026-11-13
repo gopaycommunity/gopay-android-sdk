@@ -68,6 +68,9 @@ fun CheckoutScreen(holder: CheckoutHolder, onClose: () -> Unit) {
 
     // Leaving closes the session, and a payment under way would be left with nobody to show its
     // result to: while one runs, neither the system's Back nor the arrow in the header leaves.
+    // The wait for the bank's 3DS challenge is the exception. With the challenge on screen this
+    // Back is out of reach anyway; it is reachable only once the system has destroyed that
+    // screen in the background, and then the wait would never end and leaving is the way out.
     BackHandler(enabled = !model.canLeave) {}
 
     val outcome = model.outcome
