@@ -360,7 +360,8 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **Common Causes**:
   - Empty `paymentId` / `paymentSecret` passed to `startPaymentSession`
   - `encryptCardData` called with a card that fails validation: the PAN is not 13 to 19 digits, the month is not `01` to `12`, the year is not 2 to 4 digits, or the CVV is not 3 or 4 digits. The same rules apply on iOS
-  - `submitCardForm` called while the card in the `PaymentCardForm` is not valid. A form that holds no card at all throws `VALIDATION_008`
+  - `submitCardForm` or `submitCardFormWithMetadata` called while the card in the `PaymentCardForm` is not valid. A form that holds no card at all throws `VALIDATION_008`
+  - The same two calls on a card number of a brand the form does not accept: anything but Visa, Visa Electron, Mastercard and Maestro. The form shows the error of an invalid card number
   - `awaitChargeState()` called with an `intervalMs` or `initialTimeoutMs` that is not positive; nothing is sent
 - **Developer Action**:
   - Validate before calling, and let the form show its own validation state (`validation = LIVE` or `ON_SUBMIT`)
@@ -369,7 +370,7 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **Note**: since 3.0 an empty card form has its own code, `VALIDATION_008`, and `awaitChargeState` in `ThreeDSMode.AUTOMATIC` no longer needs an `activity`; without one and without the Context it is `CONFIG_004`
 
 ### VALIDATION_008: Card Form Empty
-- **Description**: `submitCardForm` was called while no `PaymentCardForm` holds a card: no form is on screen under that `formId`, or every field of the form is empty
+- **Description**: `submitCardForm` or `submitCardFormWithMetadata` was called while no `PaymentCardForm` holds a card: no form is on screen under that `formId`, or every field of the form is empty
 - **Common Causes**:
   - The pay button was tapped before anything was typed
   - A second `submitCardForm` after a successful one: the form empties its fields once the card is encrypted

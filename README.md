@@ -56,6 +56,8 @@ alike. The hosted gateway on the web works the same way.
   with the gateway's time.
 - Compose `PaymentCardForm` composable that holds the card under a `formId`, which
   `GopaySDK.submitCardForm(formId)` turns into a JWE, with inline validation in three modes.
+- Card metadata with the JWE: `submitCardFormWithMetadata(formId)` also returns the card's scheme,
+  brand, debit or credit, issuer and issuer country.
 - Localized form labels in 20 languages (device language, falling back to Czech), with per-form
   overrides and custom locale registration.
 - **One API with the iOS SDK.** Since 3.0 the two SDKs have the same names, the same shape of
@@ -489,6 +491,7 @@ on its own when you want to log what goes out; pass its result to the charge unc
 | `closeAllPaymentSessions()` | Closes every session — wipes secrets and tokens. |
 | `encryptCardData(GopayCardData)` | Validates the card (`VALIDATION_INVALID_INPUT` when it fails), fetches the JWK, returns a JWE string; an encryption that fails is `INTERNAL_UNEXPECTED_ERROR`. |
 | `submitCardForm(formId?)` | Encrypts the card the `PaymentCardForm` on screen holds under `formId` (the most recently active form when null) into a JWE and empties the form; see [Card form → JWE](#card-form--jwe). |
+| `submitCardFormWithMetadata(formId?)` | `submitCardForm` that also returns what the gateway knows about the card: an `EncryptedCardPayloadWithMetadata` with the JWE in `encryptedPayload` and a `CardMetadata`, or `null`, in `cardMetadata`; see [Card metadata with the JWE](#card-metadata-with-the-jwe). |
 | `clearCardFormData(formId?)` | Drops the SDK's copy of a form's card (every form when null) and empties its fields. |
 | `GopaySDK.isWalletAvailable(info?)` | Static, as on iOS. Whether Google Pay can pay on this device: with the methods from a `GooglePayInfoResponse`, or without one, before a payment exists, with the gateway's defaults in the environment the config implies. Whether the user has a card saved in Google Pay is not checked. Never throws: before `initialize`, or when the SDK has no Context, the answer is `false`, with a warning in the debug log. |
 | `isWalletAvailable(activity, info?)`, `GopaySDK.isWalletAvailable(context, environment, info?)`, `isGooglePayAvailable(activity, info)` | Deprecated: the forms of 2.x of the same check. |
@@ -715,12 +718,60 @@ enable your pay button. It carries a `Boolean` and nothing about the card. Only 
 its `formId` reports, and it reports `false` as it leaves the screen. The iOS form reports the same
 through its `isValid` binding.
 
+**The form accepts Visa, Visa Electron, Mastercard and Maestro.** A card number of any other
+brand is refused like a number that fails the Luhn check: the form shows the same error at the
+same moment, and `submitCardForm` throws `VALIDATION_INVALID_INPUT` (`VALIDATION_007`).
+`encryptCardData` does not check the brand. The iOS form accepts the same brands.
+
 **Messages for the user come from the form.** The `message` of the `VALIDATION_CARD_FORM_EMPTY` or
 `VALIDATION_INVALID_INPUT` that `submitCardForm` throws is in English and meant for you as a developer, for logs; do not show it
 to the user. To tell the user what is wrong
 with the card, use `LIVE` or `ON_SUBMIT`, where the form shows its own errors in the user's
 language. With `HIDDEN`, take the texts from the locale strings, as
 [Localizing the form](#localizing-the-form) shows.
+
+### Card metadata with the JWE
+
+`submitCardFormWithMetadata(formId)` is `submitCardForm` that also tells you what the gateway
+knows about the card. It returns an `EncryptedCardPayloadWithMetadata`: the JWE in
+`encryptedPayload` and a `CardMetadata` in `cardMetadata`.
+
+```kotlin
+import cz.gopay.sdk.GopaySDK
+import cz.gopay.sdk.model.CardMetadata
+
+val result = GopaySDK.getInstance().submitCardFormWithMetadata("checkout-card")
+val jwe: String = result.encryptedPayload          // charge it or tokenize it, as before
+val metadata: CardMetadata? = result.cardMetadata  // null when the gateway knows nothing about the card
+if (metadata != null) {
+    // metadata.scheme, metadata.corporate, metadata.brand, metadata.serviceType,
+    // metadata.issuer, metadata.issuerCountry
+}
+```
+
+| Field | Type | What it is |
+| --- | --- | --- |
+| `scheme` | `CardScheme` | `VISA` or `MASTERCARD`. Always there. |
+| `corporate` | `Boolean` | Whether the card is a corporate card. Always there. |
+| `brand` | `String?` | The product level of the card, such as `GOLD`. |
+| `serviceType` | `CardServiceType?` | `DEBIT` or `CREDIT`. |
+| `issuer` | `String?` | The name of the bank that issued the card. |
+| `issuerCountry` | `String?` | The issuer's country, ISO 3166-1 alpha-3, such as `CZE`. |
+
+The SDK sends the first eight digits of the card number to `POST /cards/bin-lookup`, with the
+shareable key, while it fetches the public key and encrypts the card. The eight digits never reach
+the SDK's operational data or its debug log.
+
+The lookup never fails the submit. `cardMetadata` is `null` when the gateway knows nothing about
+the card, when the lookup fails, and when it takes longer than 3 seconds.
+The JWE is returned all the same, and nothing reaches `errorCallback`. An optional field is `null`
+when the gateway does not send it.
+
+Everything else is `submitCardForm`: the same validation, the same errors, the same emptied form.
+Use the metadata to show the card or to pick a flow. Do not let a payment depend on it.
+
+The call can take up to 3 seconds longer than `submitCardForm`. Keep the form and the pay button
+disabled until it returns.
 
 ### Programmatic
 
@@ -1431,6 +1482,7 @@ is what the platform decides:
 | `session.getWalletInfo()` | returns `GooglePayInfoResponse` | the wallet configuration for the payment |
 | `session.chargeWithWallet(browserData?, challengePreference?)` | optional `activity` to open the sheet from | the managed wallet sheet and charge |
 | `PaymentCardForm(formId)` + `submitCardForm(formId)` + `clearCardFormData(formId)` | — | the card form model |
+| `submitCardFormWithMetadata(formId)`, `EncryptedCardPayloadWithMetadata` (`encryptedPayload`, `cardMetadata`), `CardMetadata`, `CardServiceType` | enum cases in capitals, `DEBIT`; iOS: `.debit` | the JWE with the card's metadata |
 | `PaymentCardForm(validation)` with `HIDDEN`, `LIVE`, `ON_SUBMIT` | iOS: `.hidden`, `.live`, `.onSubmit` | the validation display modes |
 | `PaymentCardForm(submitAttempted, onSubmitAttemptedChange)` | iOS: the `submitAttempted` binding | the flag of the "on submit" mode, which the host can raise and lower |
 | `PaymentCardForm(allowsAutofill)`, off by default | — | whether autofill may fill and save the card number and expiry; never the CVV |
@@ -1447,6 +1499,19 @@ from the Activity in front, iOS from the topmost view controller, and both let a
 `requestTimeoutMs` count milliseconds here, the iOS options and `requestTimeout` seconds, and
 `handle3dsVerification` takes the redirect as a `String` here and as a `URL` on iOS. The errors
 are the shared code contract above, with one rule for `errorCallback` on both.
+
+## What changed in 3.1
+
+3.1 adds to 3.0 and removes nothing. The same two changes are in the iOS SDK.
+
+- **Card metadata with the JWE.** `submitCardFormWithMetadata(formId)` returns the JWE together
+  with what the gateway knows about the card: its scheme, whether it is a corporate card, its
+  brand, debit or credit, the issuer and the issuer's country. `submitCardForm` is unchanged. See
+  [Card metadata with the JWE](#card-metadata-with-the-jwe).
+- **The card form checks the card brand.** The form accepts Visa, Visa Electron, Mastercard and
+  Maestro. A card number of any other brand is refused like a number that fails the Luhn check,
+  and the submit throws `VALIDATION_007`. This holds for `submitCardForm` too. `encryptCardData`
+  is unchanged.
 
 ## What changed in 3.0
 
@@ -1749,9 +1814,9 @@ repo root, then run the app from Android Studio or with `./gradlew :app:installD
 - The merchant public key is not cached: it is fetched for every encryption and never stored.
 - With `GopayConfig.debugLoggingEnabled` on, the SDK logs its HTTP traffic, bodies included, to Logcat under
   the `okhttp.OkHttpClient` tag. The `Authorization` header, `payment_secret`, the JWT, card
-  tokens, the card JWE, the Google Pay payment data and the customer's e-mail and phone number
-  are masked. Keep `debugLoggingEnabled` off in release
-  builds.
+  tokens, the card JWE, the Google Pay payment data, the customer's e-mail and phone number and
+  the first digits of the card number in the BIN lookup are masked. Keep `debugLoggingEnabled`
+  off in release builds.
 - `PaymentCardForm` sets `FLAG_SECURE` on the window it is drawn in, a dialog or a Material3
   `ModalBottomSheet` included, to block screenshots and screen recording of card data; the same
   flag leaves the app's preview in Recents blank while the form is shown. It does so
@@ -1865,8 +1930,10 @@ every text value that survives is still stripped of PAN-shaped digit runs, token
 e-mail addresses and query strings; and each body is cut at 2 000 characters. Request paths are
 sent as templates (`/payments/{id}/charge`) rather than as the URLs actually called, error messages
 are the SDK's own text with the same scrub, and the token request reports only the form it sent,
-never the token that came back. The payment id itself is sent as its own field: it is what ties the
-events of one checkout together, and it identifies a payment rather than a person.
+never the token that came back. The BIN lookup behind `submitCardFormWithMetadata` is reported
+without its request, and with its answer only for a 2xx response, so the first digits of a card
+number are not in the data either. The payment id itself is sent as its own field: it is what
+ties the events of one checkout together, and it identifies a payment rather than a person.
 
 **What it does contain that concerns you.** Every request carries the device's IP address, as any
 HTTP request does, and GoPay keeps it with the data, together with the SDK's own User-Agent (which
