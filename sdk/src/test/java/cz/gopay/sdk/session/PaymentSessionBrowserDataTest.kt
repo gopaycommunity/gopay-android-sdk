@@ -14,14 +14,18 @@ import cz.gopay.sdk.model.PaymentDetails
 import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.model.syntheticUserAgent
 import cz.gopay.sdk.modules.network.AuthApi
+import cz.gopay.sdk.modules.network.LookupLimitSignal
 import cz.gopay.sdk.modules.network.NoAuthRecovery
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.modules.network.SessionCloseSignal
 import cz.gopay.sdk.modules.network.TokenResponse
 import cz.gopay.sdk.util.SdkLog
+import java.io.IOException
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody
+import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -33,7 +37,6 @@ import org.junit.Before
 import org.junit.Test
 import retrofit2.Call
 import retrofit2.Response
-import java.io.IOException
 
 /**
  * The gateway requires `browser_data.ip` on every charge and the device cannot know its own
@@ -289,6 +292,11 @@ class PaymentSessionBrowserDataTest {
                 browserDataUserAgents += userAgent
                 return browserData()
             }
+
+            override suspend fun lookUpBin(
+                body: RequestBody,
+                limitSignal: LookupLimitSignal
+            ): Response<ResponseBody> = throw UnsupportedOperationException()
 
             override suspend fun getPublicKey(): Response<Jwk> = throw UnsupportedOperationException()
 

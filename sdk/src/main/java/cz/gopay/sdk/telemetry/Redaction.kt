@@ -176,7 +176,8 @@ internal object Redaction {
      * Keys whose whole value is dropped, matched exactly once normalized: the browser SDK's
      * list, gw-ui's plus the instrument of a charge (`input`) and the payer's details, and the
      * payee's bank account the QR payment info carries, in every QR format, which the browser
-     * SDK's list does not reach.
+     * SDK's list does not reach, and `bin`, the start of a card number. `bin` is here and not
+     * among the fragments, where it would drop every key with those three letters in it.
      */
     private val SENSITIVE_CONTAINER_KEYS = setOf(
         "response", "payment", "paymentdata", "applepaypaymentdata", "googlepaymentdata",
@@ -187,7 +188,8 @@ internal object Redaction {
         "merchantsessionidentifier", "validationdata", "encryptedcard", "recognitiontoken",
         "idtoken", "idtokens", "digitalcardid", "recipientaddress", "accountname", "bic",
         "input", "customer", "contact", "payer", "ip", "ipaddress", "useragent",
-        "qrcode", "spayd", "sepa", "mnbqr", "paybysquare", "bankaccount", "recipient"
+        "qrcode", "spayd", "sepa", "mnbqr", "paybysquare", "bankaccount", "recipient",
+        "bin"
     )
 
     /** Fragments that drop any key containing them; the browser SDK's list. */

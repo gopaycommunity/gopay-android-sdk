@@ -29,6 +29,7 @@ import cz.gopay.sdk.model.GooglePayTokenizationSpec
 import cz.gopay.sdk.model.GooglePayTransactionInfo
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.modules.network.AuthApi
+import cz.gopay.sdk.modules.network.LookupLimitSignal
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.modules.network.TokenResponse
@@ -37,6 +38,7 @@ import cz.gopay.sdk.ui.ForegroundScreen
 import cz.gopay.sdk.ui.GooglePayBridge
 import cz.gopay.sdk.ui.PaymentVerificationBridge
 import cz.gopay.sdk.ui.SdkScreens
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -48,6 +50,8 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import okhttp3.RequestBody
+import okhttp3.ResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -65,7 +69,6 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import retrofit2.Response
-import java.util.Locale
 
 /**
  * The calls that open a screen, with the Activity optional: which screen they open from, what
@@ -690,6 +693,11 @@ class PaymentSessionScreenTest {
     private fun gatewayBrowserData(): PublicApi = object : PublicApi {
         override suspend fun getBrowserData(userAgent: String?): Response<BrowserDataDetected> =
             Response.success(BrowserDataDetected(ip = "198.51.100.7", userAgent = userAgent ?: "ua", acceptHeader = "*/*"))
+
+        override suspend fun lookUpBin(
+            body: RequestBody,
+            limitSignal: LookupLimitSignal
+        ): Response<ResponseBody> = throw UnsupportedOperationException()
 
         override suspend fun getPublicKey(): Response<Jwk> = throw UnsupportedOperationException()
     }

@@ -21,6 +21,8 @@ import okhttp3.logging.HttpLoggingInterceptor
  * - `email` and `phone_number`, the customer's contacts in the answer of
  *   `GET /payments/{payment_id}`: nobody can charge with them, but they are a person's data and
  *   a debug log gets copied into tickets.
+ * - `bin`, the first eight digits of the card number in the request of `POST /cards/bin-lookup`:
+ *   card data, which a log has no use for.
  */
 internal class RedactingHttpLogger(
     private val sink: HttpLoggingInterceptor.Logger = HttpLoggingInterceptor.Logger.DEFAULT
@@ -37,7 +39,7 @@ internal class RedactingHttpLogger(
         private val SECRET_JSON_VALUE =
             // Possessive, so a long escaped value cannot make the matcher backtrack.
             Regex(
-                "(\"(?:payment_secret|access_token|card_token|payload|signedMessage|email|phone_number)\"" +
+                "(\"(?:payment_secret|access_token|card_token|payload|signedMessage|email|phone_number|bin)\"" +
                     "\\s*+:\\s*+)" +
                     "\"(?:[^\"\\\\]++|\\\\.)*+\""
             )

@@ -19,12 +19,15 @@ import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.model.PaymentDetails
 import cz.gopay.sdk.model.QrPaymentDetails
 import cz.gopay.sdk.modules.network.AuthApi
+import cz.gopay.sdk.modules.network.LookupLimitSignal
 import cz.gopay.sdk.modules.network.NoAuthRecovery
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.modules.network.SessionCloseSignal
 import cz.gopay.sdk.modules.network.TokenResponse
 import kotlinx.coroutines.runBlocking
+import okhttp3.RequestBody
+import okhttp3.ResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -115,6 +118,11 @@ class PaymentSessionSharedApiTest {
             override suspend fun getBrowserData(userAgent: String?): Response<BrowserDataDetected> {
                 return Response.success(BrowserDataDetected(ip = "198.51.100.7", userAgent = "ua", acceptHeader = "*/*"))
             }
+            override suspend fun lookUpBin(
+                body: RequestBody,
+                limitSignal: LookupLimitSignal
+            ): Response<ResponseBody> = throw UnsupportedOperationException()
+
             override suspend fun getPublicKey(): Response<Jwk> = throw UnsupportedOperationException()
         }
 

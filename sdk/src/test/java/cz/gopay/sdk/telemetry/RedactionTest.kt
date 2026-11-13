@@ -363,6 +363,16 @@ class RedactionTest {
     }
 
     @Test
+    fun `drops the start of a card number under bin, and no key that only contains those letters`() {
+        val sanitized = bodyMap("{\"bin\":\"44444444\",\"BIN\":\"55555555\",\"cabin\":\"2\",\"binding\":\"soft\"}")
+
+        assertEquals("[redacted]", sanitized["bin"])
+        assertEquals("[redacted]", sanitized["BIN"])
+        assertEquals("2", sanitized["cabin"])
+        assertEquals("soft", sanitized["binding"])
+    }
+
+    @Test
     fun `drops the payee's account from the QR payment info, in every format`() {
         // The sandbox's answer to GET /payments/{id}/qr-payment/info, values shortened.
         val raw = """

@@ -6,6 +6,7 @@ import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.exception.HttpErrorContext
+import cz.gopay.sdk.modules.network.LookupLimitSignal
 import cz.gopay.sdk.modules.network.SessionAuthInterceptor
 import cz.gopay.sdk.modules.network.SessionTokenProvider
 import cz.gopay.sdk.testing.SharedSdkState
@@ -633,6 +634,74 @@ class GwLoggerTelemetryTest {
         assertFalse(token.containsKey("res_body"))
         assertFalse(key.containsKey("res_body"))
         assertEquals(200L, number(key["status_code"]))
+    }
+
+    private fun binLookup() = Request.Builder()
+        .url("https://gw.sandbox.gopay.com/gp-gw/api/4.0/cards/bin-lookup")
+        .post("{\"bin\":\"44444444\"}".toRequestBody("application/json".toMediaType()))
+
+    @Test
+    fun `keeps the request of a BIN lookup to itself, and its answer unless the lookup succeeded`() {
+        val telemetry = telemetry()
+        val metadata = "{\"scheme\":\"VISA\",\"corporate\":false,\"issuer_country\":\"CZE\"}"
+        apiClient(telemetry) { answer(it, 200, metadata) }.newCall(binLookup().build()).execute().close()
+        // Error answers that say the BIN back: in the message, and under a key no rule knows.
+        val echoes = listOf(
+            404 to "{\"code\":404,\"error\":\"NOT_FOUND\",\"message\":\"No card details found for the BIN 44444444\"}",
+            400 to "{\"code\":400,\"detail\":\"bin 44444444 is not valid\",\"card_bin\":\"44444444\"}",
+            500 to "{\"card_bin\":44444444}"
+        )
+        for ((status, body) in echoes) {
+            apiClient(telemetry) { answer(it, status, body) }.newCall(binLookup().build()).execute().close()
+        }
+        runCatching { apiClient(telemetry) { throw IOException("timeout") }.newCall(binLookup().build()).execute() }
+
+        val all = events
+        assertEquals(5, all.size)
+        for (event in all) {
+            assertEquals("/cards/bin-lookup", event["target"])
+            assertEquals("bin-lookup", event["action"])
+            assertEquals("POST", event["http_method"])
+            assertFalse(event.containsKey("req_body"))
+        }
+        // The answer of a lookup that succeeded is no secret.
+        assertEquals(metadata, all[0]["res_body"])
+        assertEquals(listOf(404L, 400L, 500L), all.subList(1, 4).map { number(it["status_code"]) })
+        for (failed in all.subList(1, 5)) assertFalse(failed.containsKey("res_body"))
+        assertNull(all[4]["status_code"])
+        assertFalse("the eight digits are in no event", capture.bodies.any { it.contains("44444444") })
+    }
+
+    @Test
+    fun `reports a BIN lookup its own limit cancelled, and none that anything else cancelled`() {
+        val telemetry = telemetry()
+        // The transport as OkHttp leaves it after a cancel: the call cancelled, an IOException.
+        fun cancelled() = OkHttpClient.Builder()
+            .addInterceptor(ApiCallTelemetryInterceptor(telemetry, basePath = "/gp-gw/api/4.0/"))
+            .addInterceptor(Interceptor { chain -> chain.call().cancel(); throw IOException("Canceled") })
+            .build()
+
+        // The caller cancelled the submit, or the encryption failed: nobody's failure.
+        val abandoned = LookupLimitSignal()
+        runCatching { cancelled().newCall(binLookup().tag(LookupLimitSignal::class.java, abandoned).build()).execute() }
+        assertTrue("a lookup the caller cancelled is not reported", events.isEmpty())
+
+        // The lookup's own 3 seconds: a slow gateway, reported like any request without an answer.
+        val slow = LookupLimitSignal().apply { limitReached = true }
+        runCatching { cancelled().newCall(binLookup().tag(LookupLimitSignal::class.java, slow).build()).execute() }
+        val event = events.single()
+        assertEquals("/cards/bin-lookup", event["target"])
+        assertTrue(event.containsKey("status_code"))
+        assertNull(event["status_code"])
+        assertFalse(event.containsKey("req_body"))
+        assertFalse(event.containsKey("res_body"))
+
+        // A lookup that fails on its own, not cancelled by anyone, is still reported.
+        runCatching {
+            apiClient(telemetry) { throw IOException("unreachable") }
+                .newCall(binLookup().tag(LookupLimitSignal::class.java, LookupLimitSignal()).build()).execute()
+        }
+        assertEquals(2, events.size)
     }
 
     @Test

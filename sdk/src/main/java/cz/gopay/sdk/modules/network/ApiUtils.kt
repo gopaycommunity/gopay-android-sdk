@@ -80,8 +80,9 @@ internal fun <T> Response<T>.unwrap(action: String, statusCodes: Map<Int, String
  * A transport failure, an [IOException] from OkHttp, is mapped by [transportError], with the
  * original as the cause. A coroutine cancellation is not an error and passes through untouched.
  *
- * Every call that reaches the gateway goes through here; [unwrap] on its own is only for a
- * caller that needs the [Response] first.
+ * Every call whose failure a caller gets goes through here; [unwrap] on its own is only for a
+ * caller that needs the [Response] first. The one call that stays out is the BIN lookup of
+ * [cz.gopay.sdk.service.CardMetadataLookup], which never fails towards its caller.
  *
  * @param action short verb phrase used in error messages, e.g. `"charge payment"`.
  * @param statusCodes passed to [unwrap]: the codes the route gives particular HTTP statuses.

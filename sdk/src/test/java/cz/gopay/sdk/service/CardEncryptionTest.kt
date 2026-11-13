@@ -5,13 +5,17 @@ import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.BrowserDataDetected
 import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.model.Jwk
+import cz.gopay.sdk.modules.network.LookupLimitSignal
 import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.util.SdkLog
+import java.io.IOException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import okhttp3.Headers.Companion.headersOf
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody
+import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -21,7 +25,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import retrofit2.Response
-import java.io.IOException
 
 /**
  * GPMOB-155: the card JWE carries the gateway's clock. Every encryption fetches the key again
@@ -168,6 +171,11 @@ class CardEncryptionTest {
     private class FakePublicApi(private val key: () -> Response<Jwk>) : PublicApi {
         @Volatile
         var keyRequests = 0
+
+        override suspend fun lookUpBin(
+            body: RequestBody,
+            limitSignal: LookupLimitSignal
+        ): Response<ResponseBody> = throw UnsupportedOperationException()
 
         override suspend fun getPublicKey(): Response<Jwk> {
             synchronized(this) { keyRequests++ }

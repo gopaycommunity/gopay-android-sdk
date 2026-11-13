@@ -1,5 +1,6 @@
 package cz.gopay.sdk.telemetry
 
+import cz.gopay.sdk.modules.network.LookupLimitSignal
 import cz.gopay.sdk.modules.network.SessionCloseSignal
 import okhttp3.FormBody
 import okhttp3.HttpUrl
@@ -39,7 +40,10 @@ internal class ApiCallTelemetryInterceptor(
             // A request PaymentSession.close() cancelled: nothing to report. A call timeout
             // cancels the call as well, so the close says so itself rather than isCanceled.
             val closed = request.tag(SessionCloseSignal::class.java)?.closed == true
-            if (!closed) report(request, null, startedAt)
+            // A BIN lookup cancelled by anything but its own time limit: nothing to report either.
+            val limitSignal = request.tag(LookupLimitSignal::class.java)
+            val abandoned = limitSignal != null && chain.call().isCanceled() && !limitSignal.limitReached
+            if (!closed && !abandoned) report(request, null, startedAt)
             throw e
         }
         report(request, response, startedAt)
@@ -56,8 +60,8 @@ internal class ApiCallTelemetryInterceptor(
                 template = template,
                 statusCode = response?.code,
                 durationMs = durationMs,
-                requestBody = requestBody(request),
-                responseBody = response?.takeIf { template !in WITHOUT_RESPONSE_BODY }?.let { responseBody(it) },
+                requestBody = request.takeIf { template !in WITHOUT_REQUEST_BODY }?.let { requestBody(it) },
+                responseBody = response?.takeIf { reportsResponseBody(template, it) }?.let { responseBody(it) },
                 paymentId = paymentIdOf(segments)
             )
         } catch (e: Throwable) {
@@ -94,6 +98,12 @@ internal class ApiCallTelemetryInterceptor(
         return if (buffer.size > MAX_BODY_BYTES) null else buffer.readUtf8()
     }
 
+    private fun reportsResponseBody(template: String, response: Response): Boolean = when (template) {
+        in WITHOUT_RESPONSE_BODY -> false
+        in RESPONSE_BODY_ONLY_ON_SUCCESS -> response.isSuccessful
+        else -> true
+    }
+
     /**
      * Peeked, not read: the converter still gets the whole body. None when it is longer than
      * [MAX_BODY_BYTES], for the same reason as a request's.
@@ -123,6 +133,19 @@ internal class ApiCallTelemetryInterceptor(
          * key's is 2000 characters of a key everyone can fetch. As on iOS.
          */
         val WITHOUT_RESPONSE_BODY = setOf("/oauth2/token", "/cards/public-key")
+
+        /**
+         * Requests never reported: the BIN lookup's is the first eight digits of a card number.
+         * As on iOS.
+         */
+        val WITHOUT_REQUEST_BODY = setOf("/cards/bin-lookup")
+
+        /**
+         * Responses reported only for a 2xx: an error answer may say the BIN back, in its message
+         * or under a key the redaction does not know, and eight digits are too few for the PAN
+         * rule to catch. As on iOS.
+         */
+        val RESPONSE_BODY_ONLY_ON_SUCCESS = setOf("/cards/bin-lookup")
 
         val ALL_DIGITS = Regex("[0-9]+")
         val UUID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", RegexOption.IGNORE_CASE)

@@ -1,13 +1,14 @@
 package cz.gopay.sdk.testing
 
 import cz.gopay.sdk.GopaySDK
-import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.config.GopayConfig
+import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.model.BrowserDataDetected
 import cz.gopay.sdk.model.Jwk
 import cz.gopay.sdk.modules.network.AuthApi
+import cz.gopay.sdk.modules.network.LookupLimitSignal
 import cz.gopay.sdk.modules.network.NetworkModule
 import cz.gopay.sdk.modules.network.PaymentApi
 import cz.gopay.sdk.modules.network.PublicApi
@@ -16,6 +17,8 @@ import cz.gopay.sdk.modules.network.TokenResponse
 import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.telemetry.ApiCallTelemetryInterceptor
 import cz.gopay.sdk.telemetry.TelemetryCapture
+import java.util.Collections
+import java.util.concurrent.Executors
 import kotlinx.coroutines.runBlocking
 import okhttp3.Dispatcher
 import okhttp3.Interceptor
@@ -23,10 +26,10 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.Response
+import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
-import java.util.Collections
-import java.util.concurrent.Executors
 
 /**
  * The gateway behind a real SDK: `startPaymentSession` on an initialized [GopaySDK], a real
@@ -99,6 +102,11 @@ internal class FakeGateway {
                         override suspend fun getBrowserData(userAgent: String?) = retrofit2.Response.success(
                             BrowserDataDetected(ip = "192.0.2.1", userAgent = userAgent ?: "", acceptHeader = "*/*")
                         )
+                        override suspend fun lookUpBin(
+                            body: RequestBody,
+                            limitSignal: LookupLimitSignal
+                        ): retrofit2.Response<ResponseBody> = throw UnsupportedOperationException()
+
                         override suspend fun getPublicKey(): retrofit2.Response<Jwk> = throw UnsupportedOperationException()
                     }
                 },

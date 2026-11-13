@@ -18,3 +18,14 @@ internal class SessionCloseSignal {
     @Volatile
     var closed: Boolean = false
 }
+
+/**
+ * Request tag of `POST /cards/bin-lookup` that says whether the lookup's own time limit cancelled
+ * the request. [limitReached] is set before the cancel, like [SessionCloseSignal.closed]. The
+ * telemetry interceptor reports a cancelled lookup only then: a lookup the limit ended is a slow
+ * gateway, one the caller cancelled, or a failed encryption took with it, is nobody's failure.
+ */
+internal class LookupLimitSignal {
+    @Volatile
+    var limitReached: Boolean = false
+}

@@ -140,6 +140,23 @@ class RedactingHttpLoggerTest {
     }
 
     @Test
+    fun `a BIN lookup logs the request without the start of the card number`() {
+        val log = logOf(
+            Request.Builder()
+                .url("https://gw.sandbox.gopay.com/gp-gw/api/4.0/cards/bin-lookup")
+                .post("""{"bin":"44444444"}""".toRequestBody(json))
+                .build(),
+            """{"scheme":"VISA","corporate":false,"brand":"GOLD"}"""
+        )
+
+        assertFalse(log, log.contains("44444444"))
+        assertTrue(log, log.contains("{\"bin\":\"██\"}"))
+        // The answer is no secret and stays there to debug with.
+        assertTrue(log, log.contains("\"brand\":\"GOLD\""))
+        assertTrue(log, log.contains("cards/bin-lookup"))
+    }
+
+    @Test
     fun `redact masks spaced and escaped values and leaves other fields alone`() {
         assertEquals(
             """{"access_token" : "██", "token_type":"bearer"}""",
