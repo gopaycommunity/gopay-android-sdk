@@ -111,6 +111,12 @@ internal class FakeSession(override val paymentId: String) : PaymentSessionApi {
     /** The options the last `awaitChargeState` was called with. */
     var awaitOptions: AwaitChargeOptions? = null
 
+    /**
+     * When set, `awaitChargeState` reports a 3DS challenge and then waits for it, as the SDK
+     * waits for its challenge screen: for good, when that screen is gone.
+     */
+    var challengeGate: CompletableDeferred<Unit>? = null
+
     val chargeCalls: List<String> get() = calls.filter { it.startsWith("chargeWith") }
 
     override suspend fun getPaymentOutcome(): PaymentOutcome = record("getPaymentOutcome").let { outcome() }
@@ -118,6 +124,14 @@ internal class FakeSession(override val paymentId: String) : PaymentSessionApi {
     override suspend fun awaitChargeState(options: AwaitChargeOptions): ChargePaymentResponse {
         record("awaitChargeState")
         awaitOptions = options
+        challengeGate?.let { gate ->
+            options.onStateChange?.invoke(chargeIn(ChargeState.ACTION_REQUIRED))
+            options.onActionRequired?.invoke("https://acs.bank.example/challenge")
+            gate.await()
+            // What a real wait does once the session under it was closed.
+            if (closed) throw sdkError(GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED, "The payment session is closed")
+            options.onStateChange?.invoke(chargeIn(ChargeState.PROCESSING))
+        }
         val answer = if (awaits.size > 1) awaits.removeAt(0) else awaits.first()
         return answer()
     }

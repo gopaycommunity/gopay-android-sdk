@@ -1,5 +1,6 @@
 package com.gopay.example.checkout
 
+import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.model.ChargeState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -99,6 +100,111 @@ class CheckoutControllerBusyTest {
 
         assertEquals("no session was started for a checkout nobody is in", 0, services.sessions.size)
         assertFalse(controller.isOpening)
+        assertFalse(controller.canPay)
+    }
+
+    @Test
+    fun `only the wait for 3DS can be left among the states of a running payment`() = runTest {
+        controller.open()
+        val session = services.last
+        session.challengeGate = CompletableDeferred()
+        val seen = mutableListOf<Pair<String?, Boolean>>()
+        services.cardForm = {
+            seen += controller.busyLabel to controller.canLeave
+            "jwe-of-the-card"
+        }
+        session.chargeAnswer = {
+            seen += controller.busyLabel to controller.canLeave
+            chargeIn(ChargeState.REQUESTED)
+        }
+
+        val payment = launch { controller.pay() }
+        runCurrent()
+
+        assertEquals(
+            "checking the card and authorizing hold the way back",
+            listOf<Pair<String?, Boolean>>("Checking your card…" to false, "Authorizing…" to false),
+            seen
+        )
+        assertEquals("Verifying with your bank…", controller.busyLabel)
+        assertTrue("the wait for the bank's challenge can be left", controller.canLeave)
+        assertFalse("but nothing else can be started meanwhile", controller.canPay)
+
+        // The challenge is answered: the wait reads a state again and the way back is held again.
+        session.awaits = mutableListOf({
+            assertEquals("Confirming payment…", controller.busyLabel)
+            assertFalse(controller.canLeave)
+            chargeIn(ChargeState.SUCCEEDED)
+        })
+        session.challengeGate!!.complete(Unit)
+        payment.join()
+
+        assertTrue(controller.outcome!!.isSuccess)
+        assertTrue(controller.canLeave)
+    }
+
+    @Test
+    fun `leaving during the wait for 3DS closes the session, shows nothing and opens no new payment`() = runTest {
+        controller.open()
+        val session = services.last
+        session.challengeGate = CompletableDeferred()
+        val payment = launch { controller.pay() }
+        runCurrent()
+        assertTrue(controller.canLeave)
+
+        // The arrow in the header: finish(), then the screen closes.
+        controller.finish()
+
+        assertTrue(session.closed)
+        // The wait ends on the closed session before the holder's scope is cancelled.
+        session.challengeGate!!.complete(Unit)
+        payment.join()
+
+        assertNull("no error on a checkout nobody is in", controller.banner)
+        assertNull("and no result screen", controller.outcome)
+        assertEquals("the payment was not read on the closed session", listOf("chargeWithEncryptedCard", "awaitChargeState", "close"), session.calls)
+        assertEquals("no new payment", listOf("payment-1"), services.created)
+        assertNull(controller.paymentId)
+        assertFalse(controller.isBusy)
+    }
+
+    @Test
+    fun `a wait for 3DS that is cancelled with the checkout leaves nothing behind`() = runTest {
+        controller.open()
+        val session = services.last
+        session.challengeGate = CompletableDeferred()
+        val payment = launch { controller.pay() }
+        runCurrent()
+
+        // System Back: the Activity finishes, the holder closes the session and cancels its scope.
+        controller.finish()
+        payment.cancel()
+        payment.join()
+
+        assertTrue(session.closed)
+        assertNull(controller.banner)
+        assertNull(controller.outcome)
+        assertFalse("the lock is released, not left held by a payment that is gone", controller.isBusy)
+        assertEquals(listOf("payment-1"), services.created)
+    }
+
+    @Test
+    fun `a decline that arrives after the shopper left opens no new payment`() = runTest {
+        controller.open()
+        val session = services.last
+        session.challengeGate = CompletableDeferred()
+        val payment = launch { controller.pay() }
+        runCurrent()
+        controller.finish()
+        // The fake's closed session lets this wait end in the bank's decline all the same.
+        session.closed = false
+        session.awaits = mutableListOf({
+            throw sdkError(GopayErrorCodes.PAYMENT_DECLINED, "The charge failed", chargeIn(ChargeState.FAILED))
+        })
+        session.challengeGate!!.complete(Unit)
+        payment.join()
+
+        assertEquals("the declined payment is not replaced for nobody", listOf("payment-1"), services.created)
         assertFalse(controller.canPay)
     }
 
