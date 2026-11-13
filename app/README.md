@@ -95,7 +95,9 @@ The screen is split into four numbered sections. Sections 3 and 4 appear once a 
    - **Get QR payment info** for the bank-transfer/QR variant.
 5. **4. Card form → JWE** — pick a theme from the **Theme** dropdown and a form language from the
    **Locale** dropdown, fill in the card, and tap **Encrypt card → JWE**. Then **Charge with
-   encrypted card (JWE)**.
+   encrypted card (JWE)**. **Encrypt card → JWE + metadata** makes the same JWE with
+   `submitCardFormWithMetadata` and logs what the gateway knows about the card, or
+   `cardMetadata: no metadata`.
 6. Tap **Close** in section 2 when done.
 
 The **Theme** dropdown applies one of the themes in

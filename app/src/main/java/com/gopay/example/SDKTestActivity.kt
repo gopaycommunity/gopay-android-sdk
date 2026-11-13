@@ -55,6 +55,7 @@ import cz.gopay.sdk.model.ChallengePreference
 import cz.gopay.sdk.model.ChargePaymentResponse
 import cz.gopay.sdk.model.ChargeState
 import cz.gopay.sdk.model.deviceDefault
+import cz.gopay.sdk.model.EncryptedCardPayloadWithMetadata
 import cz.gopay.sdk.model.QrCodeFormat
 import cz.gopay.sdk.session.AwaitChargeOptions
 import cz.gopay.sdk.session.PaymentSession
@@ -495,7 +496,19 @@ fun SDKTestScreen() {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                CardFormSection(isBusy = isBusy, onError = { log("Error: $it") }) { encrypted ->
+                CardFormSection(
+                    isBusy = isBusy,
+                    onError = { log("Error: $it") },
+                    onJweWithMetadata = { result ->
+                        jwe = result.encryptedPayload
+                        // The same JWE as below, with what the gateway knows about the card.
+                        log(
+                            "// submitCardFormWithMetadata(\"$CONSOLE_CARD_FORM_ID\") -> JWE of " +
+                                "${result.encryptedPayload.length} characters, filled into the field below\n" +
+                                "// " + CardMetadataText.line(result.cardMetadata)
+                        )
+                    }
+                ) { encrypted ->
                     jwe = encrypted
                     // The encrypted card is not printed either; its length says the encryption ran.
                     log("// submitCardForm(\"$CONSOLE_CARD_FORM_ID\") -> JWE of ${encrypted.length} characters, filled into the field below")
@@ -606,10 +619,16 @@ private const val CONSOLE_CARD_FORM_ID = "console-card"
 /**
  * The card form the way an integration uses it since 2.2: the form keeps the card under
  * [CONSOLE_CARD_FORM_ID], shows its own localized validation errors as the user types, and the
- * button below asks `GopaySDK.submitCardForm(formId)` for the JWE, the same call as on iOS.
+ * button below asks `GopaySDK.submitCardForm(formId)` for the JWE, the same call as on iOS. The
+ * second button asks `submitCardFormWithMetadata(formId)` for the JWE with the card's metadata.
  */
 @Composable
-fun CardFormSection(isBusy: Boolean, onError: (String) -> Unit, onJwe: (String) -> Unit) {
+fun CardFormSection(
+    isBusy: Boolean,
+    onError: (String) -> Unit,
+    onJweWithMetadata: (EncryptedCardPayloadWithMetadata) -> Unit,
+    onJwe: (String) -> Unit
+) {
     var isProcessing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
@@ -676,31 +695,34 @@ fun CardFormSection(isBusy: Boolean, onError: (String) -> Unit, onJwe: (String) 
             modifier = Modifier.fillMaxWidth()
         )
 
-        Button(
-            onClick = {
-                // Taken on the tap, like the console's run(): a second tap before the button
-                // redraws disabled would encrypt again.
-                if (isProcessing || isBusy) return@Button
-                isProcessing = true
-                coroutineScope.launch {
-                    errorMessage = null
-                    try {
-                        // Validates the form, fetches the public key, encrypts, and empties the
-                        // form on success. VALIDATION_008 names an empty form, VALIDATION_007
-                        // an invalid one.
-                        onJwe(GopaySDK.getInstance().submitCardForm(CONSOLE_CARD_FORM_ID))
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: GopaySDKException) {
-                        errorMessage = "[${e.code}] ${e.message}"
-                    } catch (e: Exception) {
-                        errorMessage = "Unexpected error: ${e.message}"
-                    } finally {
-                        errorMessage?.let(onError)
-                        isProcessing = false
-                    }
+        // Both buttons submit the same form; [call] is the SDK call the tapped one makes.
+        fun submit(call: suspend () -> Unit) {
+            // Taken on the tap, like the console's run(): a second tap before the button
+            // redraws disabled would encrypt again.
+            if (isProcessing || isBusy) return
+            isProcessing = true
+            coroutineScope.launch {
+                errorMessage = null
+                try {
+                    // Validates the form, fetches the public key, encrypts, and empties the
+                    // form on success. VALIDATION_008 names an empty form, VALIDATION_007
+                    // an invalid one.
+                    call()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: GopaySDKException) {
+                    errorMessage = "[${e.code}] ${e.message}"
+                } catch (e: Exception) {
+                    errorMessage = "Unexpected error: ${e.message}"
+                } finally {
+                    errorMessage?.let(onError)
+                    isProcessing = false
                 }
-            },
+            }
+        }
+
+        Button(
+            onClick = { submit { onJwe(GopaySDK.getInstance().submitCardForm(CONSOLE_CARD_FORM_ID)) } },
             modifier = Modifier.fillMaxWidth(),
             enabled = !isProcessing && !isBusy
         ) {
@@ -712,6 +734,17 @@ fun CardFormSection(isBusy: Boolean, onError: (String) -> Unit, onJwe: (String) 
             } else {
                 Text("Encrypt card → JWE (submitCardForm)")
             }
+        }
+
+        // The same submit with the card's metadata beside the JWE; null metadata is a normal answer.
+        OutlinedButton(
+            onClick = {
+                submit { onJweWithMetadata(GopaySDK.getInstance().submitCardFormWithMetadata(CONSOLE_CARD_FORM_ID)) }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isProcessing && !isBusy
+        ) {
+            Text("Encrypt card → JWE + metadata (submitCardFormWithMetadata)")
         }
 
         errorMessage?.let { Text("Error: $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
