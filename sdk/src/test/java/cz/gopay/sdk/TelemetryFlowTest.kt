@@ -4,6 +4,8 @@ import android.app.Activity
 import cz.gopay.sdk.config.GopayEnvironment
 import cz.gopay.sdk.config.GopayConfig
 import cz.gopay.sdk.exception.ErrorReporter
+import cz.gopay.sdk.model.CardMetadata
+import cz.gopay.sdk.model.CardScheme
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.modules.network.AuthApi
@@ -19,6 +21,7 @@ import cz.gopay.sdk.ui.CardFormData
 import cz.gopay.sdk.ui.CardFormHandlers
 import cz.gopay.sdk.ui.CardFormStore
 import cz.gopay.sdk.ui.submitCardForm
+import cz.gopay.sdk.ui.submitCardFormWithMetadata
 import cz.gopay.sdk.util.SdkLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -272,6 +275,31 @@ class TelemetryFlowTest {
         val values = submit.filterKeys { it !in setOf("trace_id", "transaction_id") }.values
         for (leak in listOf("4444", "1228", "123", "eyJ")) {
             assertFalse("$leak in $values", values.any { it is String && it.contains(leak) })
+        }
+    }
+
+    @Test
+    fun `each of the two submits names its own flow and carries nothing of the card or its metadata`() {
+        sdk { issued() }
+        CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = {}, submitAttempted = {}))
+        val card = CardFormData("4444444444444448", "1228", "123")
+        val jwe = "eyJhbGciOiJSU0EtT0FFUCJ9.abcdefghij.klmnopqrst.uvwxyzabcd.efghijklmn"
+
+        CardFormStore.update("form-1", formOwner, card)
+        runBlocking { submitCardForm("form-1") { jwe } }
+        CardFormStore.update("form-1", formOwner, card)
+        runBlocking {
+            submitCardFormWithMetadata("form-1", encrypt = { jwe }, lookUp = { CardMetadata(CardScheme.VISA, corporate = false) })
+        }
+
+        val submits = events.filter { it["event_type"] == "interaction" }
+        assertEquals(listOf("return-payload", "payload-with-metadata"), submits.map { it["flow"] })
+        for (submit in submits) {
+            assertEquals("card-form", submit["element_id"])
+            val values = submit.filterKeys { it !in setOf("trace_id", "transaction_id") }.values
+            for (leak in listOf("4444", "1228", "123", "eyJ", "VISA")) {
+                assertFalse("$leak in $values", values.any { it is String && it.contains(leak) })
+            }
         }
     }
 }

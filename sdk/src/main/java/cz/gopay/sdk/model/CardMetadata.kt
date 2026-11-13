@@ -1,6 +1,25 @@
 package cz.gopay.sdk.model
 
 /**
+ * What [cz.gopay.sdk.GopaySDK.submitCardFormWithMetadata] returns: the JWE of the card, as
+ * `submitCardForm` returns it, and what the gateway knows about the card. The same names on iOS
+ * and in the browser SDK.
+ *
+ * @property encryptedPayload JWE compact serialization (RFC 7516) ready to send to the merchant
+ *           backend, good for a single charge.
+ * @property cardMetadata the metadata of the card, or null when the gateway knows none, the
+ *           lookup failed or took longer than 3 seconds. The payload is good either way.
+ */
+data class EncryptedCardPayloadWithMetadata(
+    val encryptedPayload: String,
+    val cardMetadata: CardMetadata?
+) {
+    /** Masked: the data-class default would print the JWE, which must not be logged. */
+    override fun toString(): String =
+        "EncryptedCardPayloadWithMetadata(encryptedPayload=***, cardMetadata=$cardMetadata)"
+}
+
+/**
  * What the gateway knows about a card from the start of its number: the answer of
  * `POST /cards/bin-lookup`, returned beside the JWE by
  * [cz.gopay.sdk.GopaySDK.submitCardFormWithMetadata]. Shown to the customer or used to pick a

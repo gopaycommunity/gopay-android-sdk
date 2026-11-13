@@ -405,6 +405,33 @@ class GopaySDKTest {
     }
 
     @Test
+    fun `submitCardFormWithMetadata fails like submitCardForm, with the same codes, each reported once`() {
+        // No clientId/shareableKey: the lookup has nothing to ask with and stays quiet, and the
+        // key fetch fails with AUTH_011, the error submitCardForm reports for the same form.
+        GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.SANDBOX, errorCallback = { reported.add(it) }))
+        var resets = 0
+        CardFormStore.register("form-1", formOwner, CardFormHandlers(reset = { resets++ }, submitAttempted = {}))
+        val sdk = GopaySDK.getInstance()
+
+        val none = assertThrows(GopaySDKException::class.java) { runBlocking { sdk.submitCardFormWithMetadata("no-such-form") } }
+        assertEquals(GopayErrorCodes.VALIDATION_CARD_FORM_EMPTY, none.code)
+        assertEquals(NO_CARD_DATA_MESSAGE, none.message)
+
+        CardFormStore.update("form-1", formOwner, CardFormData("4532015112830366", "1230", "12"))
+        val invalid = assertThrows(GopaySDKException::class.java) { runBlocking { sdk.submitCardFormWithMetadata("form-1") } }
+        assertEquals(GopayErrorCodes.VALIDATION_INVALID_INPUT, invalid.code)
+        assertEquals(INVALID_CARD_FORM_DATA_MESSAGE, invalid.message)
+
+        CardFormStore.update("form-1", formOwner, CardFormData("4532015112830366", "1230", "123"))
+        val noKey = assertThrows(GopaySDKException::class.java) { runBlocking { sdk.submitCardFormWithMetadata() } }
+        assertEquals(GopayErrorCodes.AUTH_SHAREABLE_KEY_MISSING, noKey.code)
+
+        assertEquals("the failed lookup reports nothing, the rest once each", listOf(none, invalid, noKey), reported)
+        assertEquals("the card stays in the form after a failed encryption", 0, resets)
+        assertEquals(setOf("form-1"), CardFormStore.storedFormIds())
+    }
+
+    @Test
     fun `clearCardFormData empties one form or every form`() {
         GopaySDK.initialize(GopayConfig(environment = GopayEnvironment.SANDBOX))
         val resets = mutableListOf<String>()

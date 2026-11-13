@@ -13,10 +13,13 @@ import cz.gopay.sdk.exception.GopaySDKException
 import cz.gopay.sdk.exception.reportErrors
 import cz.gopay.sdk.locales.GopayLocaleStrings
 import cz.gopay.sdk.locales.GopayLocales
+import cz.gopay.sdk.model.EncryptedCardPayloadWithMetadata
 import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.model.GooglePayInfoResponse
 import cz.gopay.sdk.modules.network.NetworkManager
+import cz.gopay.sdk.modules.network.PublicApi
 import cz.gopay.sdk.service.CardEncryption
+import cz.gopay.sdk.service.CardMetadataLookup
 import cz.gopay.sdk.service.GooglePayHelper
 import cz.gopay.sdk.session.PaymentSession
 import cz.gopay.sdk.telemetry.GwLoggerTelemetry
@@ -47,8 +50,8 @@ import kotlin.coroutines.suspendCoroutine
  * merchant backend calls `POST /cards/tokens`. The mobile SDK never touches that endpoint.
  *
  * The names shared with the iOS SDK are the main ones: [isWalletAvailable], [submitCardForm],
- * [clearCardFormData], and on the session `getWalletInfo`, `chargeWithWallet` and the card
- * helpers. None of them needs an Activity: the SDK follows the screen in front since
+ * [submitCardFormWithMetadata], [clearCardFormData], and on the session `getWalletInfo`,
+ * `chargeWithWallet` and the card helpers. None of them needs an Activity: the SDK follows the screen in front since
  * [initialize] took the Context, and a call may still name the Activity to open from. The Google
  * Pay names are deprecated aliases of the same bodies.
  */
@@ -59,7 +62,20 @@ class GopaySDK private constructor(val config: GopayConfig) {
 
     private val networkManager = NetworkManager(config, telemetry)
 
-    private val cardEncryption = CardEncryption(publicApi = { networkManager.publicApi })
+    private var publicApiOverride: PublicApi? = null
+
+    /** The shareable-key API of the card encryption and the BIN lookup; a test can replace it. */
+    private fun publicApi(): PublicApi = publicApiOverride ?: networkManager.publicApi
+
+    private val cardEncryption = CardEncryption(publicApi = ::publicApi)
+
+    private val cardMetadataLookup = CardMetadataLookup(publicApi = ::publicApi)
+
+    /** The card encryption and the BIN lookup talk to [api] instead of the gateway. Tests only. */
+    @VisibleForTesting
+    internal fun setPublicApiForTest(api: PublicApi) {
+        publicApiOverride = api
+    }
 
     /** Registry of live payment sessions keyed by `payment_id`. Supports concurrent payments. */
     private val sessions: ConcurrentHashMap<String, PaymentSession> = ConcurrentHashMap()
@@ -240,6 +256,45 @@ class GopaySDK private constructor(val config: GopayConfig) {
     suspend fun submitCardForm(formId: String? = null): String = reportErrors {
         cz.gopay.sdk.ui.submitCardForm(formId) { encryptCardData(it) }
     }
+
+    /**
+     * [submitCardForm] that also returns what the gateway knows about the card: its scheme,
+     * whether it is a corporate card and, where the gateway says so, its brand, debit or credit,
+     * the issuer and the issuer's country. The same call on iOS,
+     * `submitCardFormWithMetadata(formId:)`, and the browser SDK's `payload-with-metadata` flow.
+     *
+     * The form is validated, encrypted and emptied exactly as [submitCardForm] does it, and the
+     * errors are the same. Beside the encryption the SDK sends the first eight digits of the
+     * card number to `POST /cards/bin-lookup`, with the shareable key. The lookup never fails
+     * the call and never reaches `errorCallback`: when the gateway knows nothing about the card,
+     * the lookup fails or it takes longer than 3 seconds,
+     * [EncryptedCardPayloadWithMetadata.cardMetadata] is null and the JWE is returned all the
+     * same, with a warning in Logcat while [GopayConfig.debugLoggingEnabled] is on. The result
+     * is returned once both the encryption and the lookup have ended; a failed encryption
+     * cancels the lookup.
+     *
+     * A call cancelled before it returns ends the lookup too, with the `CancellationException`,
+     * not reported through `errorCallback`, and the card stays in the form, also when the JWE
+     * was already made.
+     *
+     * The metadata is for showing the card or picking a flow. Do not let a payment depend on it.
+     *
+     * The call can take up to 3 seconds longer than [submitCardForm]. Keep the form and the pay
+     * button disabled until it returns.
+     *
+     * @param formId the form to read, the `formId` it was composed with. When null, the most
+     *        recently active form.
+     * @return the JWE, good for a single charge, and the card's metadata or null.
+     * @throws GopaySDKException what [submitCardForm] throws, for the same reasons.
+     */
+    suspend fun submitCardFormWithMetadata(formId: String? = null): EncryptedCardPayloadWithMetadata =
+        reportErrors {
+            cz.gopay.sdk.ui.submitCardFormWithMetadata(
+                formId,
+                encrypt = { encryptCardData(it) },
+                lookUp = { cardMetadataLookup.lookUp(it) }
+            )
+        }
 
     /**
      * Drops the SDK's copy of the card a [cz.gopay.sdk.ui.PaymentCardForm] holds and empties

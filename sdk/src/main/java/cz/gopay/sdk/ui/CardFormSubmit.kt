@@ -3,15 +3,20 @@ package cz.gopay.sdk.ui
 import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
+import cz.gopay.sdk.model.CardMetadata
+import cz.gopay.sdk.model.EncryptedCardPayloadWithMetadata
 import cz.gopay.sdk.model.GopayCardData
 import cz.gopay.sdk.telemetry.GwLoggerTelemetry
 import cz.gopay.sdk.telemetry.Telemetry
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 
 /**
  * The submit of a [PaymentCardForm], the body behind [GopaySDK.submitCardForm]: reads the SDK's
- * copy of the form, tells the form a submit ran, validates, encrypts with [encrypt], and empties the form once
- * the JWE exists. Reports no error: the public call it runs inside does. Reports the card form
+ * copy of the form, tells the form a submit ran, validates, encrypts with [encrypt], and empties
+ * the form once the JWE exists. Reports no error: the public call it runs inside does. Reports the card form
  * steps of the submit: the press and the errors it found, before anything is checked, then how
  * the encryption ended, the visit's summary when the JWE was made or a failure the summary will
  * carry if nothing is typed after it. A cancellation is neither.
@@ -22,7 +27,63 @@ import kotlinx.coroutines.CancellationException
  *         screen or the form is empty, [GopayErrorCodes.VALIDATION_INVALID_INPUT] when what it
  *         holds fails validation; then whatever [encrypt] throws.
  */
-internal suspend fun submitCardForm(formId: String?, encrypt: suspend (GopayCardData) -> String): String {
+internal suspend fun submitCardForm(formId: String?, encrypt: suspend (GopayCardData) -> String): String =
+    submitForm(formId, GwLoggerTelemetry.CARD_FORM_FLOW, encrypt)
+
+/**
+ * The body behind [GopaySDK.submitCardFormWithMetadata]: [submitCardForm] with the card's
+ * metadata looked up beside the encryption. Both start together and the result is returned once
+ * both have ended, so a slow lookup can hold the result back, up to its own limit of 3 seconds
+ * from the start.
+ *
+ * The lookup decides nothing: whatever it does, [lookUp] answers null and the JWE is returned.
+ * An encryption that fails cancels the lookup and throws what [submitCardForm] would throw, with
+ * the card left in the form. A cancellation of the caller ends both and leaves the card too, also
+ * when only the lookup is still running. The form is validated, reported and emptied exactly as
+ * there.
+ *
+ * @param lookUp `CardMetadataLookup.lookUp` in production, which keeps its own time limit and
+ *        throws nothing but the caller's cancellation; given the card number, it sends only
+ *        the first eight digits.
+ */
+internal suspend fun submitCardFormWithMetadata(
+    formId: String?,
+    encrypt: suspend (GopayCardData) -> String,
+    lookUp: suspend (cardNumber: String) -> CardMetadata?
+): EncryptedCardPayloadWithMetadata =
+    submitForm(formId, GwLoggerTelemetry.CARD_FORM_WITH_METADATA_FLOW) { cardData ->
+        coroutineScope {
+            val metadata = async {
+                try {
+                    lookUp(cardData.cardPan)
+                } catch (e: CancellationException) {
+                    // The submit's own cancellation goes on. One from anywhere else is a lookup
+                    // that did not answer, and never the submit's failure.
+                    ensureActive()
+                    null
+                } catch (e: Throwable) {
+                    // The production lookup throws no failure; one is never the submit's anyway.
+                    null
+                }
+            }
+            val jwe = try {
+                encrypt(cardData)
+            } catch (e: Throwable) {
+                // The scope would cancel the lookup on its own once this failure leaves it; said
+                // here because it is the rule: no JWE, no lookup.
+                metadata.cancel()
+                throw e
+            }
+            EncryptedCardPayloadWithMetadata(encryptedPayload = jwe, cardMetadata = metadata.await())
+        }
+    }
+
+/** The submit both public calls share; [flow] is what the operational data calls this one. */
+private suspend fun <T> submitForm(
+    formId: String?,
+    flow: String,
+    encrypt: suspend (GopayCardData) -> T
+): T {
     val (id, data) = CardFormStore.resolve(formId)
     val steps = CardFormStore.steps(id)
     // With the validity the pay button was pressed on, then the errors the press found, whether
@@ -32,7 +93,7 @@ internal suspend fun submitCardForm(formId: String?, encrypt: suspend (GopayCard
     steps?.submitted { (data ?: CardFormData()).progress() }
     val cardData = data?.takeUnless { it.isEmpty }?.takeIf { it.isValid }?.toCardData()
         ?: throw invalidCardForm(data)
-    val jwe = try {
+    val result = try {
         encrypt(cardData)
     } catch (e: CancellationException) {
         throw e
@@ -42,9 +103,7 @@ internal suspend fun submitCardForm(formId: String?, encrypt: suspend (GopayCard
     }
     // That the user submitted and the payload exists, timed from the form's ready: nothing about
     // the card, the JWE or its length.
-    Telemetry.current?.submit(
-        "card-form", GwLoggerTelemetry.Method.CARD, "card", flow = GwLoggerTelemetry.CARD_FORM_FLOW
-    )
+    Telemetry.current?.submit("card-form", GwLoggerTelemetry.Method.CARD, "card", flow = flow)
     // The visit ends here, with its summary, before the form is emptied.
     steps?.encrypted()
     // Only clear after encryption succeeded: on failure (e.g. key fetch offline) the user
@@ -52,7 +111,7 @@ internal suspend fun submitCardForm(formId: String?, encrypt: suspend (GopayCard
     // empties the fields the form still shows, so the card does not outlive the JWE made
     // from it (PCI DSS 4.0.1, req. 3.3.1).
     CardFormStore.clear(id)
-    return jwe
+    return result
 }
 
 /**

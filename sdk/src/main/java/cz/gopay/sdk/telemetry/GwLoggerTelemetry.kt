@@ -463,6 +463,13 @@ internal class GwLoggerTelemetry(
          */
         const val CARD_FORM_FLOW = "return-payload"
 
+        /**
+         * The flow of a submit that also returns the card's metadata, the browser SDK's
+         * `payload-with-metadata`. Only the submit carries it: the form's own steps are reported
+         * before it is known which of the two submits the host will call.
+         */
+        const val CARD_FORM_WITH_METADATA_FLOW = "payload-with-metadata"
+
         /** gw-logger's cap on a request body, less what the envelope and the `seq` add. */
         const val MAX_EVENT_BYTES = 16 * 1024 - 64
 
