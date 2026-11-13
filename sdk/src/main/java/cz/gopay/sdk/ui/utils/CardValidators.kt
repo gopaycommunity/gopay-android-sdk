@@ -1,17 +1,19 @@
 package cz.gopay.sdk.ui.utils
 
 /**
- * Simple input validator for card numbers that only allows digits
+ * Simple input validator for card numbers that only allows digits: the ASCII ones, `0` to `9`.
+ * `Char.isDigit()` also takes the digits of other scripts, which a keyboard or a paste can
+ * deliver; a card number has none, and the iOS form refuses them too.
  */
 internal object CardNumberInputValidator {
     fun validateInput(input: String, maxLength: Int = 16): String {
-        return input.filter { it.isDigit() }.take(maxLength)
+        return getDigitsOnly(input).take(maxLength)
     }
     fun isComplete(input: String): Boolean {
-        return input.filter { it.isDigit() }.length == 16
+        return getDigitsOnly(input).length == 16
     }
     fun getDigitsOnly(input: String): String {
-        return input.filter { it.isDigit() }
+        return input.filter { it in '0'..'9' }
     }
     fun isValidLength(input: String): Boolean {
         val digits = getDigitsOnly(input)
@@ -97,9 +99,18 @@ internal object CardValidator {
             requireLuhn && !CardNumberInputValidator.isValidLuhn(digitsOnly) -> ValidationResult.invalid(
                 "Invalid card number"
             )
+            // A brand the form does not accept reads like a number that fails the Luhn check.
+            CardBrand.of(digitsOnly) == null -> ValidationResult.invalid("Invalid card number")
             else -> ValidationResult.valid()
         }
     }
+
+    /**
+     * Whether [cardNumber] is a whole card number the form accepts: 16 digits, the Luhn check and
+     * a brand of [CardBrand]. The one check behind the field's validity, its error, the submit
+     * and the jump of the focus to the expiration. `completesCardNumber` on iOS.
+     */
+    fun completesCardNumber(cardNumber: String): Boolean = validateCardNumber(cardNumber).isValid
     // --- Expiration date validation helpers ---
     fun isValidLength(expirationDate: String): Boolean {
         val digitsOnly = expirationDate.filter { it.isDigit() }

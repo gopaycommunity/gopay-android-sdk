@@ -56,8 +56,10 @@ class CardValidatorTest {
 
     @Test
     fun `validateCardNumber skips Luhn when not required`() {
-        val result = CardValidator.validateCardNumber("1234567890123456", requireLuhn = false)
+        // A Visa number that fails the check; the brand is checked either way.
+        val result = CardValidator.validateCardNumber("4532015112830365", requireLuhn = false)
         assertTrue(result.isValid)
+        assertFalse(CardValidator.validateCardNumber("1234567890123456", requireLuhn = false).isValid)
     }
 
     // ---- validateExpirationDate ----

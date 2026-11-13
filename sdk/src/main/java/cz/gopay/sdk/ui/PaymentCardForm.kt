@@ -215,7 +215,7 @@ fun PaymentCardForm(
     }
     // A field losing the focus because the activity is being recreated is not a field left.
     val changingConfigurations = { view.context.findActivity()?.isChangingConfigurations == true }
-    val isCardNumberValid = CardValidator.validateCardNumber(cardNumberDigits).isValid
+    val isCardNumberValid = CardValidator.completesCardNumber(cardNumberDigits)
 
     // What the fields hold right now, as the SDK's copy stores it.
     val snapshot = { CardFormData(cardNumberDigits, expirationDateDigits, cvv) }
@@ -369,7 +369,8 @@ fun PaymentCardForm(
                 cardNumberEdited = true
                 CardFormStore.update(resolvedFormId, owner, snapshot())
                 reportInput(CardFormProgress.Field.PAN)
-                if (CardNumberInputValidator.isValidLength(validated) && CardNumberInputValidator.isValidLuhn(validated)) {
+                // Only a number the form accepts moves on: an unsupported brand stays, with its error.
+                if (CardValidator.completesCardNumber(validated)) {
                     coroutineScope.launch {
                         expirationFocusRequester.requestFocus()
                     }

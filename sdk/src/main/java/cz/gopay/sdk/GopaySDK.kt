@@ -224,6 +224,10 @@ class GopaySDK private constructor(val config: GopayConfig) {
      * errors from this call on, whether or not it passes. Safe to call from any thread: the
      * form is updated on the main thread.
      *
+     * A card number the form does not accept fails validation here: one that is not 16 digits,
+     * fails the Luhn check, or is of a brand other than Visa, Visa Electron, Mastercard and
+     * Maestro. [encryptCardData] does not check the brand.
+     *
      * @param formId the form to read, the `formId` it was composed with. When null, the most
      *        recently active form.
      * @return JWE compact serialization (RFC 7516) ready to send to the merchant backend.
