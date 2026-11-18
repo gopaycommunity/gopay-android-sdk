@@ -322,6 +322,9 @@ class PaymentSessionInitSessionTest {
     private fun start(): PaymentSession = runBlocking { sdk().startPaymentSession(PAYMENT, "secret") }
 
     private fun sdk(): GopaySDK {
+        // A fresh instance each round: initialize with the same config would keep the last one,
+        // with the session of the round before still open in it.
+        GopaySDK::class.java.getDeclaredField("instance").apply { isAccessible = true }.set(null, null)
         GopaySDK.initialize(
             GopayConfig(
                 environment = GopayEnvironment.SANDBOX,

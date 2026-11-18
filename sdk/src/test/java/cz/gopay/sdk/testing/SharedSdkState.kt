@@ -1,5 +1,6 @@
 package cz.gopay.sdk.testing
 
+import cz.gopay.sdk.GopaySDK
 import cz.gopay.sdk.exception.ErrorReporter
 import cz.gopay.sdk.telemetry.Telemetry
 import cz.gopay.sdk.ui.ForegroundScreen
@@ -16,7 +17,7 @@ import org.junit.rules.ExternalResource
  * Part of the state the SDK keeps once per process, which every test class in the JVM therefore
  * shares, and no more than this: the two bridges to the SDK's own screens, the screen in front,
  * how the screens are started and how long they are waited for, the main dispatcher, the
- * telemetry of the SDK initialized last and the error callback. The SDK singleton, the locales,
+ * telemetry of the SDK initialized last, the error callback and the SDK singleton. The locales,
  * the card form store and the telemetry's HTTP override and counters are not touched here; a
  * class that changes those puts them back itself.
  *
@@ -60,11 +61,18 @@ class SharedSdkState : ExternalResource() {
         Dispatchers.resetMain()
         Telemetry.current = null
         ErrorReporter.clear()
+        instanceField.set(null, null)
     }
 
     companion object {
         /** The limit of `SdkScreens.showTimeoutMs` in production. */
         private const val SHOW_TIMEOUT_MS = 30_000L
+
+        /**
+         * The SDK singleton. An `initialize` with the same connection keeps the instance it
+         * finds, so one a test leaves would carry its sessions into the next.
+         */
+        private val instanceField = GopaySDK::class.java.getDeclaredField("instance").apply { isAccessible = true }
 
         // The functions the SDK ships with, taken when the rule's class is loaded, before its
         // first test. A test that replaced one before that is caught by leftBehind(), by the
@@ -94,6 +102,7 @@ class SharedSdkState : ExternalResource() {
             if (!isTheSdksOwn(SdkScreens.startGooglePay)) add("SdkScreens.startGooglePay is a test's")
             if (Telemetry.current != null) add("Telemetry.current is set")
             if (ErrorReporter.isEnabled()) add("ErrorReporter still has an error callback")
+            if (GopaySDK.isInitialized()) add("GopaySDK still has an instance")
         }
 
         /**

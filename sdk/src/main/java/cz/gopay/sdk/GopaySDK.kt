@@ -55,7 +55,23 @@ import kotlin.coroutines.suspendCoroutine
  * [initialize] took the Context, and a call may still name the Activity to open from. The Google
  * Pay names are deprecated aliases of the same bodies.
  */
-class GopaySDK private constructor(val config: GopayConfig) {
+class GopaySDK private constructor(config: GopayConfig) {
+
+    /**
+     * The config of the latest [initialize]. A later `initialize` with the same connection
+     * replaces it here, with its `errorCallback`, `locale` and `customLocales`, and keeps this
+     * instance; one with another connection replaces the instance. See [initialize].
+     */
+    @Volatile
+    var config: GopayConfig = config
+        private set
+
+    /**
+     * Set once an [initialize] with another connection replaced this instance and closed its
+     * sessions. A session that finishes starting after that is closed at once, and its start fails.
+     */
+    @Volatile
+    private var replaced = false
 
     /** This instance's operational data; null where it has nowhere to go. See [Telemetry]. */
     internal val telemetry: GwLoggerTelemetry? = Telemetry.create(config)
@@ -119,7 +135,10 @@ class GopaySDK private constructor(val config: GopayConfig) {
      *              [cz.gopay.sdk.exception.GopayErrorCodes.AUTH_PAYMENT_CREDENTIALS_INVALID].
      *              Pass a narrower one, e.g. `payment:read` alone, to only read the payment.
      * @throws GopaySDKException [GopayErrorCodes.VALIDATION_INVALID_INPUT] for an empty
-     *         [paymentId] or [paymentSecret], before anything is sent, as on iOS.
+     *         [paymentId] or [paymentSecret], before anything is sent, as on iOS;
+     *         [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED] when [initialize] switched to another
+     *         connection while this call waited for the token, which closed the session with
+     *         the others of this instance; start it again on [getInstance].
      */
     suspend fun startPaymentSession(
         paymentId: String,
@@ -138,6 +157,10 @@ class GopaySDK private constructor(val config: GopayConfig) {
                 message = "paymentSecret must not be empty"
             )
         }
+
+        // An instance an initialize with another connection replaced starts nothing: no token
+        // exchange, and the same error as a start it overtakes below.
+        if (replaced) reportErrors(paymentId) { throw closedByInitialize(paymentId) }
 
         // Attached before the token exchange, as in the browser SDK: the token call and the error
         // of a failed start then belong to the payment they were for. Detached again on failure.
@@ -174,11 +197,31 @@ class GopaySDK private constructor(val config: GopayConfig) {
                 message = "A PaymentSession for $paymentId already exists; close it before starting a new one."
             )
         }
+        // An initialize with another connection ran while the token was on its way and closed
+        // the sessions it found: this one is closed as they were, and the start fails as a call
+        // on them does, as on iOS. The flag is read after the session is registered, and
+        // initialize sets it before it closes the sessions, so one of the two always closes it.
+        // A session closed here was never navigated and takes no `leave` with it; one that
+        // initialize closed first has sent its `leave` already.
+        if (replaced) {
+            if (sessions.remove(paymentId, session)) {
+                session.close()
+                telemetry?.detach(paymentId)
+            }
+            reportErrors(paymentId) { throw closedByInitialize(paymentId) }
+        }
         telemetry?.navigate(paymentId)
         // In the background; nothing here waits for it or hears of its failure.
         session.startInitSession()
         session
     }
+
+    /** The error of a start that an initialize with another connection overtook. */
+    private fun closedByInitialize(paymentId: String) = GopaySDKException(
+        code = GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED,
+        message = "PaymentSession for $paymentId is closed: initialize switched to another " +
+            "connection while it started."
+    )
 
     /**
      * Looks up an in-progress PaymentSession by `payment_id`. Returns null if none is registered
@@ -408,6 +451,17 @@ class GopaySDK private constructor(val config: GopayConfig) {
          * soon as that `onResume` has returned. A debug build says in Logcat when the screen in
          * front was missed.
          *
+         * Calling it again, as React Native does on every reload, is safe. With the same
+         * connection (the environment, including the base URL of a development one, `clientId`,
+         * `shareableKey`, `requestTimeoutMs` and `debugLoggingEnabled`) the SDK keeps its instance
+         * and its open payment sessions and sends no second `init` event; only the new
+         * `errorCallback`, `locale`, `customLocales` and [context] take effect, for the sessions
+         * started before too. With a different connection the SDK switches and closes every
+         * open payment session, as [closeAllPaymentSessions] does: a call on such a session
+         * fails with [GopayErrorCodes.AUTH_PAYMENT_SESSION_CLOSED], as after
+         * [PaymentSession.close], and [startPaymentSession] for the same payment starts a new
+         * one. An `initialize` that fails changes nothing.
+         *
          * @param context any Context of the app; an Activity is fine, only its application
          *        Context is kept.
          * @throws GopaySDKException [GopayErrorCodes.CONFIG_INVALID_BASE_URL] for a base URL the
@@ -423,6 +477,9 @@ class GopaySDK private constructor(val config: GopayConfig) {
          * Initializes the SDK without a Context, as 2.x did. Every call then has to name its
          * Activity: one that needs the Context and names none fails with
          * [GopayErrorCodes.CONFIG_MISSING_CONTEXT].
+         *
+         * Called again, it keeps or closes the open payment sessions as `initialize(context,
+         * config)` does.
          */
         @Deprecated(
             "Pass the Context, so the SDK can follow the screen in front itself",
@@ -433,26 +490,73 @@ class GopaySDK private constructor(val config: GopayConfig) {
             install(config, context = null)
         }
 
-        private fun install(config: GopayConfig, context: Context?) {
-            // Built first, so a config the SDK cannot use changes nothing: the instance, the
-            // callback and the locales of an earlier initialize all stay.
+        /** One [install] at a time, so two of them cannot both keep or both replace an instance. */
+        private val installLock = Any()
+
+        private fun install(config: GopayConfig, context: Context?) = synchronized(installLock) {
+            val earlier = instance
+            if (earlier != null && sameConnection(earlier.config, config)) {
+                // Same gateway, keys and network client: the instance, its sessions and its
+                // operational data stay, and no second `init` goes out. What may change while
+                // the app runs, the callback, the locales and the Context, is taken over.
+                earlier.config = config
+                applyRuntimeSettings(config, context)
+                return@synchronized
+            }
+            // Built first, so a config the SDK cannot use changes nothing: the instance, its
+            // sessions, the callback and the locales of an earlier initialize all stay.
             val sdk = try {
                 GopaySDK(config)
             } catch (e: GopaySDKException) {
                 ErrorReporter.reportTo(config.errorCallback, e)
                 throw e
             }
+            // The new state is out first, so a start the closing below overtakes reports to the
+            // new callback, and getInstance() already answers with the new instance.
+            applyRuntimeSettings(config, context)
+            instance = sdk
+            Telemetry.current = sdk.telemetry
+            // Another connection: the sessions of the earlier instance would go on against the
+            // old gateway and keys, so they are closed and their secrets wiped. Each session
+            // sends its `leave` through the operational data of the instance that started it.
+            if (earlier != null) {
+                earlier.replaced = true
+                earlier.closeAllPaymentSessions()
+            }
+            sdk.telemetry?.init()
+        }
+
+        /** What every [install] takes from [config] and [context], whatever the connection. */
+        private fun applyRuntimeSettings(config: GopayConfig, context: Context?) {
             ErrorReporter.setErrorCallback(config.errorCallback)
             GopayLocales.registerAll(config.customLocales)
             GopayLocales.setDefaultLocale(config.locale)
-            instance = sdk
             // The Context of the latest initialize is the one that counts, like its config.
             if (context != null) ForegroundScreen.install(context) else ForegroundScreen.uninstall()
             // Before the first event, so `init` already carries the app's package name.
             Telemetry.noteOrigin(context)
-            Telemetry.current = sdk.telemetry
-            sdk.telemetry?.init()
         }
+
+        /**
+         * Whether [a] and [b] reach the gateway the same way: the environment, a development
+         * one by its base URL, the keys (a missing, empty or blank one alike), the request
+         * timeout and the debug log, all of which
+         * the network client of an instance is built with. Not the callback, the locales or
+         * anything else that may change while the app runs. Nothing of either is logged.
+         */
+        private fun sameConnection(a: GopayConfig, b: GopayConfig): Boolean =
+            sameEnvironment(a.environment, b.environment) &&
+                sameKey(a.clientId, b.clientId) &&
+                sameKey(a.shareableKey, b.shareableKey) &&
+                a.requestTimeoutMs == b.requestTimeoutMs &&
+                a.debugLoggingEnabled == b.debugLoggingEnabled
+
+        /** A key that is missing, empty or blank is one and the same: none. */
+        private fun sameKey(a: String?, b: String?): Boolean =
+            (a?.takeUnless { it.isBlank() }) == (b?.takeUnless { it.isBlank() })
+
+        private fun sameEnvironment(a: GopayEnvironment, b: GopayEnvironment): Boolean = a === b ||
+            (a is GopayEnvironment.DEVELOPMENT && b is GopayEnvironment.DEVELOPMENT && a.baseUrl == b.baseUrl)
 
         /**
          * Get the singleton instance of the SDK.
