@@ -96,6 +96,7 @@ The callback runs on whatever thread the failing call ends on, not necessarily t
 - **Description**: An operation was invoked on a `PaymentSession` that has been closed
 - **Common Causes**:
   - Session used after `close()` or `closeAllPaymentSessions()`; every method of the session that sends a request throws it before anything goes out, and a token that arrives after the close is not kept. `handle3dsVerification` alone still runs, since it sends nothing on the session
+  - Session closed by an `initialize` with another connection, which closes every open session as `closeAllPaymentSessions()` does; a `startPaymentSession` that `initialize` overtakes while it waits for the token fails with it too
   - On Android, a `handle3dsVerification` that was still waiting for a screen to open its challenge from when the session was closed; a challenge already on screen stays
 - **Developer Action**:
   - Start a new session for the payment

@@ -256,6 +256,16 @@ then; a debug build says so in Logcat. If you have to initialize late, pass the 
 `initialize(config)` without a Context is deprecated; after it every call has to name its
 Activity, and one that does not fails with `CONFIG_MISSING_CONTEXT` (`CONFIG_004`).
 
+**Calling `initialize` again is safe.** React Native does it on every reload. With the same
+connection (the environment, including the base URL of a development one, `clientId`,
+`shareableKey`, the request timeout and `debugLoggingEnabled`) the SDK keeps its open payment
+sessions and sends no second `init` event; only the new `errorCallback`, `locale` and
+`customLocales` take effect, and the new Context, for the sessions started before too. With a
+different connection the SDK switches and closes every open payment session, as
+`closeAllPaymentSessions` does; a call on such a session fails with `AUTH_PAYMENT_SESSION_CLOSED`,
+as after `close()`, and `startPaymentSession` for the same payment starts a new one. An `initialize`
+that fails changes nothing.
+
 ### 3. Show the card form and charge
 
 The first card payment needs the keys above and a payment your backend creates when the checkout
@@ -481,7 +491,7 @@ on its own when you want to log what goes out; pass its result to the charge unc
 
 | Method | Purpose |
 | --- | --- |
-| `initialize(context, GopayConfig)` | Sets up the SDK singleton and takes the Context, from which the SDK follows the screen in front. Call once, in `Application.onCreate`. `initialize(GopayConfig)` without a Context is deprecated. |
+| `initialize(context, GopayConfig)` | Sets up the SDK singleton and takes the Context, from which the SDK follows the screen in front. Call once, in `Application.onCreate`; called again with the same connection it keeps the open sessions, with another it closes them first. `initialize(GopayConfig)` without a Context is deprecated. |
 | `getInstance()` | Returns the singleton; throws if not initialized. |
 | `isInitialized()` | Quick check before calling `getInstance()`. |
 | `isDebugEnabled()` | Reflects `GopayConfig.debugLoggingEnabled`. |
@@ -1345,7 +1355,7 @@ per-payment flow; what a `NETWORK_*` code means for the payment is under
 | `AUTH_PAYMENT_CREDENTIALS_INVALID` | `/oauth2/token` turned the `payment_id`/`payment_secret` pair down (HTTP 400, 401 or 403). Any other failure there keeps its `NETWORK_*` code, or `INTERNAL_*` when the answer cannot be read, so an offline device is not told the payment is bad |
 | `AUTH_PAYMENT_TOKEN_EXPIRED` | JWT still rejected after a single re-auth retry — fetch fresh creds from backend |
 | `AUTH_PAYMENT_SESSION_ALREADY_EXISTS` | `startPaymentSession` called for a `paymentId` that already has a live session |
-| `AUTH_PAYMENT_SESSION_CLOSED` | Any call on a session after `close()`, refused before anything is sent, except `handle3dsVerification`, which sends nothing on the session; a call in flight that has to refresh its token ends the same way, and a token that arrives after the close is not kept |
+| `AUTH_PAYMENT_SESSION_CLOSED` | Any call on a session after `close()`, or after an `initialize` with another connection closed it, refused before anything is sent, except `handle3dsVerification`, which sends nothing on the session; a call in flight that has to refresh its token ends the same way, and a token that arrives after the close is not kept. Also a `startPaymentSession` overtaken by an `initialize` with another connection |
 | `AUTH_SHAREABLE_KEY_MISSING` | `charge(...)`, `encryptCardData` or `PaymentCardForm` called without `clientId`+`shareableKey` |
 | `PAYMENT_GOOGLE_PAY_IN_PROGRESS` | A second Google Pay sheet attempted while one is visible, and nothing else |
 | `PAYMENT_METHOD_UNAVAILABLE` | Google Pay cannot show its sheet on this device, e.g. Google Play services are missing, disabled or outdated |
