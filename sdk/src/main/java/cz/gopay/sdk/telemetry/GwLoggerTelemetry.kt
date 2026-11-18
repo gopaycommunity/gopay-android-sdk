@@ -1,5 +1,6 @@
 package cz.gopay.sdk.telemetry
 
+import androidx.annotation.VisibleForTesting
 import cz.gopay.sdk.BuildConfig
 import cz.gopay.sdk.exception.GopayErrorCodes
 import cz.gopay.sdk.exception.GopaySDKException
@@ -99,11 +100,13 @@ internal class GwLoggerTelemetry(
     private val readyAt = HashMap<Method, Long>()
 
     /**
-     * Payment ids of the sessions being started or open, latest last. An event that does not
-     * name its payment is attributed to the latest, as the browser SDK attributes everything to
-     * the payment attached last; a payment-scoped request names its own.
+     * Payment ids of the sessions being started or open, latest last, each once, with how many
+     * times it is attached: a second start of a payment whose session is open attaches it again
+     * and detaches it when refused, which must leave the open one attached. An event that does
+     * not name its payment is attributed to the latest, as the browser SDK attributes everything
+     * to the payment attached last; a payment-scoped request names its own.
      */
-    private val attached = ArrayList<String>()
+    private val attached = LinkedHashMap<String, Int>()
 
     private val spent = IntArray(Budget.values().size)
 
@@ -116,15 +119,26 @@ internal class GwLoggerTelemetry(
 
     /** A session for [paymentId] is being started: events from here on belong to it. */
     fun attach(paymentId: String) {
-        synchronized(lock) { attached.add(paymentId) }
+        synchronized(lock) {
+            // Removed and put back, so the payment attached again is the latest.
+            val count = attached.remove(paymentId) ?: 0
+            attached[paymentId] = count + 1
+        }
     }
 
     /** The session for [paymentId] failed to start or was closed. */
     fun detach(paymentId: String) {
-        synchronized(lock) { attached.remove(paymentId) }
+        synchronized(lock) {
+            val count = attached[paymentId] ?: return
+            if (count > 1) attached[paymentId] = count - 1 else attached.remove(paymentId)
+        }
     }
 
-    private fun latestPaymentId(): String? = synchronized(lock) { attached.lastOrNull() }
+    private fun latestPaymentId(): String? = synchronized(lock) { attached.keys.lastOrNull() }
+
+    /** The attached payment ids, oldest first. Tests only. */
+    @VisibleForTesting
+    internal fun attachedPaymentIds(): List<String> = synchronized(lock) { attached.keys.toList() }
 
     /** `navigation` / `init`: the SDK was initialized. */
     fun init() = navigation("init", paymentId = null, flow = null, target = null)

@@ -160,6 +160,26 @@ class GwLoggerTelemetryTest {
     }
 
     @Test
+    fun `attaching the same payment twice leaves one entry`() {
+        val telemetry = telemetry()
+        telemetry.attach("A")
+        telemetry.attach("B")
+        telemetry.attach("A")
+
+        assertEquals("once, and the latest", listOf("B", "A"), telemetry.attachedPaymentIds())
+
+        // A second start of A refused: its detach leaves the open session of A attached.
+        telemetry.detach("A")
+        telemetry.init()
+        assertEquals(listOf("B", "A"), telemetry.attachedPaymentIds())
+        assertEquals("A", events.single()["payment_session_id"])
+
+        telemetry.detach("A")
+        telemetry.detach("A")
+        assertEquals("a detach too many changes nothing", listOf("B"), telemetry.attachedPaymentIds())
+    }
+
+    @Test
     fun `names its own payment over the latest one`() {
         val telemetry = telemetry()
         telemetry.attach("A")
