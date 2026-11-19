@@ -145,6 +145,22 @@ class GopaySDK private constructor(config: GopayConfig) {
         paymentSecret: String,
         scope: String = PaymentSession.DEFAULT_SCOPE
     ): PaymentSession = reportErrors {
+        requireStartInput(paymentId, paymentSecret)
+
+        // An instance an initialize with another connection replaced starts nothing: no token
+        // exchange, and the same error as a start it overtakes below.
+        if (replaced) reportErrors(paymentId) { throw closedByInitialize(paymentId) }
+
+        val session = createSession(paymentId, paymentSecret, scope)
+        register(session)
+        telemetry?.navigate(paymentId)
+        // In the background; nothing here waits for it or hears of its failure.
+        session.startInitSession()
+        session
+    }
+
+    /** Refuses an empty [paymentId] or [paymentSecret] before anything is sent, as on iOS. */
+    private fun requireStartInput(paymentId: String, paymentSecret: String) {
         if (paymentId.isBlank()) {
             throw GopaySDKException(
                 code = GopayErrorCodes.VALIDATION_INVALID_INPUT,
@@ -157,15 +173,21 @@ class GopaySDK private constructor(config: GopayConfig) {
                 message = "paymentSecret must not be empty"
             )
         }
+    }
 
-        // An instance an initialize with another connection replaced starts nothing: no token
-        // exchange, and the same error as a start it overtakes below.
-        if (replaced) reportErrors(paymentId) { throw closedByInitialize(paymentId) }
-
+    /**
+     * Exchanges the payment credentials for a session, attached to the operational data for the
+     * time it takes and after; detached again when it fails.
+     */
+    private suspend fun createSession(
+        paymentId: String,
+        paymentSecret: String,
+        scope: String
+    ): PaymentSession {
         // Attached before the token exchange, as in the browser SDK: the token call and the error
-        // of a failed start then belong to the payment they were for. Detached again on failure.
+        // of a failed start then belong to the payment they were for.
         telemetry?.attach(paymentId)
-        val session = try {
+        return try {
             // Reports a failed start under its payment. The exception then remembers it was
             // reported (a compare-and-set on it), so the outer reportErrors adds nothing.
             reportErrors(paymentId) {
@@ -173,23 +195,33 @@ class GopaySDK private constructor(config: GopayConfig) {
                     paymentId = paymentId,
                     paymentSecret = paymentSecret,
                     scope = scope,
-                    onClose = {
-                        // Only the registered session: a duplicate closed below never started.
-                        if (sessions.remove(it.paymentId, it)) {
-                            telemetry?.leave(it.paymentId)
-                            telemetry?.detach(it.paymentId)
-                        }
-                    }
+                    onClose = ::unregister
                 )
             }
         } catch (e: Throwable) {
             telemetry?.detach(paymentId)
             throw e
         }
+    }
+
+    /** What closing a session does here: only the registered one leaves, a duplicate never started. */
+    private fun unregister(session: PaymentSession) {
+        if (sessions.remove(session.paymentId, session)) {
+            telemetry?.leave(session.paymentId)
+            telemetry?.detach(session.paymentId)
+        }
+    }
+
+    /**
+     * Registers [session] under its payment, or closes it and throws: when the payment has a
+     * session already, or when an initialize with another connection replaced this instance
+     * while the token was on its way.
+     */
+    private fun register(session: PaymentSession) {
+        val paymentId = session.paymentId
         // putIfAbsent is the only check needed — concurrent callers either land here or in close()
         // below if they raced and lost.
-        val existing = sessions.putIfAbsent(paymentId, session)
-        if (existing != null) {
+        if (sessions.putIfAbsent(paymentId, session) != null) {
             session.close()
             telemetry?.detach(paymentId)
             throw GopaySDKException(
@@ -210,10 +242,6 @@ class GopaySDK private constructor(config: GopayConfig) {
             }
             reportErrors(paymentId) { throw closedByInitialize(paymentId) }
         }
-        telemetry?.navigate(paymentId)
-        // In the background; nothing here waits for it or hears of its failure.
-        session.startInitSession()
-        session
     }
 
     /** The error of a start that an initialize with another connection overtook. */
