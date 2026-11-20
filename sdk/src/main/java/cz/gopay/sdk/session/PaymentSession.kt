@@ -48,6 +48,7 @@ import cz.gopay.sdk.util.JwtUtils
 import cz.gopay.sdk.util.SdkLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -131,10 +132,14 @@ class PaymentSession internal constructor(
     private var initSession: InitSessionInFlight? = null
 
     private class InitSessionInFlight(val call: Call<Unit>, val closeSignal: SessionCloseSignal) {
+        /** Completes when the request ends, however it ends, or when [close] cancels it. */
+        val done = CompletableDeferred<Unit>()
+
         /** Marks the cancel as the close's before it happens, so nothing reports it. */
         fun cancelForClose() {
             closeSignal.closed = true
             call.cancel()
+            done.complete(Unit)
         }
     }
 
@@ -143,10 +148,14 @@ class PaymentSession internal constructor(
      * registered: tells GoPay that this SDK, in [GopaySDK.version], works with the payment, and
      * sets the payment's language from the system's languages ([acceptLanguageHeader]).
      *
-     * Nothing depends on it, so it must cost the payment nothing: it returns at once and the
-     * request goes out in the background, with a 10 s call timeout and no retry of its own (OkHttp
-     * may still retry a failed connection, as for every request). Its failure is never thrown nor
-     * reported to `errorCallback`, and its 401 does not renew the session's token
+     * A charge must not overtake it, as the gateway may then refuse the charge or leave the
+     * payment with an uninitialized context, so [GopaySDK.startPaymentSession] waits for it: this
+     * enqueues the request and returns what completes when it ends, however it ends, or when
+     * [close] cancels it; null when nothing was sent, and then there is nothing to wait for. The
+     * request has a 10 s call timeout and no retry of its own (OkHttp may still retry a failed
+     * connection, as for every request), and its answer is delivered on OkHttp's thread, not the
+     * main one, so a host blocking the main thread on the start does not hang it. Its failure is
+     * never thrown nor reported to `errorCallback`, and its 401 does not renew the session's token
      * ([NoAuthRecovery]). The request is reported as an `api_call` like any other; one that ends
      * without an HTTP response, the timeout included, also as the `NETWORK_*` error it maps to,
      * straight to the operational data. [close] cancels it and nothing reports that
@@ -155,10 +164,10 @@ class PaymentSession internal constructor(
      * past `CREATED`, routine for a session opened to read the result. The browser SDK sends it
      * from `attachPayment()` the same way, and so does the iOS SDK.
      */
-    internal fun startInitSession() {
-        if (scope.split(WHITESPACE).none { it == SCOPE_PAYMENT_READ }) return
-        if (paymentSecret == null || currentToken() == null) return
-        try {
+    internal fun startInitSession(): Deferred<Unit>? {
+        if (scope.split(WHITESPACE).none { it == SCOPE_PAYMENT_READ }) return null
+        if (paymentSecret == null || currentToken() == null) return null
+        return try {
             val closeSignal = SessionCloseSignal()
             val call = paymentApi.initSession(
                 paymentId = paymentId,
@@ -173,7 +182,7 @@ class PaymentSession internal constructor(
             // close() may have run in between and found nothing to cancel.
             if (paymentSecret == null) {
                 inFlight.cancelForClose()
-                return
+                return inFlight.done
             }
             call.enqueue(object : Callback<Unit> {
                 override fun onResponse(call: Call<Unit>, response: retrofit2.Response<Unit>) {
@@ -190,16 +199,19 @@ class PaymentSession internal constructor(
                     telemetry?.error(transportError("init session", t), paymentId)
                 }
             })
+            inFlight.done
         } catch (e: VirtualMachineError) {
             throw e
         } catch (e: Throwable) {
-            // Nothing waits on it, so nothing building it, an Error from a shrunk or mismatched
-            // library included, may fail the session start the host is waiting on.
+            // Nothing building it, an Error from a shrunk or mismatched library included, may fail
+            // the session start the host is waiting on; nothing went out, so nothing to wait for.
+            null
         }
     }
 
     private fun finished(inFlight: InitSessionInFlight) {
         if (initSession === inFlight) initSession = null
+        inFlight.done.complete(Unit)
     }
 
     /**
@@ -944,7 +956,7 @@ class PaymentSession internal constructor(
         token = null
         tokenExpiresAt = 0
         verification?.let { PaymentVerificationBridge.releaseUnshown(it, sessionClosed()) }
-        // Nothing waits on it; cancelled by the close, it reports nothing.
+        // Cancelled by the close, it reports nothing, and a start waiting for it returns.
         initSession?.cancelForClose()
         onClose(this)
     }
@@ -1003,8 +1015,8 @@ class PaymentSession internal constructor(
 
         /**
          * The `init-session` call timeout, 10 s like the operational data's own requests
-         * (`NetworkModule.TELEMETRY_TIMEOUT_SECONDS`); nothing waits on it longer. Shortened by
-         * the test of a real timeout.
+         * (`NetworkModule.TELEMETRY_TIMEOUT_SECONDS`), after which a start stops waiting for it
+         * without an answer. Shortened by the test of a real timeout.
          */
         @VisibleForTesting
         @Volatile

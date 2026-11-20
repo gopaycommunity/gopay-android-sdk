@@ -43,8 +43,8 @@ internal class SessionAuthInterceptor(
 
     private fun authorize(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
-        // A request nothing waits on must not touch the token the session's own calls use: no
-        // credentials exchange before it, none after its 401, as in the browser SDK.
+        // A request the SDK sends on its own behalf must not touch the token the session's own
+        // calls use: no credentials exchange before it, none after its 401, as in the browser SDK.
         val recoverAuth = originalRequest.tag(NoAuthRecovery::class.java) == null
         val token = tokenProvider.currentToken()
             ?: if (recoverAuth) reauthBlocking() else throw SdkIOException(

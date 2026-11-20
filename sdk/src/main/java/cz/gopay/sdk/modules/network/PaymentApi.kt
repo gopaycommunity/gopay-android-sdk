@@ -8,6 +8,7 @@ import cz.gopay.sdk.model.PaymentDetails
 import cz.gopay.sdk.model.QrPaymentDetails
 import retrofit2.Call
 import retrofit2.Response
+import retrofit2.SkipCallbackExecutor
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
@@ -68,13 +69,17 @@ internal interface PaymentApi {
     /**
      * `POST /payments/{payment_id}/init-session`: tells GoPay which SDK, in which version, works
      * with the payment, and sets the payment's language from [acceptLanguage]; without one the
-     * request goes without the header. Answers `204` with no body. Not `suspend`:
-     * [cz.gopay.sdk.session.PaymentSession.startInitSession] enqueues it and nothing waits for it.
+     * request goes without the header. Answers `204` with no body. Not `suspend`, because the
+     * session needs the [Call] itself: to set its call timeout and to cancel it on close.
+     * [cz.gopay.sdk.session.PaymentSession.startInitSession] enqueues it, and the start waits for
+     * its answer, which [SkipCallbackExecutor] delivers on OkHttp's thread rather than the main
+     * one, as Retrofit does for the `suspend` calls.
      * [noAuthRecovery] keeps [SessionAuthInterceptor] from renewing the session's token for it;
      * [closeSignal] tells a cancel by `PaymentSession.close()` from a timeout.
      */
     @POST("payments/{payment_id}/init-session")
     @Headers("Content-Type: application/json")
+    @SkipCallbackExecutor
     fun initSession(
         @Path("payment_id") paymentId: String,
         @Header("Accept-Language") acceptLanguage: String?,

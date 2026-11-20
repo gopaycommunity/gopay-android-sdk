@@ -28,6 +28,8 @@ import cz.gopay.sdk.ui.CardFormStore
 import cz.gopay.sdk.ui.ForegroundScreen
 import cz.gopay.sdk.util.SdkLog
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -125,9 +127,15 @@ class GopaySDK private constructor(config: GopayConfig) {
      * before starting another for the same payment, or use [getPaymentSession] to reuse an
      * existing one.
      *
-     * Once started, the session tells GoPay that this SDK, and which version, works with the
-     * payment, and GoPay sets the payment's language from the languages set on the device; this
-     * call does not wait for that, and its failure changes nothing.
+     * Once started, the session tells GoPay which SDK and version works with the payment, and
+     * GoPay sets the payment's language from the device's languages. This call returns once GoPay
+     * has been told, so a charge made right after it never overtakes that request; the start gives
+     * up waiting after 10 seconds without an answer. If the request fails, nothing throws and
+     * `errorCallback` is not called. A [PaymentSession.close] during the wait ends it, and the
+     * start returns the closed session.
+     *
+     * Cancelling the caller during the wait closes the session and throws `CancellationException`,
+     * which is not reported through `errorCallback`.
      *
      * @param scope OAuth scopes to request. Defaults to [PaymentSession.DEFAULT_SCOPE]
      *              (`payment:charge payment:read`), which are the only two scopes the gateway
@@ -154,9 +162,31 @@ class GopaySDK private constructor(config: GopayConfig) {
         val session = createSession(paymentId, paymentSecret, scope)
         register(session)
         telemetry?.navigate(paymentId)
-        // In the background; nothing here waits for it or hears of its failure.
-        session.startInitSession()
+        awaitInitSession(session)
         session
+    }
+
+    /**
+     * Waits for the session's `init-session`, so a charge made after the start never overtakes
+     * it; nothing to wait for when it was not sent. Its failure is not heard of here, and a
+     * [PaymentSession.close] meanwhile ends the wait with the session closed. When the caller is
+     * cancelled during the wait, the session is closed, which also cancels the request, and the
+     * cancellation goes on: the caller never got the session, so none may stay registered.
+     *
+     * The session is registered while it waits, so [getPaymentSession] finds it and a charge made
+     * through it is not held back: registering first is what keeps a duplicate start out.
+     */
+    private suspend fun awaitInitSession(session: PaymentSession) {
+        val done = session.startInitSession() ?: return
+        try {
+            done.await()
+            // An await on a Deferred completed already returns without looking at the caller's
+            // cancellation, so a cancel that came as the request ended would go unnoticed.
+            currentCoroutineContext().ensureActive()
+        } catch (e: CancellationException) {
+            session.close()
+            throw e
+        }
     }
 
     /** Refuses an empty [paymentId] or [paymentSecret] before anything is sent, as on iOS. */

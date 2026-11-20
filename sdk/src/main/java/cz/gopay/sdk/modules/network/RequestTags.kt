@@ -3,8 +3,9 @@ package cz.gopay.sdk.modules.network
 /**
  * Request tag: [SessionAuthInterceptor] sends the request with the session's current token only,
  * never exchanges the credentials for it, and hands its 401 back as it is. For `init-session`,
- * which the SDK sends on its own behalf and nothing waits on, so it cannot touch the token the
- * session's own calls use. The browser SDK's `quiet` request does the same (`recoverAuth = false`).
+ * which the SDK sends on its own behalf and whose failure stops nothing, so it cannot touch the
+ * token the session's own calls use. The browser SDK's `quiet` request does the same
+ * (`recoverAuth = false`).
  */
 internal object NoAuthRecovery
 
