@@ -1,3 +1,12 @@
+## 3.1.1 (2026-11-20)
+
+
+### Bug Fixes
+
+* attach each payment to the operational data once GPMOB-177 bab6f7b
+* keep or close payment sessions on a repeated initialize GPMOB-177 bb75411
+* return from startPaymentSession once init-session is answered GPMOB-207 745eb1b
+
 # 3.1.0 (2026-11-19)
 
 
